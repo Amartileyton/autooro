@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Backend Trading Engine (FastAPI + Telethon + Risk Engine + Paper/cTrader + SQLite WAL)
+  trading-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xauusd_trading_engine
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistencia de base de datos SQLite WAL y sesión de Telethon
+      - ./data:/app/data
+      - ./trading_bot.db:/app/trading_bot.db
+      - ./bot_session.session:/app/bot_session.session
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./trading_bot.db
+      - ENVIRONMENT=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Dashboard Astro + React en modo Dev / Live
+  dashboard-frontend:
+    image: node:20-alpine
+    container_name: xauusd_dashboard
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "4321:4321"
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - trading-engine

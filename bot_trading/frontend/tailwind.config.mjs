@@ -1,0 +1,48 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./src/**/*.{astro,html,js,jsx,md,mdx,svelte,ts,tsx,vue}'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'surface': '#12131a',
+        'surface-dim': '#12131a',
+        'surface-bright': '#383941',
+        'surface-container-lowest': '#0d0e15',
+        'surface-container-low': '#1a1b22',
+        'surface-container': '#1e1f26',
+        'surface-container-high': '#292931',
+        'surface-container-highest': '#33343c',
+        'background': '#12131a',
+        'on-surface': '#e3e1ec',
+        'on-surface-variant': '#bbcabf',
+        'outline': '#86948a',
+        'outline-variant': '#3c4a42',
+        'primary': '#4edea3',
+        'primary-container': '#10b981',
+        'on-primary': '#003824',
+        'emerald-green': '#10B981',
+        'crimson-red': '#EF4444',
+        'amber-gold': '#F59E0B',
+        'error': '#ffb4ab',
+        'error-container': '#93000a',
+        'on-error': '#690005',
+        'on-error-container': '#ffdad6',
+      },
+      fontFamily: {
+        sans: ['Geist', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        'data': ['JetBrains Mono', 'monospace'],
+      },
+      fontSize: {
+        'label-sm': ['11px', { lineHeight: '16px', letterSpacing: '0.05em', fontWeight: '500' }],
+        'data-sm': ['11px', { lineHeight: '14px', fontWeight: '400' }],
+        'data-md': ['13px', { lineHeight: '18px', fontWeight: '500' }],
+        'data-lg': ['16px', { lineHeight: '24px', fontWeight: '600' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.01em', fontWeight: '600' }],
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.02em', fontWeight: '600' }],
+      },
+    },
+  },
+  plugins: [],
+};

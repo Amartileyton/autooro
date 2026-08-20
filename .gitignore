@@ -1,0 +1,49 @@
+# ==============================================================================
+# SEGURIDAD Y CREDENCIALES (CRÍTICO: NUNCA SUBIR A GIT)
+# ==============================================================================
+.env
+*.env
+.env.local
+.env.*.local
+*.session
+*.session-journal
+
+# Base de datos SQLite y logs WAL
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Archivos de volcado y pruebas temporales
+channel_history_dump.json
+deep_channel_history.json
+*.log
+
+# Python y entornos virtuales
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+
+# Frontend (Node, Astro, Vite)
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+.astro/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# SO y Editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
