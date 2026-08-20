@@ -43,62 +43,36 @@ flowchart TD
 
 ---
 
-## 📊 Estado Actual del Proyecto y Validación
+## 📊 Estado Actual del Proyecto y Despliegue en la Nube
 
-- **Ingesta:** Calibrada con **1.000 mensajes reales** (Julio 2026 – Agosto 2026) del canal `-1002763662248` con **0% de falsos positivos y 0% de anomalías**.
-- **Normalización Decimal:** Función `sanitize_price_str` inmune a comas españolas (`4383,69`), miles (`4.383,69`) o puntos estándar (`4383.69`).
+- **Estado:** 🟢 **EN PRODUCCIÓN (MODO PAPER TRADING 24/7)**
+- **Servidor Cloud:** Google Cloud Platform VM (`europe-southwest1` Madrid)
+- **Dashboard Web:** `http://34.175.69.118:4321`
+- **Backend API:** `http://34.175.69.118:8000/docs`
+- **Canal de Señales:** `-1002763662248` (Chartoro FX)
+- **Ingesta:** Calibrada con **1.000 mensajes reales** (Julio 2026 – Agosto 2026) con **0% de falsos positivos**.
+- **Normalización Decimal:** `sanitize_price_str` inmune a comas españolas (`4383,69`), miles (`4.383,69`) o puntos estándar (`4383.69`).
 - **Enriquecimiento de Órdenes:** Deduplica automáticamente las alertas rápidas (`BUY NOW`) con las plantillas formales (`SIGNAL ALERT`).
-- **Tests Automatizados:** **36/36 tests superados** en 0.49s (`pytest tests/ -v`).
-- **Autenticación MTProto:** Sesión permanente generada (`bot_session.session`).
+- **Tests Automatizados:** **36/36 tests superados** en 0.59s (`pytest tests/ -v`).
 
 ---
 
-## 🗺️ Hoja de Ruta (Roadmap) y Plan de Despliegue
+## 🗺️ Hoja de Ruta (Roadmap)
 
 ```mermaid
 gantt
-    title Plan de Despliegue a Producción
+    title Plan de Operación y Transición a Real
     dateFormat  YYYY-MM-DD
-    section Desarrollo
+    section Desarrollo & Despliegue
     Arquitectura & Backend           :done, 2026-08-01, 2026-08-15
     Dashboard Obsidian Terminal      :done, 2026-08-16, 2026-08-18
     Calibración 1000 Mensajes Reales :done, 2026-08-19, 2026-08-20
-    section Despliegue en la Nube
-    1. Aprovisionamiento VM Cloud (GCP/VPS) :active, 2026-08-21, 2026-08-21
-    2. Configuración Red, Firewall & Docker : 2026-08-21, 2026-08-21
-    3. Transferencia de Sesión & .env       : 2026-08-21, 2026-08-21
-    4. Arranque Docker Compose 24/7         : 2026-08-21, 2026-08-21
+    Despliegue GCP VM (34.175.69.118):done, 2026-08-20, 2026-08-20
     section Operación & Testeo
-    Fase Paper Trading (2-4 semanas)        : 2026-08-22, 2026-09-15
-    Transición a cTrader Real               : 2026-09-16, 2026-09-30
+    Fase Paper Trading (2-4 semanas) :active, 2026-08-21, 2026-09-15
+    Auditoría de PnL y Rendimiento   : 2026-09-10, 2026-09-15
+    Transición a cTrader Real        : 2026-09-16, 2026-09-30
 ```
-
----
-
-## 🎯 Tarea Inmediata Siguiente
-
-### 📍 [PENDIENTE] Tarea 1: Aprovisionamiento de la Máquina Virtual (VM) en la Nube
-1. Crear una instancia de **Ubuntu 24.04 / 22.04 LTS** en Google Cloud Compute Engine (con los 300$ de crédito) o en un VPS Linux (Hetzner / DigitalOcean).
-2. Abrir en el Firewall de red los puertos:
-   - **`22`** (SSH)
-   - **`4321`** (Dashboard Obsidian Terminal)
-   - **`8000`** (Backend FastAPI & WebSockets)
-3. Obtener la **IP Pública Externa** y clave SSH.
-
-### 📍 [PENDIENTE] Tarea 2: Despliegue de Contenedores
-1. Clonar el repositorio en la VM:
-   ```bash
-   git clone https://github.com/Amartileyton/autooro.git
-   cd autooro/bot_trading
-   ```
-2. Transferir el archivo de credenciales `.env` y la sesión de Telegram `bot_session.session`.
-3. Levantar todo el stack en segundo plano:
-   ```bash
-   docker-compose up -d --build
-   ```
-
-### 📍 [PENDIENTE] Tarea 3: Periodo de Prueba en Paper Trading
-- Monitorear durante 2-3 semanas la ejecución de señales del canal y contrastar el PnL y los hitos de Trailing SL en el dashboard antes de conectar fondos reales.
 
 ---
 

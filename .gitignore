@@ -7,6 +7,9 @@
 .env.*.local
 *.session
 *.session-journal
+deploy_to_gcp.sh
+deploy_remote.sh
+*.tar.gz
 
 # Base de datos SQLite y logs WAL
 *.db
