@@ -1,131 +1,108 @@
 import React from 'react';
 
-export interface TelegramMessageItem {
-  id: number;
-  message_id?: number;
-  channel_id?: number;
-  channel_name?: string;
-  raw_text: string;
-  parsed_success: boolean;
-  parser_used: string;
-  outcome?: 'WIN' | 'LOSS' | 'ACTIVE' | 'MODIFIED' | 'EXPIRED' | null;
-  signal_details?: {
-    type: 'ORDER' | 'MODIFIER';
-    side?: 'BUY' | 'SELL';
-    entry_price?: number;
-    sl_price?: number;
-    tp1?: number;
-    tp2?: number;
-    tp3?: number;
-    action?: string;
-    target_price?: number;
-  } | null;
-  error_reason?: string;
-  received_at: string;
+export interface TradeLifecycleCardItem {
+  trade_id: string;
+  channel_name: string;
+  side: 'BUY' | 'SELL';
+  entry_price: number;
+  sl_price?: number | null;
+  initial_sl?: number | null;
+  tp1?: number | null;
+  tp2?: number | null;
+  tp3?: number | null;
+  status: 'OPEN' | 'WIN' | 'LOSS';
+  outcome_text: string;
+  created_at: string;
+  closed_at?: string | null;
+  modifications?: string[];
 }
 
 interface SignalFeedProps {
-  messages: TelegramMessageItem[];
+  trades: TradeLifecycleCardItem[];
 }
 
-export const SignalFeed: React.FC<SignalFeedProps> = ({ messages }) => {
-  // Filtrar para priorizar señales válidas y limitar a las 10 últimas
-  const validSignals = messages.filter((m) => m.parsed_success || m.signal_details);
-  const displayItems = (validSignals.length >= 3 ? validSignals : messages).slice(0, 10);
+export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
+  const displayTrades = (trades || []).slice(0, 10);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#12141c]">
       {/* Header del Feed */}
       <div className="px-3 py-2 border-b border-outline-variant bg-surface-container flex justify-between items-center shrink-0">
         <div className="flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[16px] text-amber-gold">history_edu</span>
+          <span className="material-symbols-outlined text-[16px] text-amber-gold">stacked_line_chart</span>
           <span className="text-label-sm text-on-surface uppercase font-bold tracking-wider">
-            Últimas 10 Señales
+            Registro de Trades (10 Últimos)
           </span>
         </div>
         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-outline">
-          {displayItems.length} Registros
+          {displayTrades.length} Trades
         </span>
       </div>
 
-      {/* Lista de Señales (Máximo 10) */}
-      <div className="flex-1 p-2 space-y-2 overflow-y-auto">
-        {displayItems.length === 0 ? (
-          <div className="text-outline text-label-sm text-center py-8">
+      {/* Lista de Tarjetas de Trade Vivas y Vencidas */}
+      <div className="flex-1 p-2 space-y-2.5 overflow-y-auto">
+        {displayTrades.length === 0 ? (
+          <div className="text-outline text-label-sm text-center py-10">
             <span className="material-symbols-outlined text-[28px] opacity-40 mb-1">satellite_alt</span>
             <p>Esperando señales de Telegram...</p>
           </div>
         ) : (
-          displayItems.map((msg) => {
-            const isSignal = msg.parsed_success || !!msg.signal_details;
-            const details = msg.signal_details;
-            const isBuy = details?.side === 'BUY' || msg.raw_text.toUpperCase().includes('BUY');
-            const isModifier = details?.type === 'MODIFIER' || msg.raw_text.toUpperCase().includes('MOVE SL');
-            const outcome = msg.outcome;
-            const channelName = msg.channel_name || 'Chartoro FX';
-            const dateObj = new Date(msg.received_at);
-            const timeStr = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          displayTrades.map((t) => {
+            const isBuy = t.side === 'BUY';
+            const isWin = t.status === 'WIN';
+            const isLoss = t.status === 'LOSS';
+            const isOpen = t.status === 'OPEN';
 
-            // Colores según resultado (WIN = Verde, LOSS = Rojo, ACTIVE = Azul, MODIFIER = Amarillo)
-            let borderColor = 'border-outline-variant/40';
+            const isModified = (t.modifications && t.modifications.length > 0) || (t.initial_sl && t.sl_price && t.initial_sl !== t.sl_price);
+
+            const dateObj = new Date(t.created_at);
+            const timeStr = isNaN(dateObj.getTime())
+              ? ''
+              : dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            // Estilos de estado (Verde = Ganada, Rojo = Perdida, Azul = Abierta)
+            let borderColor = 'border-outline-variant/50';
             let bgColor = 'bg-surface/60';
-            let badgeColor = 'bg-surface text-outline border-outline-variant/40';
-            let outcomeText = 'INFO / AUDITORÍA';
+            let statusBadge = 'bg-primary/20 text-primary border-primary/40';
 
-            if (outcome === 'WIN') {
-              borderColor = 'border-emerald-500/70 shadow-[0_0_8px_rgba(16,185,129,0.15)]';
-              bgColor = 'bg-[#0f1f1a]';
-              badgeColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
-              outcomeText = '✅ GANADA (TP HIT)';
-            } else if (outcome === 'LOSS') {
-              borderColor = 'border-crimson-red/70 shadow-[0_0_8px_rgba(239,68,68,0.15)]';
-              bgColor = 'bg-[#221316]';
-              badgeColor = 'bg-crimson-red/20 text-crimson-red border-crimson-red/50';
-              outcomeText = '❌ PERDIDA (SL HIT)';
-            } else if (outcome === 'ACTIVE') {
-              borderColor = 'border-primary/70 animate-pulse';
-              bgColor = 'bg-[#131b26]';
-              badgeColor = 'bg-primary/20 text-primary border-primary/50';
-              outcomeText = '🔵 EN CURSO';
-            } else if (isModifier || outcome === 'MODIFIED') {
-              borderColor = 'border-amber-500/50';
-              bgColor = 'bg-[#1a1813]';
-              badgeColor = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
-              outcomeText = '🟡 MODIFICADOR';
+            if (isWin) {
+              borderColor = 'border-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.18)]';
+              bgColor = 'bg-[#0e2019]';
+              statusBadge = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
+            } else if (isLoss) {
+              borderColor = 'border-crimson-red/80 shadow-[0_0_10px_rgba(239,68,68,0.18)]';
+              bgColor = 'bg-[#221215]';
+              statusBadge = 'bg-crimson-red/20 text-crimson-red border-crimson-red/50';
+            } else if (isOpen) {
+              borderColor = 'border-primary/80 shadow-[0_0_10px_rgba(59,130,246,0.18)] animate-pulse';
+              bgColor = 'bg-[#121c29]';
+              statusBadge = 'bg-primary/25 text-primary border-primary/60 font-bold';
             }
 
             return (
               <div
-                key={msg.id}
-                className={`p-2.5 border rounded relative overflow-hidden transition-all ${bgColor} ${borderColor}`}
+                key={t.trade_id}
+                className={`p-3 border rounded-md relative overflow-hidden transition-all space-y-2 ${bgColor} ${borderColor}`}
               >
-                {/* Borde indicador lateral */}
+                {/* Borde lateral indicador de estado */}
                 <div
-                  className={`absolute top-0 left-0 w-1 h-full ${
-                    outcome === 'WIN'
-                      ? 'bg-emerald-green'
-                      : outcome === 'LOSS'
-                      ? 'bg-crimson-red'
-                      : isModifier
-                      ? 'bg-amber-400'
-                      : isSignal
-                      ? 'bg-primary'
-                      : 'bg-outline/30'
+                  className={`absolute top-0 left-0 w-1.5 h-full ${
+                    isWin ? 'bg-emerald-green' : isLoss ? 'bg-crimson-red' : 'bg-primary'
                   }`}
                 />
 
-                {/* Cabecera */}
-                <div className="flex justify-between items-start pl-1.5 gap-2">
+                {/* Fila 1: Origen + Estado + Hora */}
+                <div className="flex justify-between items-center pl-1.5 gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Canal de Origen */}
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-highest text-amber-gold border border-amber-gold/30 flex items-center gap-1 font-bold">
-                      <span className="material-symbols-outlined text-[12px]">send</span>
-                      {channelName}
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface-container-highest text-amber-gold border border-amber-gold/30 flex items-center gap-1 font-bold">
+                      <span className="material-symbols-outlined text-[11px]">send</span>
+                      {t.channel_name}
                     </span>
 
-                    {/* Resultado / Estado */}
-                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border ${badgeColor}`}>
-                      {outcomeText}
+                    {/* Badge de Estado del Trade */}
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${statusBadge}`}>
+                      {isWin ? `✅ ${t.outcome_text}` : isLoss ? `❌ ${t.outcome_text}` : '🔵 ACTIVO (EN CURSO)'}
                     </span>
                   </div>
 
@@ -134,32 +111,66 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ messages }) => {
                   </span>
                 </div>
 
-                {/* Detalles de la Orden */}
-                {isSignal && details && details.type === 'ORDER' ? (
-                  <div className="mt-2 pl-1.5 bg-black/40 p-2 rounded border border-white/5 space-y-1">
-                    <div className="flex justify-between items-center text-[11px] font-mono">
-                      <span className={`font-bold ${isBuy ? 'text-emerald-400' : 'text-crimson-red'}`}>
-                        {isBuy ? '▲ BUY XAUUSD' : '▼ SELL XAUUSD'}
+                {/* Fila 2: Dirección y Precio de Entrada */}
+                <div className="pl-1.5 flex justify-between items-center border-t border-white/5 pt-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[13px] font-mono font-bold flex items-center gap-1 ${isBuy ? 'text-emerald-400' : 'text-crimson-red'}`}>
+                      <span className="material-symbols-outlined text-[16px]">
+                        {isBuy ? 'arrow_upward' : 'arrow_downward'}
                       </span>
-                      <span>Entrada: <strong className="text-on-surface">${details.entry_price?.toFixed(2)}</strong></span>
-                    </div>
+                      {isBuy ? 'BUY XAUUSD' : 'SELL XAUUSD'}
+                    </span>
+                  </div>
 
-                    <div className="flex justify-between items-center text-[10px] font-mono text-outline pt-1 border-t border-white/5">
-                      <span>SL: <strong className="text-crimson-red">${details.sl_price ? details.sl_price.toFixed(2) : 'Dinámico'}</strong></span>
-                      <div className="flex gap-1.5">
-                        {details.tp1 && <span>TP1: <strong className="text-emerald-400">${details.tp1.toFixed(2)}</strong></span>}
-                        {details.tp2 && <span>TP2: <strong className="text-emerald-400">${details.tp2.toFixed(2)}</strong></span>}
-                        {details.tp3 && <span>TP3: <strong className="text-emerald-400">${details.tp3.toFixed(2)}</strong></span>}
-                      </div>
-                    </div>
+                  <div className="text-[12px] font-mono">
+                    <span className="text-outline text-[10px] mr-1.5">ENTRADA:</span>
+                    <strong className="text-on-surface font-bold text-[13px]">${t.entry_price?.toFixed(2)}</strong>
                   </div>
-                ) : isSignal && details && details.type === 'MODIFIER' ? (
-                  <div className="mt-1.5 pl-1.5 text-[11px] font-mono bg-black/30 p-1.5 rounded border border-white/5 text-amber-300">
-                    {details.action} {details.target_price ? `-> $${details.target_price.toFixed(2)}` : ''}
+                </div>
+
+                {/* Fila 3: Rejilla de Niveles de SL y Take Profits */}
+                <div className="pl-1.5 grid grid-cols-4 gap-1.5 pt-1">
+                  {/* Stop Loss */}
+                  <div className="p-1.5 rounded bg-black/40 border border-white/5 flex flex-col">
+                    <span className="text-[9px] font-mono text-outline uppercase flex items-center justify-between">
+                      SL
+                      {isModified && <span className="text-amber-400 font-bold text-[8px]">MOD</span>}
+                    </span>
+                    <span className={`text-[11px] font-mono font-bold mt-0.5 ${t.sl_price ? 'text-crimson-red' : 'text-outline/40'}`}>
+                      {t.sl_price ? `$${t.sl_price.toFixed(2)}` : '---'}
+                    </span>
                   </div>
-                ) : (
-                  <div className="mt-1.5 pl-1.5 text-[10px] font-mono text-outline line-clamp-2 bg-black/20 p-1 rounded">
-                    {msg.raw_text}
+
+                  {/* TP1 */}
+                  <div className="p-1.5 rounded bg-black/40 border border-white/5 flex flex-col">
+                    <span className="text-[9px] font-mono text-outline uppercase">TP1</span>
+                    <span className={`text-[11px] font-mono font-bold mt-0.5 ${t.tp1 ? 'text-emerald-400' : 'text-outline/40'}`}>
+                      {t.tp1 ? `$${t.tp1.toFixed(2)}` : '---'}
+                    </span>
+                  </div>
+
+                  {/* TP2 */}
+                  <div className="p-1.5 rounded bg-black/40 border border-white/5 flex flex-col">
+                    <span className="text-[9px] font-mono text-outline uppercase">TP2</span>
+                    <span className={`text-[11px] font-mono font-bold mt-0.5 ${t.tp2 ? 'text-emerald-400' : 'text-outline/40'}`}>
+                      {t.tp2 ? `$${t.tp2.toFixed(2)}` : '---'}
+                    </span>
+                  </div>
+
+                  {/* TP3 */}
+                  <div className="p-1.5 rounded bg-black/40 border border-white/5 flex flex-col">
+                    <span className="text-[9px] font-mono text-outline uppercase">TP3</span>
+                    <span className={`text-[11px] font-mono font-bold mt-0.5 ${t.tp3 ? 'text-emerald-400' : 'text-outline/40'}`}>
+                      {t.tp3 ? `$${t.tp3.toFixed(2)}` : '---'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Modificaciones posteriores si existen */}
+                {t.modifications && t.modifications.length > 0 && (
+                  <div className="pl-1.5 text-[10px] font-mono text-amber-300 bg-amber-500/10 p-1 rounded border border-amber-500/20 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px]">update</span>
+                    {t.modifications[t.modifications.length - 1]}
                   </div>
                 )}
               </div>

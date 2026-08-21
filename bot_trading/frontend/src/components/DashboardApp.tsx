@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HeaderTelemetry } from './HeaderTelemetry';
 import { PositionMatrix, type SlotTradeData } from './PositionMatrix';
-import { SignalFeed, type TelegramMessageItem } from './SignalFeed';
+import { SignalFeed, type TradeLifecycleCardItem } from './SignalFeed';
 import { LiveChart } from './LiveChart';
 import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
@@ -38,7 +38,7 @@ export const DashboardApp: React.FC = () => {
     { slot_id: 4, is_active: false },
   ]);
 
-  const [messages, setMessages] = useState<TelegramMessageItem[]>([]);
+  const [trades, setTrades] = useState<TradeLifecycleCardItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
@@ -84,11 +84,11 @@ export const DashboardApp: React.FC = () => {
         }
       }
 
-      // Mensajes de Telegram
-      const msgRes = await fetch(`${baseUrl}/api/v1/messages?limit=30`);
-      if (msgRes.ok) {
-        const msgData = await msgRes.json();
-        setMessages(msgData);
+      // Cargar Tarjetas de Ciclo de Vida de Trades Consolidados
+      const tradeRes = await fetch(`${baseUrl}/api/v1/signals/trades?limit=50`);
+      if (tradeRes.ok) {
+        const tradeData = await tradeRes.json();
+        setTrades(tradeData);
       }
     } catch (err) {
       console.warn('Backend aún no disponible para REST fetch:', err);
@@ -331,7 +331,7 @@ export const DashboardApp: React.FC = () => {
 
           {/* Feed de Señales de Telegram en Vivo */}
           <div className="flex-1 overflow-hidden">
-            <SignalFeed messages={messages} />
+            <SignalFeed trades={trades} />
           </div>
         </nav>
 

@@ -172,16 +172,30 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
             elif m.message_id in (7900, 7901) or "4527" in msg_text_upper or "SL HIT" in msg_text_upper:
                 outcome = "LOSS"
             else:
-                # Comprobar si hay mensajes posteriores en el historial indicando TP o SL
                 outcome = "WIN" if "TP1 HIT" in all_texts_joined else "EXPIRED"
 
         elif isinstance(parsed, ModifierSignalEvent):
             signal_details = {
                 "type": "MODIFIER",
-                "action": parsed.action,
+                "action": parsed.signal_type.value if hasattr(parsed.signal_type, 'value') else str(parsed.signal_type),
                 "target_price": float(parsed.target_price) if parsed.target_price else None,
             }
             outcome = "MODIFIED"
+        else:
+            # Detectar si el mensaje es un reporte de resultado de una señal previa (TP / SL HIT)
+            msg_text_upper = m.raw_text.upper()
+            if "TP" in msg_text_upper and ("HIT" in msg_text_upper or "PIPS" in msg_text_upper or "GANANCIA" in msg_text_upper):
+                outcome = "WIN"
+                signal_details = {
+                    "type": "MODIFIER",
+                    "action": "🏆 TP ALCANZADO (PROFIT)",
+                }
+            elif "SL HIT" in msg_text_upper or "PÉRDIDA" in msg_text_upper:
+                outcome = "LOSS"
+                signal_details = {
+                    "type": "MODIFIER",
+                    "action": "❌ STOP LOSS TOCADO",
+                }
 
         formatted.append({
             "id": m.id,
@@ -198,6 +212,24 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
         })
 
     return formatted
+
+
+@router.get("/signals/trades")
+async def get_consolidated_trade_cards(limit: int = 100, db: AsyncSession = Depends(get_db)):
+    """
+    Retorna el estado de los trades consolidados en tarjetas de ciclo de vida:
+    - Entrada viva
+    - Actualización progresiva de SL y TPs
+    - Modificaciones intermedias de SL
+    - Cierre en Verde (Win) o Rojo (Loss)
+    """
+    from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
+    stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(limit)
+    result = await db.execute(stmt)
+    messages = result.scalars().all()
+
+    trade_cards = consolidate_telegram_trade_lifecycle(messages)
+    return trade_cards
 
 
 @router.get("/audit")
