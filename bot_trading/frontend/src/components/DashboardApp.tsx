@@ -3,7 +3,7 @@ import { HeaderTelemetry } from './HeaderTelemetry';
 import { PositionMatrix, type SlotTradeData } from './PositionMatrix';
 import { SignalFeed, type TelegramMessageItem } from './SignalFeed';
 import { LiveChart } from './LiveChart';
-import { ControlModal } from './ControlModal';
+import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -318,8 +318,8 @@ export const DashboardApp: React.FC = () => {
         </div>
       </footer>
 
-      {/* Modal de Control y Kill Switch */}
-      <ControlModal
+      {/* Desplegable de Control y Kill Switch */}
+      <ControlDropdown
         isOpen={isControlModalOpen}
         onClose={() => setIsControlModalOpen(false)}
         ingestionEnabled={ingestionEnabled}

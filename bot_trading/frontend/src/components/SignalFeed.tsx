@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export interface TelegramMessageItem {
   id: number;
@@ -8,6 +8,7 @@ export interface TelegramMessageItem {
   raw_text: string;
   parsed_success: boolean;
   parser_used: string;
+  outcome?: 'WIN' | 'LOSS' | 'ACTIVE' | 'MODIFIED' | 'EXPIRED' | null;
   signal_details?: {
     type: 'ORDER' | 'MODIFIER';
     side?: 'BUY' | 'SELL';
@@ -28,11 +29,9 @@ interface SignalFeedProps {
 }
 
 export const SignalFeed: React.FC<SignalFeedProps> = ({ messages }) => {
-  const [filterOnlySignals, setFilterOnlySignals] = useState<boolean>(false);
-
-  const filteredMessages = filterOnlySignals
-    ? messages.filter((m) => m.parsed_success || m.signal_details)
-    : messages;
+  // Filtrar para priorizar señales válidas y limitar a las 10 últimas
+  const validSignals = messages.filter((m) => m.parsed_success || m.signal_details);
+  const displayItems = (validSignals.length >= 3 ? validSignals : messages).slice(0, 10);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#12141c]">
@@ -41,95 +40,93 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ messages }) => {
         <div className="flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[16px] text-amber-gold">history_edu</span>
           <span className="text-label-sm text-on-surface uppercase font-bold tracking-wider">
-            Historial de Señales
+            Últimas 10 Señales
           </span>
         </div>
-
-        {/* Toggle Filtro */}
-        <button
-          onClick={() => setFilterOnlySignals(!filterOnlySignals)}
-          className={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
-            filterOnlySignals
-              ? 'bg-primary/20 text-primary border-primary/50 font-bold'
-              : 'bg-surface text-outline border-outline-variant hover:text-on-surface'
-          }`}
-        >
-          {filterOnlySignals ? 'Solo Señales' : 'Todos'}
-        </button>
+        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-outline">
+          {displayItems.length} Registros
+        </span>
       </div>
 
-      {/* Lista de Señales */}
+      {/* Lista de Señales (Máximo 10) */}
       <div className="flex-1 p-2 space-y-2 overflow-y-auto">
-        {filteredMessages.length === 0 ? (
+        {displayItems.length === 0 ? (
           <div className="text-outline text-label-sm text-center py-8">
             <span className="material-symbols-outlined text-[28px] opacity-40 mb-1">satellite_alt</span>
-            <p>Esperando nuevas señales de Telegram...</p>
+            <p>Esperando señales de Telegram...</p>
           </div>
         ) : (
-          filteredMessages.map((msg) => {
+          displayItems.map((msg) => {
             const isSignal = msg.parsed_success || !!msg.signal_details;
             const details = msg.signal_details;
             const isBuy = details?.side === 'BUY' || msg.raw_text.toUpperCase().includes('BUY');
-            const isModifier = details?.type === 'MODIFIER' || msg.raw_text.toUpperCase().includes('MOVE SL') || msg.raw_text.toUpperCase().includes('SL TO');
+            const isModifier = details?.type === 'MODIFIER' || msg.raw_text.toUpperCase().includes('MOVE SL');
+            const outcome = msg.outcome;
             const channelName = msg.channel_name || 'Chartoro FX';
             const dateObj = new Date(msg.received_at);
             const timeStr = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+            // Colores según resultado (WIN = Verde, LOSS = Rojo, ACTIVE = Azul, MODIFIER = Amarillo)
+            let borderColor = 'border-outline-variant/40';
+            let bgColor = 'bg-surface/60';
+            let badgeColor = 'bg-surface text-outline border-outline-variant/40';
+            let outcomeText = 'INFO / AUDITORÍA';
+
+            if (outcome === 'WIN') {
+              borderColor = 'border-emerald-500/70 shadow-[0_0_8px_rgba(16,185,129,0.15)]';
+              bgColor = 'bg-[#0f1f1a]';
+              badgeColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
+              outcomeText = '✅ GANADA (TP HIT)';
+            } else if (outcome === 'LOSS') {
+              borderColor = 'border-crimson-red/70 shadow-[0_0_8px_rgba(239,68,68,0.15)]';
+              bgColor = 'bg-[#221316]';
+              badgeColor = 'bg-crimson-red/20 text-crimson-red border-crimson-red/50';
+              outcomeText = '❌ PERDIDA (SL HIT)';
+            } else if (outcome === 'ACTIVE') {
+              borderColor = 'border-primary/70 animate-pulse';
+              bgColor = 'bg-[#131b26]';
+              badgeColor = 'bg-primary/20 text-primary border-primary/50';
+              outcomeText = '🔵 EN CURSO';
+            } else if (isModifier || outcome === 'MODIFIED') {
+              borderColor = 'border-amber-500/50';
+              bgColor = 'bg-[#1a1813]';
+              badgeColor = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
+              outcomeText = '🟡 MODIFICADOR';
+            }
+
             return (
               <div
                 key={msg.id}
-                className={`p-2.5 border rounded relative overflow-hidden transition-all ${
-                  isSignal
-                    ? isModifier
-                      ? 'bg-[#181b26] border-amber-500/40 hover:border-amber-400'
-                      : isBuy
-                      ? 'bg-[#131d1a] border-emerald-500/40 hover:border-emerald-400'
-                      : 'bg-[#1f1519] border-crimson-red/40 hover:border-crimson-red'
-                    : 'bg-surface/60 border-outline-variant/40 opacity-70 hover:opacity-100'
-                }`}
+                className={`p-2.5 border rounded relative overflow-hidden transition-all ${bgColor} ${borderColor}`}
               >
-                {/* Indicador de Borde Lateral */}
+                {/* Borde indicador lateral */}
                 <div
                   className={`absolute top-0 left-0 w-1 h-full ${
-                    isSignal
-                      ? isModifier
-                        ? 'bg-amber-400'
-                        : isBuy
-                        ? 'bg-emerald-green'
-                        : 'bg-crimson-red'
+                    outcome === 'WIN'
+                      ? 'bg-emerald-green'
+                      : outcome === 'LOSS'
+                      ? 'bg-crimson-red'
+                      : isModifier
+                      ? 'bg-amber-400'
+                      : isSignal
+                      ? 'bg-primary'
                       : 'bg-outline/30'
                   }`}
                 />
 
-                {/* Cabecera del Item */}
+                {/* Cabecera */}
                 <div className="flex justify-between items-start pl-1.5 gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Canal de Origen */}
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-highest text-outline-variant border border-outline-variant/50 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[12px] text-primary">send</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-highest text-amber-gold border border-amber-gold/30 flex items-center gap-1 font-bold">
+                      <span className="material-symbols-outlined text-[12px]">send</span>
                       {channelName}
                     </span>
 
-                    {/* Tipo / Badge de Señal */}
-                    {isSignal ? (
-                      isModifier ? (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30">
-                          MODIFICADOR
-                        </span>
-                      ) : (
-                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border ${
-                          isBuy 
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-crimson-red/20 text-crimson-red border-crimson-red/30'
-                        }`}>
-                          {isBuy ? 'BUY' : 'SELL'}
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface text-outline border border-outline-variant/40">
-                        INFO / SPAM
-                      </span>
-                    )}
+                    {/* Resultado / Estado */}
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border ${badgeColor}`}>
+                      {outcomeText}
+                    </span>
                   </div>
 
                   <span className="text-[10px] font-mono text-outline shrink-0">
@@ -137,25 +134,27 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ messages }) => {
                   </span>
                 </div>
 
-                {/* Resumen Estructurado de la Señal */}
+                {/* Detalles de la Orden */}
                 {isSignal && details && details.type === 'ORDER' ? (
-                  <div className="mt-2 pl-1.5 grid grid-cols-2 gap-1 text-[11px] font-mono bg-black/30 p-1.5 rounded border border-white/5">
-                    <div>
-                      <span className="text-outline">Entrada: </span>
-                      <strong className="text-on-surface">${details.entry_price?.toFixed(2)}</strong>
+                  <div className="mt-2 pl-1.5 bg-black/40 p-2 rounded border border-white/5 space-y-1">
+                    <div className="flex justify-between items-center text-[11px] font-mono">
+                      <span className={`font-bold ${isBuy ? 'text-emerald-400' : 'text-crimson-red'}`}>
+                        {isBuy ? '▲ BUY XAUUSD' : '▼ SELL XAUUSD'}
+                      </span>
+                      <span>Entrada: <strong className="text-on-surface">${details.entry_price?.toFixed(2)}</strong></span>
                     </div>
-                    <div>
-                      <span className="text-outline">Stop Loss: </span>
-                      <strong className="text-crimson-red">${details.sl_price ? details.sl_price.toFixed(2) : 'Dinámico'}</strong>
-                    </div>
-                    <div className="col-span-2 flex gap-2 pt-0.5 border-t border-white/5 text-[10px]">
-                      {details.tp1 && <span>TP1: <strong className="text-profit">${details.tp1.toFixed(2)}</strong></span>}
-                      {details.tp2 && <span>TP2: <strong className="text-profit">${details.tp2.toFixed(2)}</strong></span>}
-                      {details.tp3 && <span>TP3: <strong className="text-profit">${details.tp3.toFixed(2)}</strong></span>}
+
+                    <div className="flex justify-between items-center text-[10px] font-mono text-outline pt-1 border-t border-white/5">
+                      <span>SL: <strong className="text-crimson-red">${details.sl_price ? details.sl_price.toFixed(2) : 'Dinámico'}</strong></span>
+                      <div className="flex gap-1.5">
+                        {details.tp1 && <span>TP1: <strong className="text-emerald-400">${details.tp1.toFixed(2)}</strong></span>}
+                        {details.tp2 && <span>TP2: <strong className="text-emerald-400">${details.tp2.toFixed(2)}</strong></span>}
+                        {details.tp3 && <span>TP3: <strong className="text-emerald-400">${details.tp3.toFixed(2)}</strong></span>}
+                      </div>
                     </div>
                   </div>
                 ) : isSignal && details && details.type === 'MODIFIER' ? (
-                  <div className="mt-2 pl-1.5 text-[11px] font-mono bg-black/30 p-1.5 rounded border border-white/5 text-amber-300">
+                  <div className="mt-1.5 pl-1.5 text-[11px] font-mono bg-black/30 p-1.5 rounded border border-white/5 text-amber-300">
                     {details.action} {details.target_price ? `-> $${details.target_price.toFixed(2)}` : ''}
                   </div>
                 ) : (

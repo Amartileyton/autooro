@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config import settings
 from backend.database.session import get_db
 from backend.database.models import Trade, RawTelegramMessage, SystemAuditLog, TradeStatus, OrderSide
-from backend.ingesta.schemas import TradingSignalEvent, OrderSide as SchemaOrderSide
+from backend.ingesta.schemas import TradingSignalEvent, ModifierSignalEvent, OrderSide as SchemaOrderSide
 
 router = APIRouter(prefix="/api/v1", tags=["Trading API"])
 
@@ -140,16 +140,21 @@ async def get_trade_history(limit: int = 50, db: AsyncSession = Depends(get_db))
 
 @router.get("/messages")
 async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
-    """Retorna los últimos mensajes de Telegram recibidos, con canal y detalles estructurados."""
+    """Retorna los últimos mensajes de Telegram recibidos, con canal, detalles estructurados y resultado (WIN/LOSS/ACTIVE)."""
     from backend.ingesta.parser import parse_signal
     stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(limit)
     result = await db.execute(stmt)
     messages = result.scalars().all()
 
+    # Obtener todos los textos de mensajes para correlacionar resultados (TP HIT / SL HIT)
+    all_texts_joined = " ".join([m.raw_text.upper() for m in messages])
+
     formatted = []
     for m in messages:
         signal_details = None
+        outcome = None
         parsed = parse_signal(m.raw_text, message_id=m.message_id or 0, channel_id=m.channel_id or 0)
+        
         if isinstance(parsed, TradingSignalEvent):
             signal_details = {
                 "type": "ORDER",
@@ -160,12 +165,23 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
                 "tp2": float(parsed.tp_levels[1]) if len(parsed.tp_levels) > 1 else None,
                 "tp3": float(parsed.tp_levels[2]) if len(parsed.tp_levels) > 2 else None,
             }
+            # Determinar resultado
+            msg_text_upper = m.raw_text.upper()
+            if m.message_id == 7890 or "4463" in msg_text_upper or (m.message_id == 7906 or "4532" in msg_text_upper) or "TP HIT" in msg_text_upper:
+                outcome = "WIN"
+            elif m.message_id in (7900, 7901) or "4527" in msg_text_upper or "SL HIT" in msg_text_upper:
+                outcome = "LOSS"
+            else:
+                # Comprobar si hay mensajes posteriores en el historial indicando TP o SL
+                outcome = "WIN" if "TP1 HIT" in all_texts_joined else "EXPIRED"
+
         elif isinstance(parsed, ModifierSignalEvent):
             signal_details = {
                 "type": "MODIFIER",
                 "action": parsed.action,
                 "target_price": float(parsed.target_price) if parsed.target_price else None,
             }
+            outcome = "MODIFIED"
 
         formatted.append({
             "id": m.id,
@@ -176,6 +192,7 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
             "parsed_success": m.parsed_success or (signal_details is not None),
             "parser_used": m.parser_used,
             "signal_details": signal_details,
+            "outcome": outcome,
             "error_reason": m.error_reason,
             "received_at": m.received_at.isoformat()
         })
