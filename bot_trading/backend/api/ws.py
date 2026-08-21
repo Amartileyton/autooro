@@ -100,12 +100,17 @@ async def websocket_live_stream(websocket: WebSocket, token: Optional[str] = Non
                         "ticket_id": state_machine.active_slots[sid].ticket_id,
                         "side": state_machine.active_slots[sid].side.value,
                         "lot_size": float(state_machine.active_slots[sid].lot_size),
+                        "initial_lot_size": float(state_machine.active_slots[sid].initial_lot_size),
                         "entry_price": float(state_machine.active_slots[sid].entry_price),
                         "current_sl": float(state_machine.active_slots[sid].current_sl),
+                        "initial_sl": float(state_machine.active_slots[sid].initial_sl),
                         "tp1": float(state_machine.active_slots[sid].tp1),
                         "tp2": float(state_machine.active_slots[sid].tp2) if state_machine.active_slots[sid].tp2 else None,
                         "tp3": float(state_machine.active_slots[sid].tp3) if state_machine.active_slots[sid].tp3 else None,
                         "current_pnl": float(state_machine.active_slots[sid].current_pnl),
+                        "realized_cash_pnl": float(state_machine.active_slots[sid].realized_cash_pnl),
+                        "peak_price": float(state_machine.active_slots[sid].peak_price) if state_machine.active_slots[sid].peak_price else None,
+                        "is_infinite_trailing": state_machine.active_slots[sid].is_infinite_trailing,
                         "status": state_machine.active_slots[sid].status.value
                     } if sid in state_machine.active_slots else None
                 }
@@ -140,12 +145,17 @@ async def broadcast_tick_update(tick: BrokerTick, account_info, active_slots):
                 "ticket_id": t.ticket_id,
                 "side": t.side.value,
                 "lot_size": float(t.lot_size),
+                "initial_lot_size": float(t.initial_lot_size),
                 "entry_price": float(t.entry_price),
                 "current_sl": float(t.current_sl),
+                "initial_sl": float(t.initial_sl),
                 "tp1": float(t.tp1),
                 "tp2": float(t.tp2) if t.tp2 else None,
                 "tp3": float(t.tp3) if t.tp3 else None,
                 "current_pnl": float(t.current_pnl),
+                "realized_cash_pnl": float(t.realized_cash_pnl),
+                "peak_price": float(t.peak_price) if t.peak_price else None,
+                "is_infinite_trailing": t.is_infinite_trailing,
                 "status": t.status.value
             })
         else:

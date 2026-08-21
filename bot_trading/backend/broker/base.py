@@ -97,6 +97,16 @@ class BaseBrokerAdapter(ABC):
         pass
 
     @abstractmethod
+    async def close_partial_order(
+        self,
+        ticket_id: str,
+        lot_size: Decimal,
+        close_price: Optional[Decimal] = None
+    ) -> Tuple[Decimal, Decimal]:
+        """Cierra parcialmente una posición reduciendo su volumen y retorna (precio_cierre, pnl_parcial_realizado)."""
+        pass
+
+    @abstractmethod
     async def get_open_positions(self) -> List[BrokerPosition]:
         """Retorna la lista de todas las posiciones activas en el broker."""
         pass

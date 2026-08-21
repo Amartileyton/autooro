@@ -119,8 +119,11 @@ class LocalPaperBroker(BaseBrokerAdapter):
         """Ejecuta una orden instantánea en memoria."""
         ticket_id = f"TKT-{uuid.uuid4().hex[:8].upper()}"
         
-        # En ejecución a mercado real, BUY se ejecuta a Ask y SELL a Bid
-        exec_price = self._current_ask if side == OrderSide.BUY else self._current_bid
+        # En ejecución a mercado, usar entry_price provisto o cotización actual
+        if entry_price and entry_price > Decimal("0.00"):
+            exec_price = entry_price
+        else:
+            exec_price = self._current_ask if side == OrderSide.BUY else self._current_bid
 
         position = BrokerPosition(
             ticket_id=ticket_id,
@@ -186,6 +189,38 @@ class LocalPaperBroker(BaseBrokerAdapter):
 
         logger.info(f"[PAPER BROKER] Posición Cerrada: {ticket_id} @ {close_price:.2f} | PnL: ${realized_pnl:+.2f} USD | Motivo: {reason} | Nuevo Balance: ${self.balance:.2f} USD")
         return close_price, realized_pnl
+
+    async def close_partial_order(
+        self,
+        ticket_id: str,
+        lot_size: Decimal,
+        close_price: Optional[Decimal] = None
+    ) -> Tuple[Decimal, Decimal]:
+        """Cierra parcialmente una posición reduciendo su volumen y liquida el PnL parcial al balance."""
+        if ticket_id not in self.positions:
+            logger.warning(f"[PAPER BROKER] Posición {ticket_id} no encontrada para cierre parcial.")
+            return Decimal("0.00"), Decimal("0.00")
+
+        pos = self.positions[ticket_id]
+        if close_price is None:
+            close_price = self._current_bid if pos.side == OrderSide.BUY else self._current_ask
+
+        # Si el lote a cerrar es mayor o igual al restante, cerrar completa
+        if lot_size >= pos.lot_size:
+            return await self.close_order(ticket_id, close_price=close_price, reason="FULL_PARTIAL_CLOSE")
+
+        # Calcular PnL de la porción cerrada
+        if pos.side == OrderSide.BUY:
+            partial_pnl = (close_price - pos.entry_price) * lot_size * self.contract_size
+        else:
+            partial_pnl = (pos.entry_price - close_price) * lot_size * self.contract_size
+
+        partial_pnl = partial_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        self.balance += partial_pnl
+        pos.lot_size = (pos.lot_size - lot_size).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        logger.info(f"[PAPER BROKER] Cierre Parcial: {ticket_id} | Cerrados {lot_size}L @ {close_price:.2f} | PnL Parcial Cobrado: +${partial_pnl:.2f} USD | Lote Restante: {pos.lot_size}L | Nuevo Balance: ${self.balance:.2f} USD")
+        return close_price, partial_pnl
 
     async def get_open_positions(self) -> List[BrokerPosition]:
         """Retorna lista de posiciones vivas."""

@@ -52,6 +52,7 @@ async def get_system_state():
                 "ticket_id": t.ticket_id,
                 "side": t.side.value,
                 "lot_size": float(t.lot_size),
+                "initial_lot_size": float(t.initial_lot_size),
                 "entry_price": float(t.entry_price),
                 "current_sl": float(t.current_sl),
                 "initial_sl": float(t.initial_sl),
@@ -60,6 +61,9 @@ async def get_system_state():
                 "tp3": float(t.tp3) if t.tp3 else None,
                 "current_price": float(t.current_price),
                 "current_pnl": float(t.current_pnl),
+                "realized_cash_pnl": float(t.realized_cash_pnl),
+                "peak_price": float(t.peak_price) if t.peak_price else None,
+                "is_infinite_trailing": t.is_infinite_trailing,
                 "status": t.status.value,
                 "open_time": t.open_time
             })

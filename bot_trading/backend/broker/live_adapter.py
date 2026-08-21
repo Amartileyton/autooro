@@ -115,6 +115,16 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         logger.info(f"[cTrader Live] Cerrando Posición {ticket_id} | Motivo: {reason}")
         return Decimal("2345.50"), Decimal("0.00")
 
+    async def close_partial_order(
+        self,
+        ticket_id: str,
+        lot_size: Decimal,
+        close_price: Optional[Decimal] = None
+    ) -> Tuple[Decimal, Decimal]:
+        """Envía ProtoOAClosePositionReq con volumen parcial."""
+        logger.info(f"[cTrader Live] Cierre Parcial Posición {ticket_id}: Volumen {lot_size}L")
+        return close_price or Decimal("2345.50"), Decimal("0.00")
+
     async def get_open_positions(self) -> List[BrokerPosition]:
         """Envía ProtoOAReconcileReq para sincronizar posiciones abiertas."""
         return list(self._positions.values())

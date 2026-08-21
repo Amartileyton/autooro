@@ -22,6 +22,7 @@ class TradeStatus(str, enum.Enum):
     OPEN = "OPEN"
     TP1_HIT = "TP1_HIT"
     TP2_HIT = "TP2_HIT"
+    TP3_TRAILING = "TP3_TRAILING"
     CLOSED_TP = "CLOSED_TP"
     CLOSED_SL = "CLOSED_SL"
     CLOSED_MANUAL = "CLOSED_MANUAL"
@@ -70,6 +71,8 @@ class Trade(Base):
 
     lot_size: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     pnl: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    realized_cash_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    peak_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     close_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     close_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 

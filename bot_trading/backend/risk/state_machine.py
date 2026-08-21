@@ -31,19 +31,25 @@ class ActiveSlotTrade(BaseModel):
     tp2: Optional[Decimal] = None
     tp3: Optional[Decimal] = None
     lot_size: Decimal
+    initial_lot_size: Decimal
     open_time: float
     current_pnl: Decimal = Decimal("0.00")
     current_price: Decimal = Decimal("0.00")
+    realized_cash_pnl: Decimal = Decimal("0.00")
+    peak_price: Optional[Decimal] = None
+    is_infinite_trailing: bool = False
+    trailing_distance: Decimal = Decimal("3.00")  # 30 pips ($3.00 en oro)
+    trailing_step: Decimal = Decimal("0.50")      # 5 pips ($0.50 en oro)
 
 
 class TradeStateMachine:
     """
     Máquina de Estados de Trailing SL por Hitos y Gestor de Slots:
-    - STATE 0 (OPEN): SL original y TP3 como take-profit final.
-    - STATE 1 (TP1 superado): Modificación inmediata de SL a TP1_Price (Break-Even asegurado).
-    - STATE 2 (TP2 superado): Modificación de SL a TP2_Price.
-    - STATE 3 (TP3 alcanzado): Cierre automático total por Take Profit.
-    - Procesa ticks con latencia sub-100ms.
+    - STATE 0 (OPEN): SL original y TP3 como take-profit inicial.
+    - STATE 1 (TP1 superado): Cierre parcial del 50% en caja + SL a Break-Even + Spread (+3 pips).
+    - STATE 2 (TP2 superado): Cierre parcial del 25% en caja (50% del restante) + SL del 25% Runner a TP1.
+    - STATE 3 (TP3 superado / Infinite Runner): SL inicial del Runner en TP3 + Trailing continuo dinámico persiguiendo máximos a 30 pips.
+    - Procesa ticks con latencia sub-10ms.
     """
 
     def __init__(self, broker: BaseBrokerAdapter):
@@ -147,6 +153,7 @@ class TradeStateMachine:
                 tp2=tp2,
                 tp3=tp3,
                 lot_size=lot_size,
+                initial_lot_size=lot_size,
                 open_time=time.time(),
                 current_price=entry_price
             )
@@ -258,8 +265,8 @@ class TradeStateMachine:
 
     async def on_market_tick(self, tick: BrokerTick):
         """
-        Handler de ticks en tiempo real (<100ms):
-        Evalúa Stop Loss y transiciones de hitos TP1, TP2, TP3 para todos los slots activos.
+        Handler de ticks en tiempo real (<10ms):
+        Evalúa Stop Loss, Cierres Parciales por Hitos (TP1 50%, TP2 25%) y Trailing Stop Dinámico Continuo (TP3 Infinite Runner).
         """
         if not self.active_slots:
             return
@@ -268,73 +275,140 @@ class TradeStateMachine:
             price = tick.bid if trade.side == OrderSide.BUY else tick.ask
             trade.current_price = price
 
-            # Calcular PnL flotante
+            # Calcular PnL flotante (Beneficio en caja asegurado + PnL de lotes aún abiertos)
             if trade.side == OrderSide.BUY:
-                trade.current_pnl = (price - trade.entry_price) * trade.lot_size * Decimal("100.0")
+                floating = (price - trade.entry_price) * trade.lot_size * Decimal("100.0")
             else:
-                trade.current_pnl = (trade.entry_price - price) * trade.lot_size * Decimal("100.0")
+                floating = (trade.entry_price - price) * trade.lot_size * Decimal("100.0")
+            
+            trade.current_pnl = (trade.realized_cash_pnl + floating).quantize(Decimal("0.01"))
 
-            # 1. Comprobar STOP LOSS HIT
+            # 1. Comprobar STOP LOSS HIT (o Trailing SL alcanzado)
             is_sl_hit = (price <= trade.current_sl) if trade.side == OrderSide.BUY else (price >= trade.current_sl)
             if is_sl_hit:
-                await self._close_slot(slot_id, close_price=price, status=TradeStatus.CLOSED_SL, reason=f"SL_HIT ({trade.current_sl})")
+                sl_reason = "TRAILING_SL_HIT" if trade.is_infinite_trailing else f"SL_HIT ({trade.current_sl})"
+                close_status = TradeStatus.CLOSED_TP if trade.realized_cash_pnl > 0 or trade.status in (TradeStatus.TP1_HIT, TradeStatus.TP2_HIT, TradeStatus.TP3_TRAILING) else TradeStatus.CLOSED_SL
+                await self._close_slot(slot_id, close_price=price, status=close_status, reason=sl_reason)
                 continue
 
-            # 2. Comprobar HITO TP1 (STATE 0 -> STATE 1) - CIERRE PARCIAL DEL 50% + SL A BREAK-EVEN
+            # 2. HITO 1: TP1 ALCANZADO (OPEN -> TP1_HIT) - Cierre Parcial 50% + SL a Break-Even (+3 pips Spread Buffer)
             if trade.status == TradeStatus.OPEN:
                 is_tp1_hit = (price >= trade.tp1) if trade.side == OrderSide.BUY else (price <= trade.tp1)
                 if is_tp1_hit:
                     trade.status = TradeStatus.TP1_HIT
-                    
-                    # Cierre parcial del 50% del volumen
-                    half_lot = (trade.lot_size / Decimal("2.0")).quantize(Decimal("0.01"))
-                    if half_lot >= Decimal("0.01"):
-                        partial_pnl = abs(price - trade.entry_price) * half_lot * Decimal("100.0")
-                        trade.lot_size = trade.lot_size - half_lot
-                        logger.info(f"Slot {slot_id} [CIERRE PARCIAL 50%]: Cerrados {half_lot} lotes @ {price}. Beneficio asegurado: +${partial_pnl:.2f}")
-                    
-                    # Mover Stop Loss del 50% restante a PRECIO DE ENTRADA (BREAK-EVEN)
-                    new_sl = trade.entry_price
-                    trade.current_sl = new_sl
-                    
-                    # Modificar en broker instantáneamente
-                    await self.broker.modify_order(trade.ticket_id, new_sl=new_sl)
+
+                    # Cierre parcial del 50% del volumen inicial
+                    half_lot = (trade.initial_lot_size * Decimal("0.50")).quantize(Decimal("0.01"))
+                    if half_lot >= Decimal("0.01") and trade.lot_size > half_lot:
+                        _, partial_pnl = await self.broker.close_partial_order(trade.ticket_id, lot_size=half_lot, close_price=price)
+                        trade.lot_size = (trade.lot_size - half_lot).quantize(Decimal("0.01"))
+                        trade.realized_cash_pnl += partial_pnl
+                        logger.info(f"Slot {slot_id} [HITO 1 - COBRO 50%]: Cerrados {half_lot}L @ {price}. Caja asegurada: +${partial_pnl:.2f} USD")
+
+                    # Mover Stop Loss a Break-Even + Spread Buffer (+3 pips = $0.30)
+                    spread_buffer = Decimal("0.30")
+                    new_sl = (trade.entry_price + spread_buffer) if trade.side == OrderSide.BUY else (trade.entry_price - spread_buffer)
+                    trade.current_sl = new_sl.quantize(Decimal("0.01"))
+
+                    await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)
-                    
-                    logger.info(f"Slot {slot_id} [HITO TP1 ALCANZADO]: SL movido a Break-Even (${new_sl}). 50% restante corriendo libre de riesgo.")
+
+                    logger.info(f"Slot {slot_id} [BLINDAJE BE+]: SL movido a Break-Even con Spread (${trade.current_sl}). Riesgo 0% garantizado.")
                     await self.emit_alert("TP1_PARTIAL_CLOSE", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,
-                        "new_sl": float(new_sl),
+                        "new_sl": float(trade.current_sl),
                         "market_price": float(price),
                         "closed_lots": float(half_lot),
-                        "remaining_lots": float(trade.lot_size)
+                        "remaining_lots": float(trade.lot_size),
+                        "realized_cash": float(trade.realized_cash_pnl)
                     })
 
-            # 3. Comprobar HITO TP2 (STATE 1 -> STATE 2) - MOVER SL DEL RESTO A TP1
+            # 3. HITO 2: TP2 ALCANZADO (TP1_HIT -> TP2_HIT) - Cierre Parcial 25% + SL Runner a TP1
             if trade.status == TradeStatus.TP1_HIT and trade.tp2:
                 is_tp2_hit = (price >= trade.tp2) if trade.side == OrderSide.BUY else (price <= trade.tp2)
                 if is_tp2_hit:
                     trade.status = TradeStatus.TP2_HIT
-                    new_sl = trade.tp1  # Asegurar ganancias de TP1 en el 50% restante
-                    trade.current_sl = new_sl
-                    
-                    await self.broker.modify_order(trade.ticket_id, new_sl=new_sl)
+
+                    # Cierre del 25% del volumen inicial (50% del volumen restante)
+                    quarter_lot = (trade.initial_lot_size * Decimal("0.25")).quantize(Decimal("0.01"))
+                    if quarter_lot >= Decimal("0.01") and trade.lot_size > quarter_lot:
+                        _, partial_pnl = await self.broker.close_partial_order(trade.ticket_id, lot_size=quarter_lot, close_price=price)
+                        trade.lot_size = (trade.lot_size - quarter_lot).quantize(Decimal("0.01"))
+                        trade.realized_cash_pnl += partial_pnl
+                        logger.info(f"Slot {slot_id} [HITO 2 - COBRO 25%]: Cerrados {quarter_lot}L @ {price}. Caja total: +${trade.realized_cash_pnl:.2f} USD")
+
+                    # Subir SL del 25% final (Runner) al precio de TP1
+                    trade.current_sl = trade.tp1.quantize(Decimal("0.01"))
+
+                    await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)
-                    
-                    logger.info(f"Slot {slot_id} [HITO TP2 ALCANZADO]: SL del 50% restante subido a TP1 ({new_sl})")
-                    await self.emit_alert("TP2_HIT", {
+
+                    logger.info(f"Slot {slot_id} [TRAILING A TP1]: SL del 25% Runner subido a TP1 (${trade.current_sl}).")
+                    await self.emit_alert("TP2_PARTIAL_CLOSE", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,
-                        "new_sl": float(new_sl),
-                        "market_price": float(price)
+                        "new_sl": float(trade.current_sl),
+                        "market_price": float(price),
+                        "closed_lots": float(quarter_lot),
+                        "remaining_lots": float(trade.lot_size),
+                        "realized_cash": float(trade.realized_cash_pnl)
                     })
 
-            # 4. Comprobar HITO TP3 / CIERRE FINAL (STATE 2 -> STATE 3)
+            # 4. HITO 3: TP3 ALCANZADO & ACTIVACIÓN DE MODO INFINITE RUNNER
             target_tp3 = trade.tp3 or trade.tp2 or trade.tp1
             is_tp3_hit = (price >= target_tp3) if trade.side == OrderSide.BUY else (price <= target_tp3)
-            if is_tp3_hit and trade.status in (TradeStatus.OPEN, TradeStatus.TP1_HIT, TradeStatus.TP2_HIT):
-                await self._close_slot(slot_id, close_price=price, status=TradeStatus.CLOSED_TP, reason=f"TP_FINAL_REACHED ({target_tp3})")
+
+            if is_tp3_hit and not trade.is_infinite_trailing and trade.status in (TradeStatus.OPEN, TradeStatus.TP1_HIT, TradeStatus.TP2_HIT):
+                trade.status = TradeStatus.TP3_TRAILING
+                trade.is_infinite_trailing = True
+                trade.peak_price = price
+                trade.current_sl = target_tp3.quantize(Decimal("0.01"))
+
+                await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
+                await self._update_trade_in_db(trade)
+
+                logger.info(f"Slot {slot_id} [🚀 MODO INFINITE RUNNER ACTIVADO]: SL inicial asegurado en TP3 (${trade.current_sl}). Trailing persiguiendo pico.")
+                await self.emit_alert("TP3_RUNNER_ACTIVATED", {
+                    "slot_id": slot_id,
+                    "ticket_id": trade.ticket_id,
+                    "new_sl": float(trade.current_sl),
+                    "peak_price": float(trade.peak_price),
+                    "remaining_lots": float(trade.lot_size)
+                })
+
+            # 5. TRAILING STOP CONTINUO PERSIGUIENDO PICOS (MODO INFINITE RUNNER ACTIVO)
+            if trade.is_infinite_trailing and trade.peak_price is not None:
+                if trade.side == OrderSide.BUY:
+                    if price > trade.peak_price:
+                        trade.peak_price = price
+                        candidate_sl = (price - trade.trailing_distance).quantize(Decimal("0.01"))
+                        if candidate_sl >= trade.current_sl + trade.trailing_step:
+                            trade.current_sl = candidate_sl
+                            await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
+                            await self._update_trade_in_db(trade)
+                            logger.info(f"Slot {slot_id} [📈 TRAILING SL BUY SUBIDO]: Nuevo Pico ${price:.2f} ➔ SL ajustado a ${trade.current_sl:.2f}")
+                            await self.emit_alert("TRAILING_SL_UPDATED", {
+                                "slot_id": slot_id,
+                                "ticket_id": trade.ticket_id,
+                                "peak_price": float(trade.peak_price),
+                                "new_sl": float(trade.current_sl)
+                            })
+                else:  # SELL
+                    if price < trade.peak_price:
+                        trade.peak_price = price
+                        candidate_sl = (price + trade.trailing_distance).quantize(Decimal("0.01"))
+                        if candidate_sl <= trade.current_sl - trade.trailing_step:
+                            trade.current_sl = candidate_sl
+                            await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
+                            await self._update_trade_in_db(trade)
+                            logger.info(f"Slot {slot_id} [📉 TRAILING SL SELL BAJADO]: Nuevo Fondo ${price:.2f} ➔ SL ajustado a ${trade.current_sl:.2f}")
+                            await self.emit_alert("TRAILING_SL_UPDATED", {
+                                "slot_id": slot_id,
+                                "ticket_id": trade.ticket_id,
+                                "peak_price": float(trade.peak_price),
+                                "new_sl": float(trade.current_sl)
+                            })
 
     async def handle_modifier_signal(self, event: ModifierSignalEvent):
         """Procesa señales de modificación provenientes de Telegram vinculándolas al trade correspondiente."""
@@ -349,10 +423,11 @@ class TradeStateMachine:
                 for slot_id, trade in self.active_slots.items():
                     if trade.raw_signal_id == event.reply_to_msg_id:
                         target_trades.append((slot_id, trade))
-            
-            # Si no vino como reply o no se encontró, aplicar a los slots activos
-            if not target_trades:
-                target_trades = list(self.active_slots.items())
+            else:
+                # Si no hay reply, aplicar al trade activo más reciente
+                if self.active_slots:
+                    latest_slot = max(self.active_slots.keys(), key=lambda s: self.active_slots[s].open_time)
+                    target_trades.append((latest_slot, self.active_slots[latest_slot]))
 
             for slot_id, trade in target_trades:
                 if event.signal_type == SignalType.MOVE_SL and event.target_price:
@@ -405,14 +480,15 @@ class TradeStateMachine:
         status: TradeStatus,
         reason: str
     ):
-        """Cierra el trade en el broker, liquida en DB y libera el slot."""
+        """Cierra la posición restante en el broker, liquida en DB sumando beneficios parciales y libera el slot."""
         if slot_id not in self.active_slots:
             return
 
         trade = self.active_slots.pop(slot_id)
         
-        # 1. Cerrar en Broker
-        exec_price, realized_pnl = await self.broker.close_order(trade.ticket_id, close_price=close_price, reason=reason)
+        # 1. Cerrar remanente en Broker
+        exec_price, remaining_pnl = await self.broker.close_order(trade.ticket_id, close_price=close_price, reason=reason)
+        total_pnl = (trade.realized_cash_pnl + remaining_pnl).quantize(Decimal("0.01"))
 
         # 2. Actualizar en DB
         try:
@@ -423,7 +499,9 @@ class TradeStateMachine:
                     .values(
                         status=status,
                         close_price=exec_price,
-                        pnl=realized_pnl,
+                        pnl=total_pnl,
+                        realized_cash_pnl=trade.realized_cash_pnl,
+                        peak_price=trade.peak_price,
                         close_reason=reason,
                         close_time=datetime.now(timezone.utc)
                     )
@@ -433,19 +511,20 @@ class TradeStateMachine:
         except Exception as e:
             logger.error(f"Error al actualizar cierre de trade en DB: {e}")
 
-        logger.info(f"Slot {slot_id} CERRADO [{status.value}] @ {exec_price} | PnL: ${realized_pnl:+.2f} USD | Motivo: {reason}")
+        logger.info(f"Slot {slot_id} CERRADO [{status.value}] @ {exec_price} | PnL Total: ${total_pnl:+.2f} USD (Caja Parcial: ${trade.realized_cash_pnl:.2f}) | Motivo: {reason}")
 
         await self.emit_alert("ORDER_CLOSED", {
             "slot_id": slot_id,
             "ticket_id": trade.ticket_id,
             "status": status.value,
             "close_price": float(exec_price),
-            "pnl": float(realized_pnl),
+            "pnl": float(total_pnl),
+            "realized_cash": float(trade.realized_cash_pnl),
             "reason": reason
         })
 
     async def _update_trade_in_db(self, trade: ActiveSlotTrade):
-        """Actualiza el estado y SL de la orden en SQLite."""
+        """Actualiza el estado, volumen, SL, peak_price y realized_cash_pnl de la orden en SQLite."""
         try:
             async with AsyncSessionLocal() as session:
                 stmt = (
@@ -453,7 +532,10 @@ class TradeStateMachine:
                     .where(Trade.ticket_id == trade.ticket_id)
                     .values(
                         status=trade.status,
-                        current_sl=trade.current_sl
+                        current_sl=trade.current_sl,
+                        lot_size=trade.lot_size,
+                        realized_cash_pnl=trade.realized_cash_pnl,
+                        peak_price=trade.peak_price
                     )
                 )
                 await session.execute(stmt)

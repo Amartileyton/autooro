@@ -6,6 +6,7 @@ export interface SlotTradeData {
   ticket_id?: string;
   side?: 'BUY' | 'SELL';
   lot_size?: number;
+  initial_lot_size?: number;
   margin_usd?: number;
   entry_price?: number;
   current_sl?: number;
@@ -15,6 +16,9 @@ export interface SlotTradeData {
   tp3?: number;
   current_price?: number;
   current_pnl?: number;
+  realized_cash_pnl?: number;
+  peak_price?: number;
+  is_infinite_trailing?: boolean;
   status?: string;
   channel_name?: string;
 }
@@ -168,8 +172,38 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots, currentPr
                 </div>
               </div>
 
+              {/* Insignia de Estado y Blindaje de Beneficios (Tier Badges) */}
+              <div className="pl-1.5 flex flex-wrap items-center gap-1.5 mt-1.5">
+                {(slot.status === 'TP3_TRAILING' || slot.is_infinite_trailing) ? (
+                  <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 text-[9px] font-mono font-bold flex items-center gap-1 animate-pulse">
+                    <span className="material-symbols-outlined text-[12px]">rocket_launch</span>
+                    INFINITE RUNNER (Pico: ${slot.peak_price?.toFixed(2) || livePrice.toFixed(2)})
+                  </span>
+                ) : slot.status === 'TP2_HIT' ? (
+                  <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 text-[9px] font-mono font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[12px]">lock</span>
+                    TP1 LOCKED (75% Asegurado)
+                  </span>
+                ) : slot.status === 'TP1_HIT' ? (
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 text-[9px] font-mono font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[12px]">shield</span>
+                    BE+ SPREAD (50% en Caja)
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[9px] font-mono font-semibold">
+                    100% Volumen ({lot}L)
+                  </span>
+                )}
+
+                {Boolean(slot.realized_cash_pnl && slot.realized_cash_pnl > 0) && (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold">
+                    Caja: +${slot.realized_cash_pnl?.toFixed(2)}
+                  </span>
+                )}
+              </div>
+
               {/* Fila 2: Precios de Entrada, Actual e Inversión */}
-              <div className="pl-1.5 bg-[#14151e] p-1.5 rounded border border-slate-800 grid grid-cols-3 gap-1.5 text-[11px] font-mono mt-2">
+              <div className="pl-1.5 bg-[#14151e] p-1.5 rounded border border-slate-800 grid grid-cols-3 gap-1.5 text-[11px] font-mono mt-1.5">
                 <div>
                   <span className="text-slate-400 text-[9px] block font-medium">ENTRADA</span>
                   <strong className="text-white font-bold">${entryPrice.toFixed(2)}</strong>
@@ -179,8 +213,8 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots, currentPr
                   <strong className="text-white font-bold pulse-live">${livePrice.toFixed(2)}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[9px] block font-medium">INVERSIÓN</span>
-                  <strong className="text-slate-200 font-semibold">${slot.margin_usd?.toFixed(0) || '1,000'}</strong>
+                  <span className="text-slate-400 text-[9px] block font-medium">RESTANTE</span>
+                  <strong className="text-slate-200 font-semibold">{lot}L <span className="text-[9px] text-slate-400 font-normal">(${slot.margin_usd?.toFixed(0) || '1,000'})</span></strong>
                 </div>
               </div>
 

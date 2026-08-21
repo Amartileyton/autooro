@@ -25,8 +25,18 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA journal_mode=WAL;")
         cursor.execute("PRAGMA synchronous=NORMAL;")
         cursor.execute("PRAGMA busy_timeout=5000;")
-        cursor.execute("PRAGMA cache_size=-64000;")  # 64MB de cache
         cursor.execute("PRAGMA foreign_keys=ON;")
+
+        # Auto-migración segura de columnas añadidas en trades si la tabla ya existía
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN realized_cash_pnl NUMERIC(18, 2) DEFAULT 0.00;")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN peak_price NUMERIC(18, 4);")
+        except Exception:
+            pass
+
         cursor.close()
         logger.info("SQLite Pragmas (WAL, NORMAL, busy_timeout=5000) configurados correctamente.")
     except Exception as e:

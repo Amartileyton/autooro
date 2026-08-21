@@ -152,6 +152,7 @@ export const DashboardApp: React.FC = () => {
             ticket_id: s.ticket_id,
             side: s.side,
             lot_size: s.lot_size,
+            initial_lot_size: s.initial_lot_size,
             entry_price: s.entry_price,
             current_sl: s.current_sl,
             initial_sl: s.initial_sl,
@@ -160,6 +161,9 @@ export const DashboardApp: React.FC = () => {
             tp3: s.tp3,
             current_price: s.current_price,
             current_pnl: s.current_pnl,
+            realized_cash_pnl: s.realized_cash_pnl,
+            peak_price: s.peak_price,
+            is_infinite_trailing: s.is_infinite_trailing,
             status: s.status,
           }));
           setSlots(formattedSlots);
@@ -228,7 +232,8 @@ export const DashboardApp: React.FC = () => {
                 is_active: s.is_active,
                 ticket_id: s.ticket_id || s.trade?.ticket_id,
                 side: s.side || s.trade?.side,
-                lot_size: s.lot_size || s.trade?.lot_size,
+                lot_size: s.lot_size !== undefined ? s.lot_size : s.trade?.lot_size,
+                initial_lot_size: s.initial_lot_size !== undefined ? s.initial_lot_size : s.trade?.initial_lot_size,
                 entry_price: s.entry_price || s.trade?.entry_price,
                 current_sl: s.current_sl || s.trade?.current_sl,
                 initial_sl: s.initial_sl || s.trade?.initial_sl,
@@ -237,6 +242,9 @@ export const DashboardApp: React.FC = () => {
                 tp3: s.tp3 || s.trade?.tp3,
                 current_price: s.current_price || s.trade?.current_price || xauusdPrice,
                 current_pnl: s.current_pnl !== undefined ? s.current_pnl : s.trade?.current_pnl || 0,
+                realized_cash_pnl: s.realized_cash_pnl !== undefined ? s.realized_cash_pnl : s.trade?.realized_cash_pnl || 0,
+                peak_price: s.peak_price !== undefined ? s.peak_price : s.trade?.peak_price,
+                is_infinite_trailing: s.is_infinite_trailing !== undefined ? s.is_infinite_trailing : Boolean(s.trade?.is_infinite_trailing),
                 status: s.status || s.trade?.status || 'AVAILABLE',
               }));
               setSlots(updatedSlots);
