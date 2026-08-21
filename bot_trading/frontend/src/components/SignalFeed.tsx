@@ -125,7 +125,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                       </span>
                     )}
                     <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${statusBadge}`}>
-                      {isWin ? '✅ GANADA' : isLoss ? '❌ PERDIDA' : '🔵 EN CURSO'}
+                      {isWin ? '✓ GANADA' : isLoss ? '❌ PERDIDA' : '🔵 EN CURSO'}
                     </span>
                   </div>
                 </div>

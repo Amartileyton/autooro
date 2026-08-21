@@ -215,7 +215,7 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/signals/trades")
-async def get_consolidated_trade_cards(limit: int = 100, db: AsyncSession = Depends(get_db)):
+async def get_consolidated_trade_cards(limit: int = 10, db: AsyncSession = Depends(get_db)):
     """
     Retorna el estado de los trades consolidados en tarjetas de ciclo de vida:
     - Entrada viva
@@ -224,12 +224,13 @@ async def get_consolidated_trade_cards(limit: int = 100, db: AsyncSession = Depe
     - Cierre en Verde (Win) o Rojo (Loss)
     """
     from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
-    stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(limit)
+    # Leer hasta 250 mensajes de Telegram crudos para abarcar los ciclos completos
+    stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(250)
     result = await db.execute(stmt)
     messages = result.scalars().all()
 
     trade_cards = consolidate_telegram_trade_lifecycle(messages)
-    return trade_cards
+    return trade_cards[:limit]
 
 
 @router.get("/audit")
