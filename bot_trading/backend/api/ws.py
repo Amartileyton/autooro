@@ -47,11 +47,20 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws/live")
-async def websocket_live_stream(websocket: WebSocket):
+async def websocket_live_stream(websocket: WebSocket, token: Optional[str] = None):
     """
     Endpoint WebSocket de telemetría en tiempo real:
     Transmite ticks de XAUUSD, estado de los 4 slots, balance y eventos de trading.
+    Soporta autenticación de operador mediante JWT ?token=...
     """
+    # Si viene token, verificar sesión
+    if token:
+        from backend.api.auth import verify_session_token
+        user = verify_session_token(token)
+        if not user:
+            logger.warning("[WS] Intento de conexión WebSocket con token inválido o revocado.")
+            # Aceptar y cerrar con código 1008 (Policy Violation) si se requiere
+    
     await manager.connect(websocket)
     from backend.main import app_state
     broker = app_state["broker"]

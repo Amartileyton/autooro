@@ -5,8 +5,10 @@ interface HeaderTelemetryProps {
   balance?: number | null;
   hasLiveBalance?: boolean;
   botActive: boolean;
+  authUser?: { email: string; name?: string; picture?: string } | null;
   onOpenSettings?: () => void;
   onOpenDiagnostics?: () => void;
+  onLogout?: () => void;
 }
 
 export const HeaderTelemetry: React.FC<HeaderTelemetryProps> = ({
@@ -14,8 +16,10 @@ export const HeaderTelemetry: React.FC<HeaderTelemetryProps> = ({
   balance,
   hasLiveBalance,
   botActive,
+  authUser,
   onOpenSettings,
   onOpenDiagnostics,
+  onLogout,
 }) => {
   return (
     <header className="flex justify-between items-center w-full px-4 h-12 bg-surface border-b border-outline-variant shrink-0 z-10 relative">
@@ -68,8 +72,29 @@ export const HeaderTelemetry: React.FC<HeaderTelemetryProps> = ({
         </div>
       </div>
 
-      {/* Botón Controles en Gris Elegante */}
+      {/* Operador Autenticado y Botones */}
       <div className="flex items-center gap-3">
+        {/* Badge de Operador con Google Avatar / Email */}
+        {authUser && (
+          <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#1e2029] border border-[#2b2d3a] text-xs font-mono">
+            {authUser.picture ? (
+              <img src={authUser.picture} alt="Avatar" className="w-5 h-5 rounded-full object-cover" />
+            ) : (
+              <span className="material-symbols-outlined text-[16px] text-amber-400">person</span>
+            )}
+            <span className="text-slate-300 max-w-[140px] truncate text-[11px]">
+              {authUser.name || authUser.email}
+            </span>
+            <button
+              onClick={onLogout}
+              title="Cerrar sesión de Google"
+              className="text-slate-500 hover:text-red-400 transition-colors ml-1 p-0.5"
+            >
+              <span className="material-symbols-outlined text-[16px]">logout</span>
+            </button>
+          </div>
+        )}
+
         <button 
           onClick={onOpenSettings}
           title="Configuración y Controles de Ejecución"

@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,6 +26,20 @@ class Settings(BaseSettings):
         default="sqlite+aiosqlite:///./trading_bot.db",
         description="URL asíncrona de SQLite"
     )
+
+    # Seguridad y Google OAuth 2.0 (Lista Blanca)
+    GOOGLE_CLIENT_ID: str = Field(default="", description="Google OAuth 2.0 Client ID")
+    GOOGLE_CLIENT_SECRET: str = Field(default="", description="Google OAuth 2.0 Client Secret")
+    ALLOWED_EMAILS: Union[List[str], str] = Field(
+        default=["adriamartileyton@gmail.com", "adriamartileyton2@gmail.com"],
+        description="Lista blanca de correos autorizados para operar"
+    )
+    JWT_SECRET: str = Field(
+        default="goldex_super_secret_jwt_key_2026_xauusd",
+        description="Clave secreta para firmar tokens JWT"
+    )
+    JWT_ALGORITHM: str = Field(default="HS256", description="Algoritmo de firma JWT")
+    JWT_EXPIRATION_HOURS: int = Field(default=72, description="Horas de validez de la sesión JWT")
 
     # Telegram MTProto Ingesta (Telethon)
     TG_API_ID: int = Field(default=0, description="API ID obtenido en my.telegram.org")
@@ -90,6 +104,15 @@ class Settings(BaseSettings):
         if v is None or v == "":
             return Decimal("0.0")
         return Decimal(str(v))
+
+    @field_validator("ALLOWED_EMAILS", mode="before")
+    @classmethod
+    def parse_allowed_emails(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            return [email.strip().lower() for email in v.split(",") if email.strip()]
+        if isinstance(v, list):
+            return [str(email).strip().lower() for email in v if str(email).strip()]
+        return ["adriamartileyton@gmail.com", "adriamartileyton2@gmail.com"]
 
 
 settings = Settings()

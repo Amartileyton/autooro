@@ -235,6 +235,8 @@ app.add_middleware(
 )
 
 # Incluir Rutas
+from backend.api.auth import router as auth_router
+app.include_router(auth_router)
 app.include_router(api_router)
 app.include_router(ws_router)
 

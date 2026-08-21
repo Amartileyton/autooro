@@ -12,14 +12,14 @@ from backend.ingesta.schemas import TradingSignalEvent, ModifierSignalEvent, Ord
 
 router = APIRouter(prefix="/api/v1", tags=["Trading API"])
 
-# Dependency de Autenticación con X-API-KEY
-def verify_api_key(x_api_key: Optional[str] = Header(None)):
-    if settings.API_KEY and x_api_key != settings.API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API Key inválida o ausente en header X-API-KEY"
-        )
-    return True
+# Dependency de Autenticación Unificada (Google OAuth JWT o X-API-KEY)
+async def verify_auth_or_key(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None)
+):
+    from backend.api.auth import get_current_user
+    return await get_current_user(authorization=authorization, x_api_key=x_api_key)
+
 
 
 class TestSignalRequest(BaseModel):
@@ -260,21 +260,21 @@ async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.post("/control/pause", dependencies=[Depends(verify_api_key)])
+@router.post("/control/pause", dependencies=[Depends(verify_auth_or_key)])
 async def pause_ingestion():
     """Pausa la ingesta de nuevas señales de Telegram."""
     settings.INGESTION_ENABLED = False
     return {"status": "success", "message": "Ingesta pausada correctamente", "ingestion_enabled": False}
 
 
-@router.post("/control/resume", dependencies=[Depends(verify_api_key)])
+@router.post("/control/resume", dependencies=[Depends(verify_auth_or_key)])
 async def resume_ingestion():
     """Reanuda la ingesta de señales."""
     settings.INGESTION_ENABLED = True
     return {"status": "success", "message": "Ingesta reanudada correctamente", "ingestion_enabled": True}
 
 
-@router.post("/control/auto-execution/toggle", dependencies=[Depends(verify_api_key)])
+@router.post("/control/auto-execution/toggle", dependencies=[Depends(verify_auth_or_key)])
 async def toggle_auto_execution():
     """Alterna el estado de auto-ejecución de órdenes."""
     settings.AUTO_EXECUTION_ENABLED = not settings.AUTO_EXECUTION_ENABLED
@@ -285,7 +285,7 @@ async def toggle_auto_execution():
     }
 
 
-@router.post("/control/panic-close", dependencies=[Depends(verify_api_key)])
+@router.post("/control/panic-close", dependencies=[Depends(verify_auth_or_key)])
 async def panic_close():
     """Ejecuta el Kill-Switch: Cierre inmediato de todas las posiciones abiertas."""
     from backend.main import app_state
@@ -295,7 +295,7 @@ async def panic_close():
     return {"status": "success", "message": "KILL-SWITCH ejecutado: Todas las posiciones han sido cerradas"}
 
 
-@router.post("/control/close-slot/{slot_id}", dependencies=[Depends(verify_api_key)])
+@router.post("/control/close-slot/{slot_id}", dependencies=[Depends(verify_auth_or_key)])
 async def close_slot_manually(slot_id: int):
     """Cierra manualmente un slot específico a precio de mercado."""
     from backend.main import app_state
@@ -306,7 +306,7 @@ async def close_slot_manually(slot_id: int):
     return {"status": "success", "message": f"Slot {slot_id} cerrado a mercado"}
 
 
-@router.post("/signal/test", dependencies=[Depends(verify_api_key)])
+@router.post("/signal/test", dependencies=[Depends(verify_auth_or_key)])
 async def inject_test_signal(req: TestSignalRequest):
     """Inyecta una señal de prueba en la cola interna para verificar la ejecución."""
     from backend.main import app_state

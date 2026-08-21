@@ -6,6 +6,7 @@ import { LiveChart } from './LiveChart';
 import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
 import { SystemHealthModal } from './SystemHealthModal';
+import { LoginScreen } from './LoginScreen';
 
 const getApiBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location.hostname) {
@@ -23,6 +24,7 @@ const getWsUrl = () => {
 };
 
 const API_KEY = 'sec_xauusd_trading_key_2026';
+const GOOGLE_CLIENT_ID = '844460269390-jdi3not996vcrhvg9uoiucbj6jm7hhdl.apps.googleusercontent.com';
 
 // 4 Slots limpios preparados para recibir señales reales
 const EMPTY_SLOTS: SlotTradeData[] = [
@@ -33,6 +35,26 @@ const EMPTY_SLOTS: SlotTradeData[] = [
 ];
 
 export const DashboardApp: React.FC = () => {
+  // Estado de Autenticación con Google OAuth 2.0
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('goldex_auth_token');
+    }
+    return null;
+  });
+  const [authUser, setAuthUser] = useState<any>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('goldex_auth_user');
+      try {
+        return stored ? JSON.parse(stored) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+
   const [xauusdPrice, setXauusdPrice] = useState<number>(4587.50);
   const [balance, setBalance] = useState<number | null>(null);
   const [hasLiveBalance, setHasLiveBalance] = useState<boolean>(false);
@@ -54,11 +76,59 @@ export const DashboardApp: React.FC = () => {
 
   const wsRef = useRef<WebSocket | null>(null);
 
+  const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
+    const headers: Record<string, string> = { ...extraHeaders };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    headers['X-API-KEY'] = API_KEY;
+    return headers;
+  };
+
+  // 0. Verificar validez de la sesión JWT con el backend
+  useEffect(() => {
+    const verifySession = async () => {
+      const token = localStorage.getItem('goldex_auth_token');
+      if (!token) {
+        setAuthToken(null);
+        setAuthUser(null);
+        setIsAuthChecking(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/v1/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAuthUser(data.user);
+          setAuthToken(token);
+        } else {
+          localStorage.removeItem('goldex_auth_token');
+          localStorage.removeItem('goldex_auth_user');
+          setAuthToken(null);
+          setAuthUser(null);
+        }
+      } catch (err) {
+        console.warn('Backend aún no disponible para verificar sesión auth:', err);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    };
+
+    verifySession();
+  }, []);
+
   // 1. Cargar estado inicial y mensajes desde la API REST
   const fetchInitialData = async () => {
+    if (!authToken) return;
+
     try {
       const baseUrl = getApiBaseUrl();
-      const stateRes = await fetch(`${baseUrl}/api/v1/state`);
+      const stateRes = await fetch(`${baseUrl}/api/v1/state`, {
+        headers: getAuthHeaders(),
+      });
       if (stateRes.ok) {
         const stateData = await stateRes.json();
         setXauusdPrice(stateData.xauusd_spot?.ask || 4587.50);
@@ -93,7 +163,9 @@ export const DashboardApp: React.FC = () => {
       }
 
       // Cargar Tarjetas de Ciclo de Vida de Trades Consolidados
-      const tradeRes = await fetch(`${baseUrl}/api/v1/signals/trades?limit=50`);
+      const tradeRes = await fetch(`${baseUrl}/api/v1/signals/trades?limit=50`, {
+        headers: getAuthHeaders(),
+      });
       if (tradeRes.ok) {
         const tradeData = await tradeRes.json();
         setTrades(tradeData);
@@ -103,15 +175,18 @@ export const DashboardApp: React.FC = () => {
     }
   };
 
-  // 2. Conectar WebSocket con Reconexión Automática
+  // 2. Conectar WebSocket con Reconexión Automática y Token de Sesión
   useEffect(() => {
+    if (!authToken) return;
+
     fetchInitialData();
 
     let reconnectTimer: any = null;
 
     const connectWebSocket = () => {
       const startTime = Date.now();
-      const ws = new WebSocket(getWsUrl());
+      const wsUrl = `${getWsUrl()}${authToken ? `?token=${encodeURIComponent(authToken)}` : ''}`;
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -197,11 +272,19 @@ export const DashboardApp: React.FC = () => {
   }, []);
 
   // 3. Handlers para el Menú de Controles
+  const handleLogout = () => {
+    localStorage.removeItem('goldex_auth_token');
+    localStorage.removeItem('goldex_auth_user');
+    setAuthToken(null);
+    setAuthUser(null);
+    if (wsRef.current) wsRef.current.close();
+  };
+
   const handleToggleIngestion = async () => {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/ingestion/toggle`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/pause`, {
         method: 'POST',
-        headers: { 'X-API-KEY': API_KEY },
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -217,7 +300,7 @@ export const DashboardApp: React.FC = () => {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/v1/control/auto-execution/toggle`, {
         method: 'POST',
-        headers: { 'X-API-KEY': API_KEY },
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -232,7 +315,7 @@ export const DashboardApp: React.FC = () => {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/v1/control/panic-close`, {
         method: 'POST',
-        headers: { 'X-API-KEY': API_KEY },
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         setIngestionEnabled(false);
@@ -253,7 +336,7 @@ export const DashboardApp: React.FC = () => {
       );
       const res = await fetch(`${getApiBaseUrl()}/api/v1/control/close-slot/${slotId}`, {
         method: 'POST',
-        headers: { 'X-API-KEY': API_KEY },
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         await fetchInitialData();
@@ -265,9 +348,17 @@ export const DashboardApp: React.FC = () => {
 
   const handleInjectTestSignal = async () => {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/v1/signals/inject-test`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/signal/test`, {
         method: 'POST',
-        headers: { 'X-API-KEY': API_KEY },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          side: 'BUY',
+          entry_price: xauusdPrice,
+          sl_price: xauusdPrice - 8.50,
+          tp1: xauusdPrice + 5.00,
+          tp2: xauusdPrice + 10.00,
+          tp3: xauusdPrice + 15.00,
+        }),
       });
       if (res.ok) {
         await fetchInitialData();
@@ -281,8 +372,8 @@ export const DashboardApp: React.FC = () => {
     try {
       const baseUrl = getApiBaseUrl();
       const [histRes, auditRes] = await Promise.all([
-        fetch(`${baseUrl}/api/v1/history?limit=50`),
-        fetch(`${baseUrl}/api/v1/audit?limit=50`),
+        fetch(`${baseUrl}/api/v1/history?limit=50`, { headers: getAuthHeaders() }),
+        fetch(`${baseUrl}/api/v1/audit?limit=50`, { headers: getAuthHeaders() }),
       ]);
       if (histRes.ok) {
         const histData = await histRes.json();
@@ -298,16 +389,32 @@ export const DashboardApp: React.FC = () => {
     setIsAuditModalOpen(true);
   };
 
+  // Si no está autenticado, mostrar la pantalla de bloqueo Obsidian Terminal Google OAuth
+  if (!authToken && !isAuthChecking) {
+    return (
+      <LoginScreen
+        apiBaseUrl={getApiBaseUrl()}
+        clientId={GOOGLE_CLIENT_ID}
+        onLoginSuccess={(token, user) => {
+          setAuthToken(token);
+          setAuthUser(user);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-background">
-      {/* 1. Header de Telemetría con botón de controles y punto de diagnóstico de APIs */}
+      {/* 1. Header de Telemetría con botón de controles, usuario autenticado y diagnóstico */}
       <HeaderTelemetry
         xauusdPrice={xauusdPrice}
         balance={balance}
         hasLiveBalance={hasLiveBalance}
         botActive={botActive}
+        authUser={authUser}
         onOpenSettings={() => setIsControlDropdownOpen(!isControlDropdownOpen)}
         onOpenDiagnostics={() => setIsHealthModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Desplegable de Control y Kill Switch anclado al Header */}
