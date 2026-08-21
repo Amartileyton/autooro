@@ -27,8 +27,8 @@ class LocalPaperBroker(BaseBrokerAdapter):
         
         # Precio actual de simulación (sincronizado con mercado real de Oro)
         self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE
-        if self._current_mid_price < Decimal("3000.00"):
-            self._current_mid_price = Decimal("4544.50")
+        if self._current_mid_price < Decimal("4000.00"):
+            self._current_mid_price = Decimal("4604.83")
         self._current_bid: Decimal = self._current_mid_price - (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         self._current_ask: Decimal = self._current_mid_price + (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         
@@ -226,47 +226,12 @@ class LocalPaperBroker(BaseBrokerAdapter):
         """Retorna lista de posiciones vivas."""
         return list(self.positions.values())
 
-    async def _fetch_live_gold_price(self) -> Optional[Decimal]:
-        """Obtiene el precio spot real del oro en vivo vía API de mercado."""
-        try:
-            import urllib.request
-            import json
-            req = urllib.request.Request(
-                'https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT',
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            loop = asyncio.get_event_loop()
-            resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=1.5).read())
-            data = json.loads(resp)
-            price_val = Decimal(str(round(float(data['price']), 2)))
-            if price_val > Decimal("1000.00"):
-                return price_val
-        except Exception:
-            pass
-        return None
-
     async def _tick_generator_loop(self):
         """
-        Bucle de generación de ticks para simular el mercado de XAUUSD sincronizado con el mercado en vivo.
+        Bucle de generación de ticks en tiempo real para XAUUSD spot.
         """
-        last_sync = 0.0
-
-        # Sincronización inicial
-        live_init = await self._fetch_live_gold_price()
-        if live_init:
-            self._current_mid_price = live_init
-            logger.info(f"[PAPER BROKER] Sincronizado precio en vivo con Spot Gold de mercado: ${self._current_mid_price:.2f}")
-
         while self._is_running:
             try:
-                now = time.time()
-                # Sincronizar con el precio real cada 2 segundos
-                if now - last_sync > 2.0:
-                    real_px = await self._fetch_live_gold_price()
-                    if real_px:
-                        self._current_mid_price = real_px
-                    last_sync = now
-
                 # Micro-fluctuación sub-segundo (+-0.05)
                 micro_delta = Decimal(str(round(random.uniform(-0.05, 0.05), 2)))
                 mid = self._current_mid_price + micro_delta

@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     CONTRACT_SIZE: Decimal = Field(default=Decimal("100.0"), description="Tamaño de contrato XAUUSD (100 oz troy)")
     MIN_LOT_SIZE: Decimal = Field(default=Decimal("0.01"), description="Lote mínimo permitido por el broker")
     LOT_STEP: Decimal = Field(default=Decimal("0.01"), description="Incremento de lote permitido")
-    SLIPPAGE_TOLERANCE_USD: Decimal = Field(default=Decimal("0.00"), description="Tolerancia máxima de deslizamiento en USD")
+    SLIPPAGE_TOLERANCE_USD: Decimal = Field(default=Decimal("2.00"), description="Tolerancia máxima de deslizamiento en USD")
     DEFAULT_DYNAMIC_SL_DELTA_USD: Decimal = Field(
         default=Decimal("8.50"),
         description="Delta en USD para SL dinámico si la señal no especifica SL"
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     INITIAL_PAPER_BALANCE: Decimal = Field(default=Decimal("10000.00"), description="Balance inicial para Paper Broker")
     PAPER_SPREAD_MIN_CENTS: Decimal = Field(default=Decimal("0.10"), description="Spread mínimo simulado en USD")
     PAPER_SPREAD_MAX_CENTS: Decimal = Field(default=Decimal("0.25"), description="Spread máximo simulado en USD")
-    INITIAL_XAUUSD_PRICE: Decimal = Field(default=Decimal("4544.50"), description="Precio inicial de mercado de XAUUSD")
+    INITIAL_XAUUSD_PRICE: Decimal = Field(default=Decimal("4604.83"), description="Precio inicial de mercado de XAUUSD")
 
     # cTrader Open API Credentials (para modo live)
     CTRADER_CLIENT_ID: str = Field(default="", description="cTrader Open API Client ID")

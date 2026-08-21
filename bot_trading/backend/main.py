@@ -94,21 +94,20 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # 3. Comprobar Slippage Zero-Tolerance (omitido para señales manuales de prueba)
-            if event.message_id != 999999:
-                is_slippage_ok, market_price, diff = await risk_engine.check_slippage(event.entry_price, event.side)
-                if not is_slippage_ok:
-                    logger.warning(
-                        f"Señal RECHAZADA por Slippage: Entrada={event.entry_price}, "
-                        f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
-                    )
-                    await state_machine.emit_alert("SIGNAL_REJECTED", {
-                        "reason": "REJECTED_PRICE_MISMATCH",
-                        "diff": float(diff),
-                        "market_price": float(market_price)
-                    })
-                    queue.task_done()
-                    continue
+            # 3. Comprobar Slippage Zero-Tolerance
+            is_slippage_ok, market_price, diff = await risk_engine.check_slippage(event.entry_price, event.side)
+            if not is_slippage_ok:
+                logger.warning(
+                    f"Señal RECHAZADA por Slippage: Entrada={event.entry_price}, "
+                    f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
+                )
+                await state_machine.emit_alert("SIGNAL_REJECTED", {
+                    "reason": "REJECTED_PRICE_MISMATCH",
+                    "diff": float(diff),
+                    "market_price": float(market_price)
+                })
+                queue.task_done()
+                continue
 
             # 3. Calcular Stop Loss (explícito o dinámico)
             sl = event.sl_price
