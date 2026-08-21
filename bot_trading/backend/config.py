@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     TG_API_ID: int = Field(default=0, description="API ID obtenido en my.telegram.org")
     TG_API_HASH: str = Field(default="", description="API Hash obtenido en my.telegram.org")
     TG_PHONE: str = Field(default="", description="Número de teléfono de la cuenta Telegram")
-    TG_SESSION_NAME: str = Field(default="bot_session", description="Nombre del archivo .session de Telethon")
+    TG_SESSION_NAME: str = Field(default="data/bot_session", description="Nombre del archivo .session de Telethon")
     TARGET_CHANNEL_ID: int = Field(default=0, description="ID numérico del canal de Telegram a escuchar")
     INGESTION_ENABLED: bool = Field(default=True, description="Flag maestro para habilitar/pausar ingesta")
 
