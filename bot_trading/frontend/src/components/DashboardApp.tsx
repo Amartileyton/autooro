@@ -9,16 +9,22 @@ import { SystemHealthModal } from './SystemHealthModal';
 import { LoginScreen } from './LoginScreen';
 
 const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  if (typeof window !== 'undefined') {
+    if (window.location.port === '4321') {
+      return `${window.location.protocol}//${window.location.hostname}:8000`;
+    }
+    return `${window.location.protocol}//${window.location.host}`;
   }
   return 'http://localhost:8000';
 };
 
 const getWsUrl = () => {
-  if (typeof window !== 'undefined' && window.location.hostname) {
+  if (typeof window !== 'undefined') {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.hostname}:8000/ws/live`;
+    if (window.location.port === '4321') {
+      return `${protocol}//${window.location.hostname}:8000/ws/live`;
+    }
+    return `${protocol}//${window.location.host}/ws/live`;
   }
   return 'ws://localhost:8000/ws/live';
 };

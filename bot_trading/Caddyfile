@@ -1,0 +1,27 @@
+34.175.69.118.nip.io {
+    # API REST del backend FastAPI
+    handle /api/* {
+        reverse_proxy trading-engine:8000
+    }
+
+    # WebSocket en vivo del backend
+    handle /ws/* {
+        reverse_proxy trading-engine:8000
+    }
+
+    # Health check y documentación OpenAPI
+    handle /health {
+        reverse_proxy trading-engine:8000
+    }
+    handle /docs* {
+        reverse_proxy trading-engine:8000
+    }
+    handle /openapi.json {
+        reverse_proxy trading-engine:8000
+    }
+
+    # Frontend Dashboard Astro + React
+    handle {
+        reverse_proxy dashboard-frontend:4321
+    }
+}

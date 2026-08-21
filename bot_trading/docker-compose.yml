@@ -39,3 +39,24 @@ services:
     command: sh -c "npm install && npm run dev"
     depends_on:
       - trading-engine
+
+  # Reverse Proxy Caddy con HTTPS Automático Let's Encrypt para Google OAuth
+  caddy:
+    image: caddy:alpine
+    container_name: xauusd_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - trading-engine
+      - dashboard-frontend
+
+volumes:
+  caddy_data:
+  caddy_config:
+
