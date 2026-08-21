@@ -1,3 +1,5 @@
+import time
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Header, HTTPException, Depends, status
@@ -336,6 +338,38 @@ async def inject_test_signal(req: TestSignalRequest):
     side_enum = SchemaOrderSide.BUY if is_buy else SchemaOrderSide.SELL
     tp_list = [tp1_px, tp2_px, tp3_px]
 
+    raw_text = (
+        f"❗️SIGNAL ALERT❗️\n"
+        f"📊#XAUUSD📊\n"
+        f"Direction:📈 #{side_enum.value}\n"
+        f"Entry Point: {entry_px:.2f}\n"
+        f"🏆TP1: {tp1_px:.2f}\n"
+        f"🏆TP2: {tp2_px:.2f}\n"
+        f"🏆TP3: {tp3_px:.2f}\n"
+        f"⛔️ Stop Loss (SL): {sl_px:.2f}"
+    )
+
+    # 1. Guardar en auditoría de Telegram para que aparezca en el historial de tarjetas
+    msg_id = int(time.time()) % 1000000
+    try:
+        from backend.database.session import AsyncSessionLocal
+        from backend.database.models import RawTelegramMessage
+        async with AsyncSessionLocal() as session:
+            db_msg = RawTelegramMessage(
+                message_id=msg_id,
+                channel_id=-1002763662248,
+                channel_name="Chartoro FX Señales Gratis",
+                raw_text=raw_text,
+                parsed_success=True,
+                parser_used="TEST_INJECTION",
+                received_at=datetime.now(timezone.utc)
+            )
+            session.add(db_msg)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Error al guardar mensaje de test en DB: {e}")
+
+    # 2. Inyectar evento en la cola de ejecución del motor de trading
     event = TradingSignalEvent(
         asset="XAUUSD",
         side=side_enum,
@@ -343,15 +377,23 @@ async def inject_test_signal(req: TestSignalRequest):
         sl_price=sl_px,
         tp_levels=tp_list,
         requires_dynamic_sl=False,
-        raw_text=f"MANUAL TEST: {req.side} XAUUSD @ {entry_px}",
-        message_id=999999,
-        channel_id=0
+        raw_text=raw_text,
+        message_id=msg_id,
+        channel_id=-1002763662248
     )
 
     await queue.put(event)
+
+    # 3. Notificar al frontend para refrescar tarjetas e historial en tiempo real
+    try:
+        from backend.api.ws import manager
+        await manager.broadcast({"type": "SIGNAL_PARSED", "message_id": msg_id})
+    except Exception:
+        pass
+
     return {
         "status": "success",
-        "message": f"Señal de prueba {side_enum.value} XAUUSD @ {entry_px} inyectada en la cola",
+        "message": f"Señal de prueba {side_enum.value} XAUUSD @ {entry_px} inyectada en la cola y guardada en historial",
         "signal": {
             "side": side_enum.value,
             "entry_price": float(entry_px),
