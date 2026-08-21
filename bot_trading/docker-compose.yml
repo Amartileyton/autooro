@@ -13,9 +13,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Persistencia de base de datos SQLite WAL y sesión de Telethon en carpeta data
+      # Persistencia de base de datos SQLite WAL, sesión de Telethon y código en vivo
       - ./data:/app/data
       - ./trading_bot.db:/app/trading_bot.db
+      - ./backend:/app/backend
+      - ./scripts:/app/scripts
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./trading_bot.db
       - ENVIRONMENT=production

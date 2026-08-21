@@ -36,8 +36,11 @@ async def sync():
     channel_name = getattr(entity, 'title', 'Chartoro FX')
     print(f"Sincronizando mensajes de: {channel_name} ({settings.TARGET_CHANNEL_ID})...")
 
-    messages = await client.get_messages(entity, limit=40)
+    messages = await client.get_messages(entity, limit=100)
+    print(f"Recuperados {len(messages)} mensajes de Telegram. Procesando y guardando en SQLite...")
     
+    saved_count = 0
+    signals_count = 0
     async with AsyncSessionLocal() as db:
         for msg in messages:
             if not msg.text or len(msg.text.strip()) < 8:
@@ -46,6 +49,11 @@ async def sync():
             parsed = parse_signal(msg.text, message_id=msg.id, channel_id=settings.TARGET_CHANNEL_ID)
             parsed_success = bool(parsed)
             parser_used = "REGEX" if parsed_success else "NONE"
+
+            if parsed_success:
+                signals_count += 1
+                first_line = msg.text.strip().split('\n')[0]
+                print(f"  🔔 Señal #{msg.id} [{msg.date.strftime('%d/%m %H:%M')}]: {first_line}")
 
             # Check if message already exists in DB
             from sqlalchemy import select
@@ -64,10 +72,11 @@ async def sync():
                     received_at=msg.date
                 )
                 db.add(raw_msg)
+                saved_count += 1
         
         await db.commit()
     
-    print("✅ Sincronización de historial completada.")
+    print(f"✅ Sincronización completada: {saved_count} mensajes nuevos guardados ({signals_count} señales detectadas en total).")
     await client.disconnect()
 
 if __name__ == "__main__":
