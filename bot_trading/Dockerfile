@@ -29,8 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código del backend
+# Copiar código del backend y dump inicial
 COPY backend /app/backend
+COPY dump.sql /app/dump.sql
 
 # Copiar build del frontend si se desea servir estáticamente
 COPY --from=frontend-builder /app/frontend/dist /app/frontend_dist

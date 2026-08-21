@@ -150,6 +150,26 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Base de datos SQLite WAL inicializada correctamente.")
 
+    # 1.1 Si la base de datos está vacía, sembrar historial desde dump.sql
+    try:
+        import os
+        import sqlite3
+        async with AsyncSessionLocal() as session:
+            check_msg = await session.execute(select(RawTelegramMessage).limit(1))
+            if not check_msg.scalars().first():
+                dump_candidates = ["dump.sql", "bot_trading/dump.sql", "/app/dump.sql"]
+                for dp in dump_candidates:
+                    if os.path.exists(dp):
+                        logger.info(f"Cargando histórico inicial de mensajes desde {dp}...")
+                        sync_conn = sqlite3.connect("trading_bot.db")
+                        with open(dp, "r", encoding="utf-8") as f:
+                            sync_conn.executescript(f.read())
+                        sync_conn.close()
+                        logger.info("Histórico inicial cargado exitosamente en SQLite.")
+                        break
+    except Exception as e:
+        logger.warning(f"Aviso al sembrar dump.sql inicial: {e}")
+
     # 2. Inicializar Cola Asíncrona desacoplada
     signal_queue = asyncio.Queue()
     app_state["signal_queue"] = signal_queue
