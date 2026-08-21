@@ -26,28 +26,38 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
     script.innerHTML = JSON.stringify({
       autosize: true,
       symbol: 'OANDA:XAUUSD',
-      interval: '15',
+      interval: '60', // Velas fijas de 1 HORA (1H)
       timezone: 'Etc/UTC',
       theme: 'dark',
-      style: '1',
+      style: '1', // Velas japonesas
       locale: 'es',
       enable_publishing: false,
-      hide_side_toolbar: true,
+      hide_top_toolbar: true, // Ocultar barra superior para evitar desconfiguraciones
+      hide_side_toolbar: true, // Ocultar herramientas de dibujo
+      hide_volume: true, // Eliminar subpanel inferior de volumen
       allow_symbol_change: false,
       save_image: false,
       calendar: false,
-      hide_volume: false,
       support_host: 'https://www.tradingview.com',
       backgroundColor: '#0a0d14',
-      gridColor: 'rgba(42, 46, 57, 0.25)',
+      gridColor: 'rgba(42, 46, 57, 0.15)',
       studies: [
-        'STD;EMA',
-        'STD;SMA',
-        'STD;Volume'
+        'STD;EMA', // Media Móvil Exponencial Rápida (EMA 20 - Dorada)
+        'STD;SMA'  // Media Móvil Simple (SMA 50 - Violeta)
       ],
+      studies_overrides: {
+        'moving average exponential.length': 20,
+        'moving average exponential.color': '#f59e0b',
+        'moving average exponential.linewidth': 2,
+        'moving average.length': 50,
+        'moving average.color': '#818cf8',
+        'moving average.linewidth': 2
+      },
       overrides: {
         'paneProperties.background': '#0a0d14',
         'paneProperties.backgroundType': 'solid',
+        'paneProperties.vertGridProperties.color': 'rgba(42, 46, 57, 0.15)',
+        'paneProperties.horzGridProperties.color': 'rgba(42, 46, 57, 0.15)',
         'mainSeriesProperties.candleStyle.upColor': '#10b981',
         'mainSeriesProperties.candleStyle.downColor': '#ef4444',
         'mainSeriesProperties.candleStyle.wickUpColor': '#10b981',
@@ -71,16 +81,23 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
 
   return (
     <div className="term-panel col-span-1 lg:col-span-2 flex flex-col h-full relative overflow-hidden bg-[#0a0d14]">
-      {/* Header del Gráfico */}
+      {/* Header del Gráfico Limpio */}
       <div className="bg-surface-container-highest px-3 py-1.5 border-b term-border flex justify-between items-center z-10">
         <div className="flex items-center gap-3">
           <h2 className="text-label-sm text-amber-gold font-bold uppercase tracking-widest flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px]">show_chart</span>
-            XAUUSD SPOT &bull; EN VIVO
+            XAUUSD &bull; 1H SPOT
           </h2>
-          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            Feed Institucional
-          </span>
+          <div className="flex items-center gap-2 text-[11px] font-mono">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              EMA 20
+            </span>
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+              SMA 50
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -95,13 +112,14 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
         </div>
       </div>
 
-      {/* Contenedor del Gráfico en Tiempo Real */}
+      {/* Contenedor del Gráfico 1H Fijo */}
       <div className="flex-1 relative w-full h-[450px] lg:h-full overflow-hidden" ref={containerRef}>
         <div className="w-full h-full flex items-center justify-center text-outline text-label-sm">
-          Cargando feed de mercado en tiempo real...
+          Cargando feed de mercado 1H...
         </div>
       </div>
     </div>
   );
 };
+
 
