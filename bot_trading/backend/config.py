@@ -79,7 +79,10 @@ class Settings(BaseSettings):
     def parse_optional_int(cls, v: Any) -> int:
         if v is None or v == "":
             return 0
-        return int(v)
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return 0
 
     @field_validator("SLOT_MARGIN_PERCENT", "LEVERAGE", "CONTRACT_SIZE", "MIN_LOT_SIZE", "LOT_STEP", "SLIPPAGE_TOLERANCE_USD", "DEFAULT_DYNAMIC_SL_DELTA_USD", "INITIAL_PAPER_BALANCE", "PAPER_SPREAD_MIN_CENTS", "PAPER_SPREAD_MAX_CENTS", "INITIAL_XAUUSD_PRICE", mode="before")
     @classmethod
