@@ -6,8 +6,21 @@ import { LiveChart } from './LiveChart';
 import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
 
-const API_BASE_URL = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/ws/live';
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+  return 'http://localhost:8000';
+};
+
+const getWsUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.hostname}:8000/ws/live`;
+  }
+  return 'ws://localhost:8000/ws/live';
+};
+
 const API_KEY = 'sec_xauusd_trading_key_2026';
 
 export const DashboardApp: React.FC = () => {
@@ -29,7 +42,7 @@ export const DashboardApp: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
-  const [isControlModalOpen, setIsControlModalOpen] = useState<boolean>(false);
+  const [isControlDropdownOpen, setIsControlDropdownOpen] = useState<boolean>(false);
   const [latencyMs, setLatencyMs] = useState<number>(12);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
 
@@ -38,7 +51,8 @@ export const DashboardApp: React.FC = () => {
   // 1. Cargar estado inicial y mensajes desde la API REST
   const fetchInitialData = async () => {
     try {
-      const stateRes = await fetch(`${API_BASE_URL}/api/v1/state`);
+      const baseUrl = getApiBaseUrl();
+      const stateRes = await fetch(`${baseUrl}/api/v1/state`);
       if (stateRes.ok) {
         const stateData = await stateRes.json();
         setXauusdPrice(stateData.xauusd_spot?.ask || 2345.50);
@@ -71,7 +85,7 @@ export const DashboardApp: React.FC = () => {
       }
 
       // Mensajes de Telegram
-      const msgRes = await fetch(`${API_BASE_URL}/api/v1/messages?limit=30`);
+      const msgRes = await fetch(`${baseUrl}/api/v1/messages?limit=30`);
       if (msgRes.ok) {
         const msgData = await msgRes.json();
         setMessages(msgData);
@@ -89,7 +103,7 @@ export const DashboardApp: React.FC = () => {
 
     const connectWebSocket = () => {
       const startTime = Date.now();
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(getWsUrl());
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -167,7 +181,7 @@ export const DashboardApp: React.FC = () => {
   const handleToggleIngestion = async () => {
     const endpoint = ingestionEnabled ? '/api/v1/control/pause' : '/api/v1/control/resume';
     try {
-      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const res = await fetch(`${getApiBaseUrl()}${endpoint}`, {
         method: 'POST',
         headers: { 'X-API-KEY': API_KEY },
       });
@@ -181,9 +195,24 @@ export const DashboardApp: React.FC = () => {
     }
   };
 
+  const handleToggleAutoExecution = async () => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/auto-execution/toggle`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': API_KEY },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAutoExecutionEnabled(data.auto_execution_enabled);
+      }
+    } catch (err) {
+      console.error('Error al alternar auto-ejecución:', err);
+    }
+  };
+
   const handlePanicClose = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/control/panic-close`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/panic-close`, {
         method: 'POST',
         headers: { 'X-API-KEY': API_KEY },
       });
@@ -199,7 +228,7 @@ export const DashboardApp: React.FC = () => {
 
   const handleCloseSlot = async (slotId: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/control/close-slot/${slotId}`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/close-slot/${slotId}`, {
         method: 'POST',
         headers: { 'X-API-KEY': API_KEY },
       });
@@ -213,7 +242,7 @@ export const DashboardApp: React.FC = () => {
 
   const handleInjectTestSignal = async () => {
     try {
-      await fetch(`${API_BASE_URL}/api/v1/signal/test`, {
+      await fetch(`${getApiBaseUrl()}/api/v1/signal/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -236,9 +265,10 @@ export const DashboardApp: React.FC = () => {
 
   const handleOpenAuditModal = async () => {
     try {
+      const baseUrl = getApiBaseUrl();
       const [histRes, auditRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/v1/history?limit=50`),
-        fetch(`${API_BASE_URL}/api/v1/audit?limit=50`),
+        fetch(`${baseUrl}/api/v1/history?limit=50`),
+        fetch(`${baseUrl}/api/v1/audit?limit=50`),
       ]);
       if (histRes.ok) {
         const histData = await histRes.json();
@@ -262,13 +292,25 @@ export const DashboardApp: React.FC = () => {
         balance={balance}
         floatingPnl={floatingPnl}
         botActive={botActive}
-        onOpenSettings={() => setIsControlModalOpen(true)}
+        onOpenSettings={() => setIsControlDropdownOpen(!isControlDropdownOpen)}
+      />
+
+      {/* Desplegable de Control y Kill Switch anclado al Header */}
+      <ControlDropdown
+        isOpen={isControlDropdownOpen}
+        onClose={() => setIsControlDropdownOpen(false)}
+        ingestionEnabled={ingestionEnabled}
+        autoExecutionEnabled={autoExecutionEnabled}
+        onToggleIngestion={handleToggleIngestion}
+        onToggleAutoExecution={handleToggleAutoExecution}
+        onPanicClose={handlePanicClose}
+        onInjectTestSignal={handleInjectTestSignal}
       />
 
       {/* 2. Cuerpo Principal */}
       <div className="flex flex-1 overflow-hidden">
         {/* Barra Lateral de Navegación y Feed de Señales */}
-        <nav className="hidden md:flex flex-col h-full w-80 bg-surface-container border-r border-outline-variant shrink-0">
+        <nav className="hidden md:flex flex-col h-full w-84 bg-surface-container border-r border-outline-variant shrink-0" style={{ width: '340px' }}>
           <div className="p-3 border-b border-outline-variant flex justify-between items-center">
             <div>
               <div className="text-label-md font-bold text-primary truncate">XAUUSD-CORE-01</div>
@@ -318,17 +360,6 @@ export const DashboardApp: React.FC = () => {
         </div>
       </footer>
 
-      {/* Desplegable de Control y Kill Switch */}
-      <ControlDropdown
-        isOpen={isControlModalOpen}
-        onClose={() => setIsControlModalOpen(false)}
-        ingestionEnabled={ingestionEnabled}
-        autoExecutionEnabled={autoExecutionEnabled}
-        onToggleIngestion={handleToggleIngestion}
-        onPanicClose={handlePanicClose}
-        onInjectTestSignal={handleInjectTestSignal}
-      />
-
       {/* Modal de Auditoría */}
       <AuditLogsModal
         isOpen={isAuditModalOpen}
@@ -339,4 +370,3 @@ export const DashboardApp: React.FC = () => {
     </div>
   );
 };
-

@@ -32,13 +32,12 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
       style: '1',
       locale: 'es',
       enable_publishing: false,
-      hide_top_toolbar: false, // Controles NATIVOS de TradingView (temporalidades, indicadores, velas)
-      hide_side_toolbar: true, // Ocultar herramientas de dibujo laterales
+      hide_top_toolbar: false, // Barra de herramientas NATIVA oficial de TradingView
+      hide_side_toolbar: true, // Ocultar herramientas de dibujo
       hide_volume: true, // Ocultar subpanel inferior de volumen
       allow_symbol_change: false,
       save_image: false,
       calendar: false,
-      withdateranges: false,
       support_host: 'https://www.tradingview.com',
       backgroundColor: '#0a0d14',
       gridColor: 'rgba(42, 46, 57, 0.15)',
@@ -57,8 +56,8 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
       overrides: {
         'paneProperties.background': '#0a0d14',
         'paneProperties.backgroundType': 'solid',
-        'paneProperties.vertGridProperties.color': 'rgba(42, 46, 57, 0.10)',
-        'paneProperties.horzGridProperties.color': 'rgba(42, 46, 57, 0.10)',
+        'paneProperties.vertGridProperties.color': 'rgba(42, 46, 57, 0.12)',
+        'paneProperties.horzGridProperties.color': 'rgba(42, 46, 57, 0.12)',
         'mainSeriesProperties.candleStyle.upColor': '#10b981',
         'mainSeriesProperties.candleStyle.downColor': '#ef4444',
         'mainSeriesProperties.candleStyle.wickUpColor': '#10b981',
@@ -82,12 +81,12 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
 
   return (
     <div className="term-panel col-span-1 lg:col-span-2 flex flex-col h-full relative overflow-hidden bg-[#0a0d14]">
-      {/* Header del Gráfico con Indicación de Slot Activo y Feed */}
-      <div className="bg-surface-container-highest px-3 py-1 border-b term-border flex justify-between items-center z-10">
+      {/* Barra de Estado Superior */}
+      <div className="bg-surface-container-highest px-3 py-1 border-b term-border flex justify-between items-center z-10 shrink-0">
         <div className="flex items-center gap-3">
           <h2 className="text-label-sm text-amber-gold font-bold uppercase tracking-widest flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px]">show_chart</span>
-            XAUUSD SPOT &bull; FEED OFICIAL TRADINGVIEW
+            XAUUSD SPOT &bull; TRADINGVIEW EN VIVO
           </h2>
           <div className="hidden sm:flex items-center gap-2 text-[11px] font-mono">
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -108,13 +107,13 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
             </span>
           )}
           <span className="text-data-sm font-mono text-outline">
-            Precio: <strong className="text-amber-gold font-bold">${currentPrice > 0 ? currentPrice.toFixed(2) : '---'}</strong>
+            Precio Spot: <strong className="text-amber-gold font-bold">${currentPrice > 0 ? currentPrice.toFixed(2) : '---'}</strong>
           </span>
         </div>
       </div>
 
-      {/* Contenedor del Gráfico con Controles Nativos de TradingView */}
-      <div className="flex-1 relative w-full h-[450px] lg:h-full overflow-hidden" ref={containerRef}>
+      {/* Contenedor del Gráfico con Controles Nativos */}
+      <div className="flex-1 relative w-full h-full overflow-hidden" ref={containerRef}>
         <div className="w-full h-full flex items-center justify-center text-outline text-label-sm">
           Cargando feed de TradingView...
         </div>

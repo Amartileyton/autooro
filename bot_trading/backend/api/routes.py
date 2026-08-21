@@ -233,6 +233,17 @@ async def resume_ingestion():
     return {"status": "success", "message": "Ingesta reanudada correctamente", "ingestion_enabled": True}
 
 
+@router.post("/control/auto-execution/toggle", dependencies=[Depends(verify_api_key)])
+async def toggle_auto_execution():
+    """Alterna el estado de auto-ejecución de órdenes."""
+    settings.AUTO_EXECUTION_ENABLED = not settings.AUTO_EXECUTION_ENABLED
+    return {
+        "status": "success",
+        "message": f"Auto-ejecución {'habilitada' if settings.AUTO_EXECUTION_ENABLED else 'pausada'}",
+        "auto_execution_enabled": settings.AUTO_EXECUTION_ENABLED
+    }
+
+
 @router.post("/control/panic-close", dependencies=[Depends(verify_api_key)])
 async def panic_close():
     """Ejecuta el Kill-Switch: Cierre inmediato de todas las posiciones abiertas."""

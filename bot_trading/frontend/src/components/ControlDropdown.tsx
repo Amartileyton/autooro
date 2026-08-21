@@ -6,6 +6,7 @@ interface ControlDropdownProps {
   ingestionEnabled: boolean;
   autoExecutionEnabled: boolean;
   onToggleIngestion: () => void;
+  onToggleAutoExecution: () => void;
   onPanicClose: () => void;
   onInjectTestSignal: () => void;
 }
@@ -16,6 +17,7 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
   ingestionEnabled,
   autoExecutionEnabled,
   onToggleIngestion,
+  onToggleAutoExecution,
   onPanicClose,
   onInjectTestSignal,
 }) => {
@@ -40,13 +42,14 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-3 top-12 w-80 bg-[#12141c] border border-outline-variant rounded-md shadow-2xl z-50 p-3 space-y-3 animate-fade-in text-on-surface"
+      className="absolute right-4 top-12 w-88 bg-[#12141c] border border-outline-variant rounded-md shadow-2xl z-50 p-3.5 space-y-3 animate-fade-in text-on-surface"
+      style={{ minWidth: '320px' }}
     >
       {/* Header del Dropdown */}
       <div className="flex justify-between items-center pb-2 border-b border-outline-variant/60">
-        <span className="text-label-sm font-bold uppercase tracking-wider text-amber-gold flex items-center gap-1">
+        <span className="text-label-sm font-bold uppercase tracking-wider text-amber-gold flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[16px]">tune</span>
-          Controles Rápidos
+          Controles del Sistema
         </span>
         <button
           onClick={onClose}
@@ -56,11 +59,14 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
         </button>
       </div>
 
-      {/* Switch Ingesta */}
-      <div className="flex items-center justify-between p-2 rounded bg-surface border border-outline-variant/50">
+      {/* 1. Switch Ingesta Telegram */}
+      <div className="flex items-center justify-between p-2.5 rounded bg-surface border border-outline-variant/50">
         <div>
-          <div className="text-[12px] font-bold">Ingesta Telegram</div>
-          <div className="text-[10px] text-outline">Captura de canales</div>
+          <div className="text-[12px] font-bold flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[15px] text-primary">cell_tower</span>
+            Ingesta Telegram
+          </div>
+          <div className="text-[10px] text-outline">Captura de canales en vivo</div>
         </div>
         <button
           onClick={onToggleIngestion}
@@ -70,23 +76,44 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
               : 'bg-error-container/20 text-error border-error/40 hover:bg-error-container/30'
           }`}
         >
-          {ingestionEnabled ? 'ACTIVA' : 'PAUSADA'}
+          {ingestionEnabled ? 'ACTIVA (ON)' : 'PAUSADA (OFF)'}
         </button>
       </div>
 
-      {/* Inyección de Prueba */}
+      {/* 2. Switch Auto-Ejecución */}
+      <div className="flex items-center justify-between p-2.5 rounded bg-surface border border-outline-variant/50">
+        <div>
+          <div className="text-[12px] font-bold flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[15px] text-amber-gold">smart_toy</span>
+            Auto-Ejecución
+          </div>
+          <div className="text-[10px] text-outline">Apertura automática de slots</div>
+        </div>
+        <button
+          onClick={onToggleAutoExecution}
+          className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded border transition-colors ${
+            autoExecutionEnabled
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30'
+              : 'bg-error-container/20 text-error border-error/40 hover:bg-error-container/30'
+          }`}
+        >
+          {autoExecutionEnabled ? 'ACTIVA (ON)' : 'PAUSADA (OFF)'}
+        </button>
+      </div>
+
+      {/* 3. Inyección de Prueba */}
       <button
         onClick={() => {
           onInjectTestSignal();
           onClose();
         }}
-        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-surface hover:bg-surface-container-high border border-outline-variant text-[11px] font-mono rounded text-on-surface transition-colors"
+        className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-surface hover:bg-surface-container-high border border-outline-variant text-[11px] font-mono font-bold rounded text-on-surface transition-colors"
       >
         <span className="material-symbols-outlined text-[16px] text-amber-gold">send</span>
-        Inyectar Señal de Prueba
+        Inyectar Señal de Test (BUY XAUUSD)
       </button>
 
-      {/* Kill Switch Panic Stop */}
+      {/* 4. Kill Switch Panic Stop */}
       <div className="pt-2 border-t border-outline-variant/60">
         <button
           onClick={() => {
@@ -95,7 +122,7 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
               onClose();
             }
           }}
-          className="w-full py-2 px-3 bg-crimson-red hover:bg-crimson-red/80 text-white font-mono font-bold text-[11px] rounded border border-red-400/50 shadow transition-all flex items-center justify-center gap-1.5"
+          className="w-full py-2.5 px-3 bg-crimson-red hover:bg-crimson-red/80 text-white font-mono font-bold text-[11px] rounded border border-red-400/50 shadow transition-all flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
           PANIC STOP (KILL SWITCH)
