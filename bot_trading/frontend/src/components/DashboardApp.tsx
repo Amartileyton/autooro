@@ -268,14 +268,14 @@ export const DashboardApp: React.FC = () => {
 
     connectWebSocket();
 
-    const interval = setInterval(fetchInitialData, 10000);
+    const interval = setInterval(fetchInitialData, 5000);
 
     return () => {
       if (wsRef.current) wsRef.current.close();
       clearTimeout(reconnectTimer);
       clearInterval(interval);
     };
-  }, []);
+  }, [authToken]);
 
   // 3. Handlers para el Menú de Controles
   const handleLogout = () => {

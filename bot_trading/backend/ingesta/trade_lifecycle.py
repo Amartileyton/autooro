@@ -109,6 +109,17 @@ class TradeLifecycleCard:
         }
 
 
+def get_msg_datetime(msg: Any) -> datetime:
+    val = getattr(msg, 'received_at', None)
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, str):
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except Exception:
+            return datetime.min
+    return datetime.min
+
 def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]:
     """
     Agrupa cronológicamente los mensajes crudos de Telegram en TARJETAS DE CICLO DE VIDA DE TRADES:
@@ -116,14 +127,15 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
     - Actualización progresiva de niveles.
     - Cierre con precio exacto de salida y PnL resultante.
     """
-    sorted_msgs = sorted(messages, key=lambda x: x.received_at)
+    sorted_msgs = sorted(messages, key=get_msg_datetime)
     trades: List[TradeLifecycleCard] = []
 
     for m in sorted_msgs:
-        raw_text = m.raw_text or ""
+        raw_text = getattr(m, 'raw_text', '') or ""
         raw_upper = raw_text.upper()
         channel = getattr(m, 'channel_name', None) or "Chartoro FX"
-        time_str = m.received_at.isoformat() if hasattr(m.received_at, 'isoformat') else str(m.received_at)
+        received_at_val = getattr(m, 'received_at', None)
+        time_str = received_at_val.isoformat() if hasattr(received_at_val, 'isoformat') else str(received_at_val or datetime.utcnow().isoformat())
         msg_id = getattr(m, 'message_id', 0) or 0
         parsed = parse_signal(raw_text, message_id=msg_id, channel_id=getattr(m, 'channel_id', 0) or 0)
 
