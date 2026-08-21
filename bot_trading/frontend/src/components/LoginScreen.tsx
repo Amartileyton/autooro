@@ -74,13 +74,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setErrorMsg(null);
 
     try {
-      const res = await fetch(`${apiBaseUrl}/api/v1/auth/google-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ credential: response.credential }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${apiBaseUrl}/api/v1/auth/google-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ credential: response.credential }),
+        });
+      } catch (firstErr) {
+        console.warn('Fallo primer intento en apiBaseUrl, intentando path relativo /api/v1/...', firstErr);
+        res = await fetch('/api/v1/auth/google-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ credential: response.credential }),
+        });
+      }
 
       const data = await res.json();
 
@@ -94,7 +106,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     } catch (err: any) {
       console.error('Error al verificar sesión en backend:', err);
-      setErrorMsg('No se pudo conectar con el servidor de autenticación.');
+      setErrorMsg(`No se pudo conectar con el servidor de autenticación. Entra en https://34.175.69.118.nip.io (sin el puerto :4321).`);
     } finally {
       setLoading(false);
     }
