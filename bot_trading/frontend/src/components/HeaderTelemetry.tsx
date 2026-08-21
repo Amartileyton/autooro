@@ -5,6 +5,7 @@ interface TelemetryProps {
   balance: number;
   floatingPnl: number;
   botActive: boolean;
+  onOpenSettings?: () => void;
 }
 
 export const HeaderTelemetry: React.FC<TelemetryProps> = ({
@@ -12,6 +13,7 @@ export const HeaderTelemetry: React.FC<TelemetryProps> = ({
   balance,
   floatingPnl,
   botActive,
+  onOpenSettings,
 }) => {
   const isProfit = floatingPnl >= 0;
   const pnlSign = isProfit ? '+' : '';
@@ -62,16 +64,12 @@ export const HeaderTelemetry: React.FC<TelemetryProps> = ({
 
       <div className="flex items-center gap-3">
         <button 
-          title="Notificaciones"
-          className="text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors p-1.5 rounded"
-        >
-          <span className="material-symbols-outlined text-[20px]">notifications_active</span>
-        </button>
-        <button 
-          title="Configuración"
-          className="text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors p-1.5 rounded"
+          onClick={onOpenSettings}
+          title="Configuración y Controles de Ejecución"
+          className="text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors p-1.5 rounded flex items-center gap-1 border border-transparent hover:border-outline-variant"
         >
           <span className="material-symbols-outlined text-[20px]">settings</span>
+          <span className="text-label-sm hidden sm:inline">Controles</span>
         </button>
       </div>
     </header>

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { SlotTradeData } from './PositionMatrix';
 
 interface LiveChartProps {
@@ -8,7 +8,17 @@ interface LiveChartProps {
 
 export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedInterval, setSelectedInterval] = useState<string>('60'); // '1', '5', '15', '60', '240', 'D'
   const activeTrade = activeSlots.find((s) => s.is_active && s.side);
+
+  const timeframes = [
+    { label: '1M', value: '1' },
+    { label: '5M', value: '5' },
+    { label: '15M', value: '15' },
+    { label: '1H', value: '60' },
+    { label: '4H', value: '240' },
+    { label: '1D', value: 'D' },
+  ];
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -26,15 +36,14 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
     script.innerHTML = JSON.stringify({
       autosize: true,
       symbol: 'OANDA:XAUUSD',
-      interval: '60', // Velas fijas de 1 HORA (1H)
+      interval: selectedInterval,
       timezone: 'Etc/UTC',
       theme: 'dark',
-      style: '1', // Velas japonesas
+      style: '1',
       locale: 'es',
       enable_publishing: false,
-      hide_top_toolbar: true, // Ocultar barra superior para evitar desconfiguraciones
       hide_side_toolbar: true, // Ocultar herramientas de dibujo
-      hide_volume: true, // Eliminar subpanel inferior de volumen
+      hide_volume: true, // Ocultar subpanel de volumen inferior
       allow_symbol_change: false,
       save_image: false,
       calendar: false,
@@ -42,22 +51,22 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
       backgroundColor: '#0a0d14',
       gridColor: 'rgba(42, 46, 57, 0.15)',
       studies: [
-        'STD;EMA', // Media Móvil Exponencial Rápida (EMA 20 - Dorada)
-        'STD;SMA'  // Media Móvil Simple (SMA 50 - Violeta)
+        'MASimple@tv-basicstudies',
+        'EMA@tv-basicstudies'
       ],
       studies_overrides: {
-        'moving average exponential.length': 20,
-        'moving average exponential.color': '#f59e0b',
-        'moving average exponential.linewidth': 2,
         'moving average.length': 50,
         'moving average.color': '#818cf8',
-        'moving average.linewidth': 2
+        'moving average.linewidth': 2,
+        'moving average exponential.length': 20,
+        'moving average exponential.color': '#f59e0b',
+        'moving average exponential.linewidth': 2
       },
       overrides: {
         'paneProperties.background': '#0a0d14',
         'paneProperties.backgroundType': 'solid',
-        'paneProperties.vertGridProperties.color': 'rgba(42, 46, 57, 0.15)',
-        'paneProperties.horzGridProperties.color': 'rgba(42, 46, 57, 0.15)',
+        'paneProperties.vertGridProperties.color': 'rgba(42, 46, 57, 0.12)',
+        'paneProperties.horzGridProperties.color': 'rgba(42, 46, 57, 0.12)',
         'mainSeriesProperties.candleStyle.upColor': '#10b981',
         'mainSeriesProperties.candleStyle.downColor': '#ef4444',
         'mainSeriesProperties.candleStyle.wickUpColor': '#10b981',
@@ -77,23 +86,42 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
     wrapper.appendChild(script);
 
     containerRef.current.appendChild(wrapper);
-  }, []);
+  }, [selectedInterval]);
 
   return (
     <div className="term-panel col-span-1 lg:col-span-2 flex flex-col h-full relative overflow-hidden bg-[#0a0d14]">
-      {/* Header del Gráfico Limpio */}
-      <div className="bg-surface-container-highest px-3 py-1.5 border-b term-border flex justify-between items-center z-10">
+      {/* Header del Gráfico con Selector de Temporalidades */}
+      <div className="bg-surface-container-highest px-3 py-1.5 border-b term-border flex flex-wrap justify-between items-center gap-2 z-10">
         <div className="flex items-center gap-3">
           <h2 className="text-label-sm text-amber-gold font-bold uppercase tracking-widest flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px]">show_chart</span>
-            XAUUSD &bull; 1H SPOT
+            XAUUSD SPOT
           </h2>
-          <div className="flex items-center gap-2 text-[11px] font-mono">
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+
+          {/* Selector de Temporalidades */}
+          <div className="flex items-center gap-1 bg-[#12141c] p-0.5 rounded border border-outline-variant">
+            {timeframes.map((tf) => (
+              <button
+                key={tf.value}
+                onClick={() => setSelectedInterval(tf.value)}
+                className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                  selectedInterval === tf.value
+                    ? 'bg-amber-gold text-black font-bold shadow'
+                    : 'text-outline hover:text-on-surface hover:bg-surface-container'
+                }`}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Medias Móviles Info */}
+          <div className="hidden sm:flex items-center gap-2 text-[11px] font-mono ml-2">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               EMA 20
             </span>
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
               SMA 50
             </span>
@@ -107,19 +135,20 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
             </span>
           )}
           <span className="text-data-sm font-mono text-outline">
-            Precio Actual: <strong className="text-amber-gold font-bold">${currentPrice > 0 ? currentPrice.toFixed(2) : '---'}</strong>
+            Precio: <strong className="text-amber-gold font-bold">${currentPrice > 0 ? currentPrice.toFixed(2) : '---'}</strong>
           </span>
         </div>
       </div>
 
-      {/* Contenedor del Gráfico 1H Fijo */}
+      {/* Contenedor del Gráfico Interactivo */}
       <div className="flex-1 relative w-full h-[450px] lg:h-full overflow-hidden" ref={containerRef}>
         <div className="w-full h-full flex items-center justify-center text-outline text-label-sm">
-          Cargando feed de mercado 1H...
+          Cargando gráfico en tiempo real...
         </div>
       </div>
     </div>
   );
 };
+
 
 

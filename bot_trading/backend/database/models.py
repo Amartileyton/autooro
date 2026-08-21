@@ -37,6 +37,7 @@ class RawTelegramMessage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     channel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    channel_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, default="Chartoro FX")
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     parsed_success: Mapped[bool] = mapped_column(Boolean, default=False)
     parser_used: Mapped[str] = mapped_column(String(30), default="REGEX")  # REGEX / AI / NONE

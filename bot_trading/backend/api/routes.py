@@ -140,24 +140,47 @@ async def get_trade_history(limit: int = 50, db: AsyncSession = Depends(get_db))
 
 @router.get("/messages")
 async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
-    """Retorna los últimos mensajes de Telegram recibidos y auditados."""
+    """Retorna los últimos mensajes de Telegram recibidos, con canal y detalles estructurados."""
+    from backend.ingesta.parser import parse_signal
     stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(limit)
     result = await db.execute(stmt)
     messages = result.scalars().all()
 
-    return [
-        {
+    formatted = []
+    for m in messages:
+        signal_details = None
+        parsed = parse_signal(m.raw_text, message_id=m.message_id or 0, channel_id=m.channel_id or 0)
+        if isinstance(parsed, TradingSignalEvent):
+            signal_details = {
+                "type": "ORDER",
+                "side": parsed.side.value,
+                "entry_price": float(parsed.entry_price),
+                "sl_price": float(parsed.sl_price) if parsed.sl_price else None,
+                "tp1": float(parsed.tp_levels[0]) if len(parsed.tp_levels) > 0 else None,
+                "tp2": float(parsed.tp_levels[1]) if len(parsed.tp_levels) > 1 else None,
+                "tp3": float(parsed.tp_levels[2]) if len(parsed.tp_levels) > 2 else None,
+            }
+        elif isinstance(parsed, ModifierSignalEvent):
+            signal_details = {
+                "type": "MODIFIER",
+                "action": parsed.action,
+                "target_price": float(parsed.target_price) if parsed.target_price else None,
+            }
+
+        formatted.append({
             "id": m.id,
             "message_id": m.message_id,
             "channel_id": m.channel_id,
+            "channel_name": getattr(m, 'channel_name', None) or "Chartoro FX",
             "raw_text": m.raw_text,
-            "parsed_success": m.parsed_success,
+            "parsed_success": m.parsed_success or (signal_details is not None),
             "parser_used": m.parser_used,
+            "signal_details": signal_details,
             "error_reason": m.error_reason,
             "received_at": m.received_at.isoformat()
-        }
-        for m in messages
-    ]
+        })
+
+    return formatted
 
 
 @router.get("/audit")

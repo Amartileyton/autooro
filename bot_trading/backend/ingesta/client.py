@@ -97,25 +97,36 @@ class TelegramIngestionClient:
         if not parsed_success:
             error_reason = "NO_SIGNAL_PATTERN_MATCHED"
 
-        # 4. Auditoría 100% inmutable en SQLite WAL
+        # 4. Obtener nombre del canal
+        channel_name = "Chartoro FX"
+        try:
+            chat = await event.get_chat()
+            if chat and hasattr(chat, 'title') and chat.title:
+                channel_name = chat.title
+        except Exception:
+            pass
+
+        # 5. Auditoría 100% inmutable en SQLite WAL
         await self._persist_raw_message(
             message_id=msg_id,
             channel_id=channel_id,
+            channel_name=channel_name,
             raw_text=raw_text,
             parsed_success=parsed_success,
             parser_used=parser_used,
             error_reason=error_reason
         )
 
-        # 5. Emisión a cola desacoplada para el Risk Engine
+        # 6. Emisión a cola desacoplada para el Risk Engine
         if parsed_event:
-            logger.info(f"Señal extraída con éxito ({parser_used}): {parsed_event}. Emitiendo a cola interna.")
+            logger.info(f"Señal extraída con éxito ({parser_used}) desde '{channel_name}': {parsed_event}. Emitiendo a cola interna.")
             await self.signal_queue.put(parsed_event)
 
     async def _persist_raw_message(
         self,
         message_id: int,
         channel_id: int,
+        channel_name: str,
         raw_text: str,
         parsed_success: bool,
         parser_used: str,
@@ -127,6 +138,7 @@ class TelegramIngestionClient:
                 raw_msg = RawTelegramMessage(
                     message_id=message_id,
                     channel_id=channel_id,
+                    channel_name=channel_name,
                     raw_text=raw_text,
                     parsed_success=parsed_success,
                     parser_used=parser_used,
