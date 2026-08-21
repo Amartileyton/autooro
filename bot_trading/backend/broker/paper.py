@@ -226,25 +226,75 @@ class LocalPaperBroker(BaseBrokerAdapter):
         """Retorna lista de posiciones vivas."""
         return list(self.positions.values())
 
+    async def _fetch_tradingview_gold_price(self) -> Optional[Tuple[Decimal, Decimal, Decimal]]:
+        """
+        Obtiene la cotización real en tiempo real de XAUUSD desde la API de TradingView (OANDA:XAUUSD).
+        Retorna (close, bid, ask).
+        """
+        try:
+            import urllib.request
+            import json
+            payload = {
+                "symbols": {"tickers": ["OANDA:XAUUSD", "TVC:GOLD", "FX_IDC:XAUUSD"]},
+                "columns": ["close", "bid", "ask"]
+            }
+            req = urllib.request.Request(
+                "https://scanner.tradingview.com/cfd/scan",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(req, timeout=2.0).read().decode("utf-8")
+            )
+            data = json.loads(resp)
+            for item in data.get("data", []):
+                vals = item.get("d", [])
+                if vals and len(vals) >= 3 and vals[0] is not None:
+                    close_p = Decimal(str(round(float(vals[0]), 2)))
+                    bid_p = Decimal(str(round(float(vals[1] or vals[0]), 2)))
+                    ask_p = Decimal(str(round(float(vals[2] or vals[0]), 2)))
+                    if close_p > Decimal("1000.00"):
+                        return close_p, bid_p, ask_p
+        except Exception as e:
+            logger.debug(f"Aviso al consultar TradingView API: {e}")
+        return None
+
     async def _tick_generator_loop(self):
         """
-        Bucle de generación de ticks en tiempo real para XAUUSD spot.
+        Bucle de generación de ticks en tiempo real para XAUUSD sincronizado con TradingView (OANDA:XAUUSD).
         """
+        last_sync = 0.0
+
+        # Sincronización inicial directa con TradingView
+        tv_init = await self._fetch_tradingview_gold_price()
+        if tv_init:
+            close_px, bid_px, ask_px = tv_init
+            self._current_mid_price = close_px
+            self._current_bid = bid_px
+            self._current_ask = ask_px
+            logger.info(f"[PAPER BROKER] Cotización en vivo sincronizada con TradingView (OANDA:XAUUSD): Bid={bid_px} | Ask={ask_px}")
+
         while self._is_running:
             try:
-                # Micro-fluctuación sub-segundo (+-0.05)
-                micro_delta = Decimal(str(round(random.uniform(-0.05, 0.05), 2)))
-                mid = self._current_mid_price + micro_delta
-
-                # Spread aleatorio entre 0.10 y 0.20 USD
-                spread_cents = random.uniform(
-                    float(settings.PAPER_SPREAD_MIN_CENTS),
-                    float(settings.PAPER_SPREAD_MAX_CENTS)
-                )
-                half_spread = Decimal(str(round(spread_cents / 2.0, 2)))
-
-                self._current_bid = (mid - half_spread).quantize(Decimal("0.01"))
-                self._current_ask = (mid + half_spread).quantize(Decimal("0.01"))
+                now = time.time()
+                # Sincronizar periódicamente con TradingView cada 2.5 segundos
+                if now - last_sync > 2.5:
+                    tv_quote = await self._fetch_tradingview_gold_price()
+                    if tv_quote:
+                        close_px, bid_px, ask_px = tv_quote
+                        self._current_mid_price = close_px
+                        self._current_bid = bid_px
+                        self._current_ask = ask_px
+                    last_sync = now
+                else:
+                    # Micro-fluctuación sub-segundo (+-0.03) entre llamadas a TradingView
+                    micro_delta = Decimal(str(round(random.uniform(-0.03, 0.03), 2)))
+                    mid = self._current_mid_price + micro_delta
+                    spread_half = Decimal("0.10")
+                    self._current_bid = (mid - spread_half).quantize(Decimal("0.01"))
+                    self._current_ask = (mid + spread_half).quantize(Decimal("0.01"))
 
                 tick = BrokerTick(
                     symbol="XAUUSD",
