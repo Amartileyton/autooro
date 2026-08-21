@@ -183,14 +183,20 @@ async def lifespan(app: FastAPI):
     await broker.subscribe_ticks("XAUUSD", on_tick_received)
 
     # 7. Iniciar Bot Administrativo en Telegram (Aiogram)
-    telegram_bot = TelegramAdminBot(state_machine=state_machine, broker=broker)
-    app_state["telegram_bot"] = telegram_bot
-    await telegram_bot.start()
+    try:
+        telegram_bot = TelegramAdminBot(state_machine=state_machine, broker=broker)
+        app_state["telegram_bot"] = telegram_bot
+        await telegram_bot.start()
+    except Exception as e:
+        logger.warning(f"Aviso al iniciar Bot Admin de Telegram: {e}")
 
     # 8. Iniciar Cliente MTProto Telethon
-    telegram_client = TelegramIngestionClient(signal_queue=signal_queue)
-    app_state["telegram_client"] = telegram_client
-    await telegram_client.start()
+    try:
+        telegram_client = TelegramIngestionClient(signal_queue=signal_queue)
+        app_state["telegram_client"] = telegram_client
+        await telegram_client.start()
+    except Exception as e:
+        logger.warning(f"Aviso al iniciar Telethon MTProto: {e}")
 
     # 9. Iniciar Worker Consumidor de Señales
     consumer_task = asyncio.create_task(

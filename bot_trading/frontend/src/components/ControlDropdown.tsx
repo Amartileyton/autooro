@@ -9,6 +9,7 @@ interface ControlDropdownProps {
   onToggleAutoExecution: () => void;
   onPanicClose: () => void;
   onInjectTestSignal: () => void;
+  onOpenAudit?: () => void;
 }
 
 export const ControlDropdown: React.FC<ControlDropdownProps> = ({
@@ -20,6 +21,7 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
   onToggleAutoExecution,
   onPanicClose,
   onInjectTestSignal,
+  onOpenAudit,
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -47,8 +49,8 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
     >
       {/* Header del Dropdown */}
       <div className="flex justify-between items-center pb-2 border-b border-outline-variant/60">
-        <span className="text-label-sm font-bold uppercase tracking-wider text-amber-gold flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[16px]">tune</span>
+        <span className="text-label-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[16px] text-slate-400">tune</span>
           Controles del Sistema
         </span>
         <button
@@ -59,59 +61,68 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
         </button>
       </div>
 
-      {/* 1. Switch Ingesta Telegram */}
-      <div className="flex items-center justify-between p-2.5 rounded bg-surface border border-outline-variant/50">
+      {/* 1. Ingestión de Señales Telegram */}
+      <div className="flex justify-between items-center p-2 rounded bg-surface border border-outline-variant/40">
         <div>
-          <div className="text-[12px] font-bold flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[15px] text-primary">cell_tower</span>
-            Ingesta Telegram
-          </div>
-          <div className="text-[10px] text-outline">Captura de canales en vivo</div>
+          <div className="text-[11px] font-bold text-on-surface">Escucha Telegram</div>
+          <div className="text-[10px] text-outline">Recepción MTProto de canales</div>
         </div>
         <button
           onClick={onToggleIngestion}
-          className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded border transition-colors ${
+          className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all border ${
             ingestionEnabled
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30'
-              : 'bg-error-container/20 text-error border-error/40 hover:bg-error-container/30'
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+              : 'bg-error-container/20 text-error border-error/40'
           }`}
         >
           {ingestionEnabled ? 'ACTIVA (ON)' : 'PAUSADA (OFF)'}
         </button>
       </div>
 
-      {/* 2. Switch Auto-Ejecución */}
-      <div className="flex items-center justify-between p-2.5 rounded bg-surface border border-outline-variant/50">
+      {/* 2. Auto-Ejecución */}
+      <div className="flex justify-between items-center p-2 rounded bg-surface border border-outline-variant/40">
         <div>
-          <div className="text-[12px] font-bold flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[15px] text-amber-gold">smart_toy</span>
-            Auto-Ejecución
-          </div>
-          <div className="text-[10px] text-outline">Apertura automática de slots</div>
+          <div className="text-[11px] font-bold text-on-surface">Auto-Ejecución</div>
+          <div className="text-[10px] text-outline">Apertura automática de órdenes</div>
         </div>
         <button
           onClick={onToggleAutoExecution}
-          className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded border transition-colors ${
+          className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all border ${
             autoExecutionEnabled
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30'
-              : 'bg-error-container/20 text-error border-error/40 hover:bg-error-container/30'
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+              : 'bg-error-container/20 text-error border-error/40'
           }`}
         >
           {autoExecutionEnabled ? 'ACTIVA (ON)' : 'PAUSADA (OFF)'}
         </button>
       </div>
 
-      {/* 3. Inyección de Prueba */}
-      <button
-        onClick={() => {
-          onInjectTestSignal();
-          onClose();
-        }}
-        className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-surface hover:bg-surface-container-high border border-outline-variant text-[11px] font-mono font-bold rounded text-on-surface transition-colors"
-      >
-        <span className="material-symbols-outlined text-[16px] text-amber-gold">send</span>
-        Inyectar Señal de Test (BUY XAUUSD)
-      </button>
+      {/* 3. Inyección de Prueba y Auditoría */}
+      <div className="space-y-1.5">
+        <button
+          onClick={() => {
+            onInjectTestSignal();
+            onClose();
+          }}
+          className="w-full flex items-center justify-center gap-2 py-1.5 px-3 bg-surface hover:bg-surface-container-high border border-outline-variant text-[11px] font-mono font-bold rounded text-slate-200 transition-colors"
+        >
+          <span className="material-symbols-outlined text-[15px] text-slate-400">send</span>
+          Inyectar Señal de Test (BUY XAUUSD)
+        </button>
+
+        {onOpenAudit && (
+          <button
+            onClick={() => {
+              onOpenAudit();
+              onClose();
+            }}
+            className="w-full flex items-center justify-center gap-2 py-1.5 px-3 bg-surface hover:bg-surface-container-high border border-outline-variant text-[11px] font-mono font-medium rounded text-slate-300 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[15px] text-slate-400">receipt_long</span>
+            Ver Registro de Auditoría y Logs
+          </button>
+        )}
+      </div>
 
       {/* 4. Kill Switch Panic Stop */}
       <div className="pt-2 border-t border-outline-variant/60">

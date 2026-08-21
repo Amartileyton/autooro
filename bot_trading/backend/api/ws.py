@@ -59,21 +59,29 @@ async def websocket_live_stream(websocket: WebSocket):
 
     try:
         # Enviar snapshot inicial inmediatamente
+        from backend.config import settings
+        has_token = bool(
+            settings.CTRADER_ACCESS_TOKEN 
+            and settings.CTRADER_ACCESS_TOKEN.strip() 
+            and settings.CTRADER_ACCESS_TOKEN.lower() != "none" 
+            and settings.BROKER_TYPE == "CTRADER"
+        )
         acc = await broker.get_account_info()
         tick = await broker.get_current_tick("XAUUSD")
         
         init_payload = {
             "type": "INITIAL_SNAPSHOT",
+            "has_ctrader_token": has_token,
             "xauusd_spot": {
                 "bid": float(tick.bid),
                 "ask": float(tick.ask),
                 "timestamp": tick.timestamp
             },
             "account": {
-                "balance": float(acc.balance),
-                "equity": float(acc.equity),
-                "margin_used": float(acc.margin_used),
-                "free_margin": float(acc.free_margin)
+                "balance": float(acc.balance) if has_token else None,
+                "equity": float(acc.equity) if has_token else None,
+                "margin_used": float(acc.margin_used) if has_token else None,
+                "free_margin": float(acc.free_margin) if has_token else None
             },
             "slots": [
                 {

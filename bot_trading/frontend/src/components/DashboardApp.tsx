@@ -5,6 +5,7 @@ import { SignalFeed, type TradeLifecycleCardItem } from './SignalFeed';
 import { LiveChart } from './LiveChart';
 import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
+import { SystemHealthModal } from './SystemHealthModal';
 
 const getApiBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location.hostname) {
@@ -23,25 +24,30 @@ const getWsUrl = () => {
 
 const API_KEY = 'sec_xauusd_trading_key_2026';
 
+// 4 Slots limpios preparados para recibir señales reales
+const EMPTY_SLOTS: SlotTradeData[] = [
+  { slot_id: 1, is_active: false },
+  { slot_id: 2, is_active: false },
+  { slot_id: 3, is_active: false },
+  { slot_id: 4, is_active: false },
+];
+
 export const DashboardApp: React.FC = () => {
-  const [xauusdPrice, setXauusdPrice] = useState<number>(2345.50);
-  const [balance, setBalance] = useState<number>(10000.00);
+  const [xauusdPrice, setXauusdPrice] = useState<number>(4587.50);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [hasLiveBalance, setHasLiveBalance] = useState<boolean>(false);
   const [floatingPnl, setFloatingPnl] = useState<number>(0.00);
   const [botActive, setBotActive] = useState<boolean>(true);
   const [ingestionEnabled, setIngestionEnabled] = useState<boolean>(true);
   const [autoExecutionEnabled, setAutoExecutionEnabled] = useState<boolean>(true);
   
-  const [slots, setSlots] = useState<SlotTradeData[]>([
-    { slot_id: 1, is_active: false },
-    { slot_id: 2, is_active: false },
-    { slot_id: 3, is_active: false },
-    { slot_id: 4, is_active: false },
-  ]);
+  const [slots, setSlots] = useState<SlotTradeData[]>(EMPTY_SLOTS);
 
   const [trades, setTrades] = useState<TradeLifecycleCardItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+  const [isHealthModalOpen, setIsHealthModalOpen] = useState<boolean>(false);
   const [isControlDropdownOpen, setIsControlDropdownOpen] = useState<boolean>(false);
   const [latencyMs, setLatencyMs] = useState<number>(12);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
@@ -55,8 +61,10 @@ export const DashboardApp: React.FC = () => {
       const stateRes = await fetch(`${baseUrl}/api/v1/state`);
       if (stateRes.ok) {
         const stateData = await stateRes.json();
-        setXauusdPrice(stateData.xauusd_spot?.ask || 2345.50);
-        setBalance(stateData.account?.balance || 10000.00);
+        setXauusdPrice(stateData.xauusd_spot?.ask || 4587.50);
+        const hasToken = Boolean(stateData.has_ctrader_token);
+        setHasLiveBalance(hasToken);
+        setBalance(hasToken ? stateData.account?.balance : null);
         setIngestionEnabled(stateData.ingestion_enabled);
         setAutoExecutionEnabled(stateData.auto_execution_enabled);
         setBotActive(stateData.ingestion_enabled);
@@ -123,8 +131,14 @@ export const DashboardApp: React.FC = () => {
               setXauusdPrice(payload.xauusd_spot.ask);
             }
 
+            if (payload.has_ctrader_token !== undefined) {
+              setHasLiveBalance(Boolean(payload.has_ctrader_token));
+            }
+
             if (payload.account) {
-              setBalance(payload.account.balance);
+              if (payload.account.balance !== undefined && payload.account.balance !== null) {
+                setBalance(payload.account.balance);
+              }
             }
 
             if (payload.slots) {
@@ -149,6 +163,11 @@ export const DashboardApp: React.FC = () => {
               setFloatingPnl(totalPnl);
             }
           }
+
+          // Evento de Trade Recibido / Actualizado
+          if (payload.type === 'TRADE_EVENT' || payload.type === 'SIGNAL_PARSED') {
+            fetchInitialData();
+          }
         } catch (e) {
           console.error('Error parseando WebSocket payload:', e);
         }
@@ -156,12 +175,12 @@ export const DashboardApp: React.FC = () => {
 
       ws.onclose = () => {
         setWsConnected(false);
-        console.warn('WebSocket cerrado. Reintentando en 3s...');
+        console.warn('WebSocket desconectado. Reintentando en 3s...');
         reconnectTimer = setTimeout(connectWebSocket, 3000);
       };
 
       ws.onerror = (err) => {
-        console.warn('Error en WebSocket:', err);
+        console.error('Error en WebSocket Live Stream:', err);
         ws.close();
       };
     };
@@ -177,11 +196,10 @@ export const DashboardApp: React.FC = () => {
     };
   }, []);
 
-  // Handlers de Control
+  // 3. Handlers para el Menú de Controles
   const handleToggleIngestion = async () => {
-    const endpoint = ingestionEnabled ? '/api/v1/control/pause' : '/api/v1/control/resume';
     try {
-      const res = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/ingestion/toggle`, {
         method: 'POST',
         headers: { 'X-API-KEY': API_KEY },
       });
@@ -219,6 +237,8 @@ export const DashboardApp: React.FC = () => {
       if (res.ok) {
         setIngestionEnabled(false);
         setBotActive(false);
+        setSlots((prev) => prev.map((s) => ({ slot_id: s.slot_id, is_active: false })));
+        setFloatingPnl(0);
         await fetchInitialData();
       }
     } catch (err) {
@@ -228,6 +248,9 @@ export const DashboardApp: React.FC = () => {
 
   const handleCloseSlot = async (slotId: number) => {
     try {
+      setSlots((prev) =>
+        prev.map((s) => (s.slot_id === slotId ? { slot_id: slotId, is_active: false } : s))
+      );
       const res = await fetch(`${getApiBaseUrl()}/api/v1/control/close-slot/${slotId}`, {
         method: 'POST',
         headers: { 'X-API-KEY': API_KEY },
@@ -242,22 +265,13 @@ export const DashboardApp: React.FC = () => {
 
   const handleInjectTestSignal = async () => {
     try {
-      await fetch(`${getApiBaseUrl()}/api/v1/signal/test`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/signals/inject-test`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-KEY': API_KEY,
-        },
-        body: JSON.stringify({
-          side: 'BUY',
-          entry_price: xauusdPrice,
-          sl_price: xauusdPrice - 8.50,
-          tp1: xauusdPrice + 5.00,
-          tp2: xauusdPrice + 10.00,
-          tp3: xauusdPrice + 15.00,
-        }),
+        headers: { 'X-API-KEY': API_KEY },
       });
-      await fetchInitialData();
+      if (res.ok) {
+        await fetchInitialData();
+      }
     } catch (err) {
       console.error('Error al inyectar señal de prueba:', err);
     }
@@ -285,14 +299,15 @@ export const DashboardApp: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
-      {/* 1. Header de Telemetría con botón de controles */}
+    <div className="flex flex-col h-screen w-full overflow-hidden bg-background">
+      {/* 1. Header de Telemetría con botón de controles y punto de diagnóstico de APIs */}
       <HeaderTelemetry
         xauusdPrice={xauusdPrice}
         balance={balance}
-        floatingPnl={floatingPnl}
+        hasLiveBalance={hasLiveBalance}
         botActive={botActive}
         onOpenSettings={() => setIsControlDropdownOpen(!isControlDropdownOpen)}
+        onOpenDiagnostics={() => setIsHealthModalOpen(true)}
       />
 
       {/* Desplegable de Control y Kill Switch anclado al Header */}
@@ -305,50 +320,31 @@ export const DashboardApp: React.FC = () => {
         onToggleAutoExecution={handleToggleAutoExecution}
         onPanicClose={handlePanicClose}
         onInjectTestSignal={handleInjectTestSignal}
+        onOpenAudit={handleOpenAuditModal}
       />
 
-      {/* 2. Cuerpo Principal */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Barra Lateral de Navegación y Feed de Señales */}
-        <nav className="hidden md:flex flex-col h-full w-84 bg-surface-container border-r border-outline-variant shrink-0" style={{ width: '340px' }}>
-          <div className="p-3 border-b border-outline-variant flex justify-between items-center">
-            <div>
-              <div className="text-label-md font-bold text-primary truncate">XAUUSD-CORE-01</div>
-              <div className="text-[11px] text-outline flex items-center gap-1.5 mt-0.5 font-mono">
-                <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-primary pulse-live' : 'bg-error'}`} />
-                {wsConnected ? 'Protobuf/WS Live' : 'Reconectando WS...'}
-              </div>
-            </div>
-            <button
-              onClick={handleOpenAuditModal}
-              title="Ver Auditoría y Logs"
-              className="p-1.5 rounded hover:bg-surface-container-highest text-outline hover:text-primary transition-colors flex items-center gap-1 border border-outline-variant/40"
-            >
-              <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-              <span className="text-[10px] font-mono">Auditoría</span>
-            </button>
-          </div>
-
-          {/* Feed de Señales de Telegram en Vivo */}
+      {/* 2. Cuerpo Principal con 3 Columnas Proporcionales Perfectamente Distribuidas */}
+      <div className="flex flex-1 w-full overflow-hidden">
+        {/* Columna 1 (Izquierda): Registro de Trades */}
+        <aside className="w-[310px] xl:w-[340px] flex flex-col h-full bg-surface-container border-r border-outline-variant shrink-0 overflow-hidden">
           <div className="flex-1 overflow-hidden">
             <SignalFeed trades={trades} />
           </div>
-        </nav>
+        </aside>
 
-        {/* Workspace Central Ampliado */}
-        <main className="flex-1 p-2 flex flex-col gap-2 overflow-hidden bg-background">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 h-full">
-            <PositionMatrix slots={slots} onCloseSlot={handleCloseSlot} />
-            <LiveChart currentPrice={xauusdPrice} activeSlots={slots} />
-          </div>
+        {/* Columna 2 (Centro): Matriz de Posiciones con Tarjetas Enriquecidas */}
+        <section className="w-[330px] xl:w-[360px] p-2 flex flex-col h-full shrink-0 border-r border-outline-variant/60 bg-background overflow-hidden min-h-0">
+          <PositionMatrix slots={slots} currentPrice={xauusdPrice} onCloseSlot={handleCloseSlot} />
+        </section>
+
+        {/* Columna 3 (Derecha): Gráfico de TradingView Ampliado */}
+        <main className="flex-1 p-2 flex flex-col h-full overflow-hidden bg-background">
+          <LiveChart currentPrice={xauusdPrice} activeSlots={slots} />
         </main>
       </div>
 
-      {/* 3. Footer */}
-      <footer className="w-full z-40 flex justify-between items-center px-4 py-1 h-7 bg-surface-container-lowest border-t border-outline-variant shrink-0">
-        <div className="text-label-sm font-bold text-outline">
-          © 2026 QUANTUM GOLD SYSTEMS — XAUUSD AUTONOMOUS ENGINE
-        </div>
+      {/* 3. Footer Limpio sin textos de branding */}
+      <footer className="w-full z-40 flex justify-end items-center px-4 py-1 h-7 bg-surface-container-lowest border-t border-outline-variant shrink-0">
         <div className="flex gap-6 font-mono text-[11px] text-outline">
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-green" /> Status: Nominal
@@ -364,8 +360,19 @@ export const DashboardApp: React.FC = () => {
       <AuditLogsModal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
-        logs={auditLogs}
-        history={tradeHistory}
+        auditLogs={auditLogs}
+        tradeHistory={tradeHistory}
+      />
+
+      {/* Modal de Diagnóstico de APIs & Salud del Servidor */}
+      <SystemHealthModal
+        isOpen={isHealthModalOpen}
+        onClose={() => setIsHealthModalOpen(false)}
+        wsConnected={wsConnected}
+        latencyMs={latencyMs}
+        botActive={botActive}
+        hasCtraderToken={hasLiveBalance}
+        xauusdPrice={xauusdPrice}
       />
     </div>
   );

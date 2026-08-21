@@ -25,8 +25,10 @@ class LocalPaperBroker(BaseBrokerAdapter):
         self.leverage: Decimal = settings.LEVERAGE
         self.contract_size: Decimal = settings.CONTRACT_SIZE
         
-        # Precio actual de simulación
+        # Precio actual de simulación (sincronizado con mercado real de Oro)
         self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE
+        if self._current_mid_price < Decimal("3000.00"):
+            self._current_mid_price = Decimal("4544.50")
         self._current_bid: Decimal = self._current_mid_price - (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         self._current_ask: Decimal = self._current_mid_price + (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         
@@ -189,26 +191,60 @@ class LocalPaperBroker(BaseBrokerAdapter):
         """Retorna lista de posiciones vivas."""
         return list(self.positions.values())
 
+    async def _fetch_live_gold_price(self) -> Optional[Decimal]:
+        """Obtiene el precio spot real del oro en vivo vía API de mercado."""
+        try:
+            import urllib.request
+            import json
+            req = urllib.request.Request(
+                'https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT',
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=1.5).read())
+            data = json.loads(resp)
+            price_val = Decimal(str(round(float(data['price']), 2)))
+            if price_val > Decimal("1000.00"):
+                return price_val
+        except Exception:
+            pass
+        return None
+
     async def _tick_generator_loop(self):
         """
-        Bucle de generación de ticks para simular el mercado de XAUUSD.
-        Simula micro-fluctuaciones realistas y deriva browniana con spread de 10 a 25 cents.
+        Bucle de generación de ticks para simular el mercado de XAUUSD sincronizado con el mercado en vivo.
         """
+        last_sync = 0.0
+
+        # Sincronización inicial
+        live_init = await self._fetch_live_gold_price()
+        if live_init:
+            self._current_mid_price = live_init
+            logger.info(f"[PAPER BROKER] Sincronizado precio en vivo con Spot Gold de mercado: ${self._current_mid_price:.2f}")
+
         while self._is_running:
             try:
-                # Fluctuación de precio (-0.30 a +0.30 con bias)
-                delta = Decimal(str(round(random.gauss(0.0, 0.12), 2)))
-                self._current_mid_price = max(Decimal("1000.00"), self._current_mid_price + delta)
+                now = time.time()
+                # Sincronizar con el precio real cada 2 segundos
+                if now - last_sync > 2.0:
+                    real_px = await self._fetch_live_gold_price()
+                    if real_px:
+                        self._current_mid_price = real_px
+                    last_sync = now
 
-                # Spread aleatorio entre 0.10 y 0.25 USD
+                # Micro-fluctuación sub-segundo (+-0.05)
+                micro_delta = Decimal(str(round(random.uniform(-0.05, 0.05), 2)))
+                mid = self._current_mid_price + micro_delta
+
+                # Spread aleatorio entre 0.10 y 0.20 USD
                 spread_cents = random.uniform(
                     float(settings.PAPER_SPREAD_MIN_CENTS),
                     float(settings.PAPER_SPREAD_MAX_CENTS)
                 )
                 half_spread = Decimal(str(round(spread_cents / 2.0, 2)))
 
-                self._current_bid = (self._current_mid_price - half_spread).quantize(Decimal("0.01"))
-                self._current_ask = (self._current_mid_price + half_spread).quantize(Decimal("0.01"))
+                self._current_bid = (mid - half_spread).quantize(Decimal("0.01"))
+                self._current_ask = (mid + half_spread).quantize(Decimal("0.01"))
 
                 tick = BrokerTick(
                     symbol="XAUUSD",
@@ -235,8 +271,8 @@ class LocalPaperBroker(BaseBrokerAdapter):
                     except Exception as ex:
                         logger.error(f"Error en callback de tick: {ex}")
 
-                # Intervalo de tick (entre 200ms y 500ms para alta fidelidad)
-                await asyncio.sleep(random.uniform(0.2, 0.5))
+                # Intervalo de tick (cada 300ms)
+                await asyncio.sleep(0.3)
 
             except asyncio.CancelledError:
                 break

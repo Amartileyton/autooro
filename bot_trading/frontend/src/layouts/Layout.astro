@@ -68,6 +68,41 @@ const { title } = Astro.props;
 			linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 	}
 
+	/* Smoke / Misty pulsing dot animation */
+	.smoke-pulse-green {
+		box-shadow: 0 0 6px #10b981, 0 0 14px rgba(16, 185, 129, 0.7), 0 0 24px rgba(16, 185, 129, 0.4), 0 0 36px rgba(16, 185, 129, 0.2);
+		animation: smoke-glow-green 2.5s ease-in-out infinite;
+	}
+	@keyframes smoke-glow-green {
+		0%, 100% {
+			transform: scale(1);
+			box-shadow: 0 0 6px #10b981, 0 0 14px rgba(16, 185, 129, 0.7), 0 0 24px rgba(16, 185, 129, 0.4), 0 0 36px rgba(16, 185, 129, 0.2);
+			opacity: 1;
+		}
+		50% {
+			transform: scale(1.15);
+			box-shadow: 0 0 10px #34d399, 0 0 20px rgba(52, 211, 153, 0.85), 0 0 34px rgba(16, 185, 129, 0.55), 0 0 48px rgba(16, 185, 129, 0.25);
+			opacity: 0.85;
+		}
+	}
+
+	.smoke-pulse-red {
+		box-shadow: 0 0 8px #ef4444, 0 0 18px rgba(239, 68, 68, 0.8), 0 0 30px rgba(239, 68, 68, 0.5), 0 0 44px rgba(239, 68, 68, 0.25);
+		animation: smoke-glow-red 2s ease-in-out infinite;
+	}
+	@keyframes smoke-glow-red {
+		0%, 100% {
+			transform: scale(1);
+			box-shadow: 0 0 8px #ef4444, 0 0 18px rgba(239, 68, 68, 0.8), 0 0 30px rgba(239, 68, 68, 0.5), 0 0 44px rgba(239, 68, 68, 0.25);
+			opacity: 1;
+		}
+		50% {
+			transform: scale(1.2);
+			box-shadow: 0 0 12px #f87171, 0 0 26px rgba(248, 113, 113, 0.95), 0 0 40px rgba(239, 68, 68, 0.65), 0 0 56px rgba(239, 68, 68, 0.35);
+			opacity: 0.9;
+		}
+	}
+
 	/* Ocultar marcas de agua y branding */
 	.tradingview-widget-copyright {
 		display: none !important;

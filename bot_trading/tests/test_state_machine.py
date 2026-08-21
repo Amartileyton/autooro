@@ -32,19 +32,20 @@ async def test_full_trade_lifecycle_trailing_milestones():
     assert sm.active_slots[1].status == TradeStatus.OPEN
     assert sm.active_slots[1].current_sl == Decimal("2330.00")
 
-    # 2. Tick alcanza TP1 (2350.50) -> SL debe moverse a TP1 (2350.00) y estado a TP1_HIT
+    # 2. Tick alcanza TP1 (2350.50) -> Opción B: Cierra 50% parcial y mueve SL a Break-Even (2340.00)
     tick_tp1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2350.50"), ask=Decimal("2350.70"), timestamp=1.0)
     await sm.on_market_tick(tick_tp1)
 
     assert sm.active_slots[1].status == TradeStatus.TP1_HIT
-    assert sm.active_slots[1].current_sl == Decimal("2350.00")
+    assert sm.active_slots[1].current_sl == Decimal("2340.00")
+    assert sm.active_slots[1].lot_size == Decimal("0.25")
 
-    # 3. Tick alcanza TP2 (2361.00) -> SL debe moverse a TP2 (2360.00) y estado a TP2_HIT
+    # 3. Tick alcanza TP2 (2361.00) -> SL debe moverse a TP1 (2350.00) y estado a TP2_HIT
     tick_tp2 = BrokerTick(symbol="XAUUSD", bid=Decimal("2361.00"), ask=Decimal("2361.20"), timestamp=2.0)
     await sm.on_market_tick(tick_tp2)
 
     assert sm.active_slots[1].status == TradeStatus.TP2_HIT
-    assert sm.active_slots[1].current_sl == Decimal("2360.00")
+    assert sm.active_slots[1].current_sl == Decimal("2350.00")
 
     # 4. Tick alcanza TP3 (2370.50) -> Posición debe cerrarse completamente con CLOSED_TP
     tick_tp3 = BrokerTick(symbol="XAUUSD", bid=Decimal("2370.50"), ask=Decimal("2370.70"), timestamp=3.0)

@@ -280,38 +280,49 @@ class TradeStateMachine:
                 await self._close_slot(slot_id, close_price=price, status=TradeStatus.CLOSED_SL, reason=f"SL_HIT ({trade.current_sl})")
                 continue
 
-            # 2. Comprobar HITO TP1 (STATE 0 -> STATE 1)
+            # 2. Comprobar HITO TP1 (STATE 0 -> STATE 1) - CIERRE PARCIAL DEL 50% + SL A BREAK-EVEN
             if trade.status == TradeStatus.OPEN:
                 is_tp1_hit = (price >= trade.tp1) if trade.side == OrderSide.BUY else (price <= trade.tp1)
                 if is_tp1_hit:
                     trade.status = TradeStatus.TP1_HIT
-                    new_sl = trade.tp1  # Mover SL a TP1 (o Break-Even asegurado)
+                    
+                    # Cierre parcial del 50% del volumen
+                    half_lot = (trade.lot_size / Decimal("2.0")).quantize(Decimal("0.01"))
+                    if half_lot >= Decimal("0.01"):
+                        partial_pnl = abs(price - trade.entry_price) * half_lot * Decimal("100.0")
+                        trade.lot_size = trade.lot_size - half_lot
+                        logger.info(f"Slot {slot_id} [CIERRE PARCIAL 50%]: Cerrados {half_lot} lotes @ {price}. Beneficio asegurado: +${partial_pnl:.2f}")
+                    
+                    # Mover Stop Loss del 50% restante a PRECIO DE ENTRADA (BREAK-EVEN)
+                    new_sl = trade.entry_price
                     trade.current_sl = new_sl
                     
                     # Modificar en broker instantáneamente
                     await self.broker.modify_order(trade.ticket_id, new_sl=new_sl)
                     await self._update_trade_in_db(trade)
                     
-                    logger.info(f"Slot {slot_id} [HITO TP1 ALCANZADO]: SL movido a {new_sl}")
-                    await self.emit_alert("TP1_HIT", {
+                    logger.info(f"Slot {slot_id} [HITO TP1 ALCANZADO]: SL movido a Break-Even (${new_sl}). 50% restante corriendo libre de riesgo.")
+                    await self.emit_alert("TP1_PARTIAL_CLOSE", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,
                         "new_sl": float(new_sl),
-                        "market_price": float(price)
+                        "market_price": float(price),
+                        "closed_lots": float(half_lot),
+                        "remaining_lots": float(trade.lot_size)
                     })
 
-            # 3. Comprobar HITO TP2 (STATE 1 -> STATE 2)
+            # 3. Comprobar HITO TP2 (STATE 1 -> STATE 2) - MOVER SL DEL RESTO A TP1
             if trade.status == TradeStatus.TP1_HIT and trade.tp2:
                 is_tp2_hit = (price >= trade.tp2) if trade.side == OrderSide.BUY else (price <= trade.tp2)
                 if is_tp2_hit:
                     trade.status = TradeStatus.TP2_HIT
-                    new_sl = trade.tp2  # Mover SL a TP2
+                    new_sl = trade.tp1  # Asegurar ganancias de TP1 en el 50% restante
                     trade.current_sl = new_sl
                     
                     await self.broker.modify_order(trade.ticket_id, new_sl=new_sl)
                     await self._update_trade_in_db(trade)
                     
-                    logger.info(f"Slot {slot_id} [HITO TP2 ALCANZADO]: SL movido a {new_sl}")
+                    logger.info(f"Slot {slot_id} [HITO TP2 ALCANZADO]: SL del 50% restante subido a TP1 ({new_sl})")
                     await self.emit_alert("TP2_HIT", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,

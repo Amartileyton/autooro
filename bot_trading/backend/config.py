@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     INITIAL_PAPER_BALANCE: Decimal = Field(default=Decimal("10000.00"), description="Balance inicial para Paper Broker")
     PAPER_SPREAD_MIN_CENTS: Decimal = Field(default=Decimal("0.10"), description="Spread mínimo simulado en USD")
     PAPER_SPREAD_MAX_CENTS: Decimal = Field(default=Decimal("0.25"), description="Spread máximo simulado en USD")
-    INITIAL_XAUUSD_PRICE: Decimal = Field(default=Decimal("2345.50"), description="Precio inicial de simulación de XAUUSD")
+    INITIAL_XAUUSD_PRICE: Decimal = Field(default=Decimal("4544.50"), description="Precio inicial de mercado de XAUUSD")
 
     # cTrader Open API Credentials (para modo live)
     CTRADER_CLIENT_ID: str = Field(default="", description="cTrader Open API Client ID")
