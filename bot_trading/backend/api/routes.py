@@ -23,10 +23,10 @@ async def verify_auth_or_key(
 
 
 class TestSignalRequest(BaseModel):
-    side: str  # BUY o SELL
-    entry_price: Decimal
+    side: str = "BUY"  # BUY o SELL
+    entry_price: Optional[Decimal] = None
     sl_price: Optional[Decimal] = None
-    tp1: Decimal
+    tp1: Optional[Decimal] = None
     tp2: Optional[Decimal] = None
     tp3: Optional[Decimal] = None
 
@@ -315,25 +315,49 @@ async def inject_test_signal(req: TestSignalRequest):
     """Inyecta una señal de prueba en la cola interna para verificar la ejecución."""
     from backend.main import app_state
     queue = app_state["signal_queue"]
+    broker = app_state["broker"]
 
-    side_enum = SchemaOrderSide.BUY if req.side.upper() == "BUY" else SchemaOrderSide.SELL
-    tp_list = [req.tp1]
-    if req.tp2:
-        tp_list.append(req.tp2)
-    if req.tp3:
-        tp_list.append(req.tp3)
+    tick = await broker.get_current_tick("XAUUSD")
+    is_buy = req.side.upper() == "BUY"
+    market_px = tick.ask if is_buy else tick.bid
+
+    entry_px = req.entry_price or market_px
+    if is_buy:
+        sl_px = req.sl_price or (entry_px - Decimal("10.00"))
+        tp1_px = req.tp1 or (entry_px + Decimal("5.00"))
+        tp2_px = req.tp2 or (entry_px + Decimal("15.00"))
+        tp3_px = req.tp3 or (entry_px + Decimal("25.00"))
+    else:
+        sl_px = req.sl_price or (entry_px + Decimal("10.00"))
+        tp1_px = req.tp1 or (entry_px - Decimal("5.00"))
+        tp2_px = req.tp2 or (entry_px - Decimal("15.00"))
+        tp3_px = req.tp3 or (entry_px - Decimal("25.00"))
+
+    side_enum = SchemaOrderSide.BUY if is_buy else SchemaOrderSide.SELL
+    tp_list = [tp1_px, tp2_px, tp3_px]
 
     event = TradingSignalEvent(
         asset="XAUUSD",
         side=side_enum,
-        entry_price=req.entry_price,
-        sl_price=req.sl_price,
+        entry_price=entry_px,
+        sl_price=sl_px,
         tp_levels=tp_list,
-        requires_dynamic_sl=req.sl_price is None,
-        raw_text=f"MANUAL TEST: {req.side} XAUUSD @ {req.entry_price}",
+        requires_dynamic_sl=False,
+        raw_text=f"MANUAL TEST: {req.side} XAUUSD @ {entry_px}",
         message_id=999999,
         channel_id=0
     )
 
     await queue.put(event)
-    return {"status": "success", "message": "Señal de prueba inyectada en la cola de ejecución", "signal": event.dict()}
+    return {
+        "status": "success",
+        "message": f"Señal de prueba {side_enum.value} XAUUSD @ {entry_px} inyectada en la cola",
+        "signal": {
+            "side": side_enum.value,
+            "entry_price": float(entry_px),
+            "sl_price": float(sl_px),
+            "tp1": float(tp1_px),
+            "tp2": float(tp2_px),
+            "tp3": float(tp3_px)
+        }
+    }

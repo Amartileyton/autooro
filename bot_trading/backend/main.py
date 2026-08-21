@@ -94,20 +94,21 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # 3. Comprobar Slippage Zero-Tolerance
-            is_slippage_ok, market_price, diff = await risk_engine.check_slippage(event.entry_price, event.side)
-            if not is_slippage_ok:
-                logger.warning(
-                    f"Señal RECHAZADA por Slippage: Entrada={event.entry_price}, "
-                    f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
-                )
-                await state_machine.emit_alert("SIGNAL_REJECTED", {
-                    "reason": "REJECTED_PRICE_MISMATCH",
-                    "diff": float(diff),
-                    "market_price": float(market_price)
-                })
-                queue.task_done()
-                continue
+            # 3. Comprobar Slippage Zero-Tolerance (omitido para señales manuales de prueba)
+            if event.message_id != 999999:
+                is_slippage_ok, market_price, diff = await risk_engine.check_slippage(event.entry_price, event.side)
+                if not is_slippage_ok:
+                    logger.warning(
+                        f"Señal RECHAZADA por Slippage: Entrada={event.entry_price}, "
+                        f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
+                    )
+                    await state_machine.emit_alert("SIGNAL_REJECTED", {
+                        "reason": "REJECTED_PRICE_MISMATCH",
+                        "diff": float(diff),
+                        "market_price": float(market_price)
+                    })
+                    queue.task_done()
+                    continue
 
             # 3. Calcular Stop Loss (explícito o dinámico)
             sl = event.sl_price
@@ -128,6 +129,22 @@ async def signal_consumer_worker(
                 tp_levels=event.tp_levels,
                 raw_signal_id=event.message_id
             )
+
+            # 6. Notificar inmediatamente a clientes WebSocket
+            if trade:
+                try:
+                    from backend.api.ws import manager, broadcast_tick_update
+                    tick = await broker.get_current_tick("XAUUSD")
+                    acc = await broker.get_account_info()
+                    await broadcast_tick_update(tick, acc, state_machine.active_slots)
+                    await manager.broadcast({
+                        "type": "TRADE_EVENT",
+                        "event": "ORDER_OPENED",
+                        "slot_id": slot_id,
+                        "ticket_id": trade.ticket_id
+                    })
+                except Exception as ws_err:
+                    logger.warning(f"Aviso al emitir WebSocket de orden abierta: {ws_err}")
 
             queue.task_done()
 
