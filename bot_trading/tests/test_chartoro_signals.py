@@ -50,6 +50,34 @@ def test_parse_chartoro_buy_full_signal():
     assert event.requires_dynamic_sl is False
 
 
+def test_parse_chartoro_buy_signal_with_sl_after_tps():
+    text = """❗️SIGNAL ALERT❗️
+
+📊#XAUUSD📊
+
+Direction:📈 #BUY
+Entry Point: 4590.47
+
+🏆TP1: 4593.47
+🏆TP2: 4600.47
+🏆TP3: 4610.47
+
+⛔️ Stop Loss (SL): 4580.47
+
+⚠️ Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!
+
+Analysis:
+Same as the original idea"""
+    event = parse_signal(text)
+    assert isinstance(event, TradingSignalEvent)
+    assert event.asset == "XAUUSD"
+    assert event.side == OrderSide.BUY
+    assert event.entry_price == Decimal("4590.47")
+    assert event.sl_price == Decimal("4580.47")
+    assert event.tp_levels == [Decimal("4593.47"), Decimal("4600.47"), Decimal("4610.47")]
+    assert event.requires_dynamic_sl is False
+
+
 def test_parse_chartoro_sell_quick_signal():
     text = """
     XAUUSD SELL NOW 4491
