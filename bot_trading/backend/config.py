@@ -105,6 +105,16 @@ class Settings(BaseSettings):
             return Decimal("0.0")
         return Decimal(str(v))
 
+    @field_validator("TG_SESSION_NAME", mode="before")
+    @classmethod
+    def normalize_session_name(cls, v: Any) -> str:
+        if not v:
+            return "data/bot_session"
+        v_str = str(v).strip()
+        if not v_str.startswith("data/") and not v_str.startswith("/app/data/"):
+            return f"data/{v_str}"
+        return v_str
+
     @field_validator("ALLOWED_EMAILS", mode="before")
     @classmethod
     def parse_allowed_emails(cls, v: Any) -> List[str]:
