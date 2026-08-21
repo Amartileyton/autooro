@@ -30,9 +30,17 @@ class TelegramIngestionClient:
             logger.warning("TG_API_ID o TG_API_HASH no configurados. Ingesta de Telethon deshabilitada.")
             return
 
-        logger.info(f"Iniciando Telethon MTProto Client para canal {settings.TARGET_CHANNEL_ID}...")
+        import os
+        session_candidates = ["data/bot_session", "/app/data/bot_session", settings.TG_SESSION_NAME, "bot_session"]
+        session_name = "data/bot_session"
+        for candidate in session_candidates:
+            if os.path.exists(f"{candidate}.session") or os.path.exists(candidate):
+                session_name = candidate
+                break
+
+        logger.info(f"Iniciando Telethon MTProto Client usando sesión '{session_name}' para canal {settings.TARGET_CHANNEL_ID}...")
         self.client = TelegramClient(
-            settings.TG_SESSION_NAME,
+            session_name,
             settings.TG_API_ID,
             settings.TG_API_HASH
         )

@@ -16,12 +16,20 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding='utf-8')
 
 async def sync():
-    session_path = os.path.abspath(settings.TG_SESSION_NAME)
-    client = TelegramClient(session_path, settings.TG_API_ID, settings.TG_API_HASH)
+    # Resolver ruta de sesión priorizando la carpeta persistente data/
+    session_candidates = ["data/bot_session", "/app/data/bot_session", "bot_session"]
+    session_name = "data/bot_session"
+    for candidate in session_candidates:
+        if os.path.exists(f"{candidate}.session") or os.path.exists(candidate):
+            session_name = candidate
+            break
+
+    print(f"Buscando sesión de Telegram en: '{session_name}' (Existe: {os.path.exists(f'{session_name}.session') or os.path.exists(session_name)})...")
+    client = TelegramClient(session_name, settings.TG_API_ID, settings.TG_API_HASH)
     await client.connect()
     
     if not await client.is_user_authorized():
-        print("❌ Sesión no autorizada")
+        print(f"❌ Sesión no autorizada en ruta '{session_name}'.")
         return
 
     entity = await client.get_entity(settings.TARGET_CHANNEL_ID)
