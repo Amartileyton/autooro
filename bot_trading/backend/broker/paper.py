@@ -253,8 +253,17 @@ class LocalPaperBroker(BaseBrokerAdapter):
                 vals = item.get("d", [])
                 if vals and len(vals) >= 3 and vals[0] is not None:
                     close_p = Decimal(str(round(float(vals[0]), 2)))
-                    bid_p = Decimal(str(round(float(vals[1] or vals[0]), 2)))
-                    ask_p = Decimal(str(round(float(vals[2] or vals[0]), 2)))
+                    raw_bid = Decimal(str(round(float(vals[1] or vals[0]), 2)))
+                    raw_ask = Decimal(str(round(float(vals[2] or vals[0]), 2)))
+
+                    # Si bid/ask vienen desfasados respecto al close real (ej. fin de semana), centrar con spread de 10 cents
+                    if abs(close_p - raw_bid) > Decimal("2.00") or abs(close_p - raw_ask) > Decimal("2.00") or raw_bid >= raw_ask:
+                        bid_p = close_p - Decimal("0.10")
+                        ask_p = close_p + Decimal("0.10")
+                    else:
+                        bid_p = raw_bid
+                        ask_p = raw_ask
+
                     if close_p > Decimal("1000.00"):
                         return close_p, bid_p, ask_p
         except Exception as e:
