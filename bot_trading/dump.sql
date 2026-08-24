@@ -1,202 +1,201 @@
 BEGIN TRANSACTION;
 CREATE TABLE news_interactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        news_id VARCHAR(100) NOT NULL,
-        news_title VARCHAR(255) NOT NULL,
-        news_url TEXT,
-        news_asset VARCHAR(50) DEFAULT 'MACRO',
-        action_type VARCHAR(30) NOT NULL,
-        created_at DATETIME NOT NULL
-    );
+	id INTEGER NOT NULL, 
+	news_id VARCHAR(128) NOT NULL, 
+	news_title VARCHAR(300) NOT NULL, 
+	news_url VARCHAR(500), 
+	news_asset VARCHAR(60), 
+	action_type VARCHAR(30) NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	PRIMARY KEY (id)
+);
 CREATE TABLE raw_telegram_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        message_id INTEGER UNIQUE,
-        channel_id INTEGER,
-        channel_name VARCHAR(120),
-        raw_text TEXT NOT NULL,
-        parsed_success BOOLEAN NOT NULL,
-        parser_used VARCHAR(30) NOT NULL,
-        error_reason VARCHAR(255),
-        received_at DATETIME NOT NULL
-    );
-INSERT INTO "raw_telegram_messages" VALUES(1,6942,-1002763662248,'Chartoro FX Señales Gratis','**BONO DE DEPÓSITO DOBLE?** ** ****💯**
+	id INTEGER NOT NULL, 
+	message_id INTEGER, 
+	channel_id INTEGER, 
+	channel_name VARCHAR(120), 
+	raw_text TEXT NOT NULL, 
+	parsed_success BOOLEAN NOT NULL, 
+	parser_used VARCHAR(30) NOT NULL, 
+	error_reason VARCHAR(255), 
+	received_at DATETIME NOT NULL, 
+	PRIMARY KEY (id)
+);
+INSERT INTO "raw_telegram_messages" VALUES(1,7909,-1002763662248,'Chartoro FX Señales Gratis','**DIRECTO A LAS GANANCIAS **⚡️
 
-‼️ **ÚLTIMOS 3 CUPOS**',0,'NONE',NULL,'2026-07-22 02:19:34.000000');
-INSERT INTO "raw_telegram_messages" VALUES(2,6943,-1002763662248,'Chartoro FX Señales Gratis','Gracias Luis! Esta es mi ganancia en los 3 TP de las señales de oro ....en una operatoria me arriesgue más con 0.05 ...estoy muy feliz 😀',0,'NONE',NULL,'2026-07-22 03:23:39.000000');
-INSERT INTO "raw_telegram_messages" VALUES(3,6944,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD BUY NOW 4141
-Set TP1 +30 Pips',1,'REGEX',NULL,'2026-07-22 03:24:15.000000');
-INSERT INTO "raw_telegram_messages" VALUES(4,6945,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
+**#XAUUSD**** TP1 HIT, +30 Pips 🏆**
+
+__Sesión recién iniciada y el movimiento llegó rápido.__',0,'NONE',NULL,'2026-08-21 03:42:34.000000');
+INSERT INTO "raw_telegram_messages" VALUES(2,7908,-1002763662248,'Chartoro FX Señales Gratis','**EL PRECIO EMPIEZA A IMPULSAR ****👀**',0,'NONE',NULL,'2026-08-21 03:40:50.000000');
+INSERT INTO "raw_telegram_messages" VALUES(3,7907,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
+
+**📊 **#XAUUSD** **
+
+**Direction: 📈 **#SELL** **
+
+** Entry Point: **4532
+**⛔️ Stop Loss (SL): **4540
+
+**🏆 TP1: **4529
+**🏆 TP2:** 4524
+**🏆 TP3:** 4516
+
+**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-21 03:30:48.000000');
+INSERT INTO "raw_telegram_messages" VALUES(4,7906,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD SELL NOW 4532
+Set TP1 +30 Pips',1,'REGEX',NULL,'2026-08-21 03:28:55.000000');
+INSERT INTO "raw_telegram_messages" VALUES(5,7904,-1002763662248,'Chartoro FX Señales Gratis','Profit profe muchas gracias',0,'NONE',NULL,'2026-08-21 03:01:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(6,7903,-1002763662248,'Chartoro FX Señales Gratis','__No solo recibes señales y transparencia...__
+
+**TAMBIÉN OBTIENES MI MENTORÍA Y MATERIAL EDUCATIVO QUE TE AYUDARÁN AL 100% A CONVERTIRTE EN UN MEJOR TRADER, SIN IMPORTAR QUÉ!** 📈📈📈**
+**
+[**HAZ CLIC AQUÍ PARA SABER MÁS**](https://t.me/m/q3-XLmhBNmY0) ⚡️',0,'NONE',NULL,'2026-08-21 02:54:45.000000');
+INSERT INTO "raw_telegram_messages" VALUES(7,7902,-1002763662248,'Chartoro FX Señales Gratis','❌ **SL HIT**
+
+No todos los setups saldrán a nuestro favor, y desafortunadamente este terminó en pérdida.
+
+Mantenemos la **transparencia con cada resultado**, tanto en las ganancias como en las pérdidas. Una correcta gestión del riesgo nos mantiene protegidos y preparados para la próxima oportunidad. 💪🏻
+
+**__Aprendemos, reiniciamos y seguimos avanzando.__**',0,'NONE',NULL,'2026-08-21 02:46:57.000000');
+INSERT INTO "raw_telegram_messages" VALUES(8,7901,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
+
+**📊 **#XAUUSD** **
+
+**Direction: 📈 **#SELL** **
+
+** Entry Point: **4527
+**⛔️ Stop Loss (SL): **4535
+
+**🏆 TP1: **4524
+**🏆 TP2:** 4519
+**🏆 TP3:** 4511
+
+**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-21 02:36:43.000000');
+INSERT INTO "raw_telegram_messages" VALUES(9,7900,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD SELL NOW 4527
+Set TP1 +30 Pips',1,'REGEX',NULL,'2026-08-21 02:34:27.000000');
+INSERT INTO "raw_telegram_messages" VALUES(10,7899,-1002763662248,'Chartoro FX Señales Gratis','__Algunos entrarán con guía.
+Otros entrarán adivinando.__
+
+**El VIP está abierto para quienes ya no quieren adivinar.**
+
+💎 [**HAZ CLIC AQUÍ PARA ACCESO GRATIS AL VIP**](https://t.me/m/q3-XLmhBNmY0) 💎',0,'NONE',NULL,'2026-08-21 02:24:16.000000');
+INSERT INTO "raw_telegram_messages" VALUES(11,7898,-1002763662248,'Chartoro FX Señales Gratis','**Por qué conformarte con una señal al día cuando puedes recibir 4-8 SEÑALES DIARIAS EN EL VIP** ⁉️⁉️⁉️',0,'NONE',NULL,'2026-08-21 00:01:38.000000');
+INSERT INTO "raw_telegram_messages" VALUES(12,7896,-1002763662248,'Chartoro FX Señales Gratis','**Para quién es el VIP?**
+
+Para cualquiera listo para:
+✅ Copiar señales reales
+✅Aprender mientras gana
+✅Operar con confianza',0,'NONE',NULL,'2026-08-20 18:22:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(13,7895,-1002763662248,'Chartoro FX Señales Gratis','[**HAZ CLIC AQUÍ PARA OPERAR CONMIGO**](https://t.me/m/q3-XLmhBNmY0) 📈📈📈',0,'NONE',NULL,'2026-08-20 16:01:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(14,7894,-1002763662248,'Chartoro FX Señales Gratis','🏆 **EL VIP INCLUYE:**
+
+✔️ De 4 a 8 señales diarias de trading de alta calidad
+✔️ Curso completo de trading
+✔️ Guía completa A-a-Z para construir bases sólidas
+✔️ Rendimiento comprobado de las señales basado en resultados reales
+✔️ Soporte y mentoría 24/7
+ 
+🚀 [**RECLAMA TU ACCESO AL VIP AQUÍ**](https://t.me/m/q3-XLmhBNmY0) 🚀',0,'NONE',NULL,'2026-08-20 14:19:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(15,7893,-1002763662248,'Chartoro FX Señales Gratis','**TODO A FONDO… SIN VUELTA ATRÁS 🚀
+
+****#XAUUSD**** TP3 HIT, +200 Pips 🏆**
+
+__Desde una entrada temprana hasta una dominación total.__',0,'NONE',NULL,'2026-08-20 13:03:52.000000');
+INSERT INTO "raw_telegram_messages" VALUES(16,7892,-1002763662248,'Chartoro FX Señales Gratis','**Y AHORA ESTÁ EN MODO PERSECUCIÓN TOTAL 🏃‍♂️
+
+****#XAUUSD**** TP2 HIT, +100 Pips 🏆**
+
+__El impulso se está saliendo de control.__',0,'NONE',NULL,'2026-08-20 12:53:12.000000');
+INSERT INTO "raw_telegram_messages" VALUES(17,7891,-1002763662248,'Chartoro FX Señales Gratis','**Y EXPLOTÓ… RÁPIDO 💥**
+
+**#XAUUSD**** TP1 HIT, +30 Pips 🏆**
+
+__Parpadeas y ya desapareció.__',0,'NONE',NULL,'2026-08-20 12:45:44.000000');
+INSERT INTO "raw_telegram_messages" VALUES(18,7890,-1002763662248,'Chartoro FX Señales Gratis','**❗️SIGNAL ALERT❗️**
+
+📊#XAUUSD📊
+
+**Direction:📈** **#BUY**
+**Entry Point**: 4463.20
+
+🏆**TP1**: 4466.20
+🏆**TP2**: 4473.20
+🏆**TP3**: 4483.20
+
+**⛔️ Stop Loss (SL)**: 4453.20
+
+⚠️ __Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-20 12:41:04.000000');
+INSERT INTO "raw_telegram_messages" VALUES(19,7889,-1002763662248,'Chartoro FX Señales Gratis','❓__Te gustaría tener acceso a estrategias de trading exclusivas?__',0,'NONE',NULL,'2026-08-20 12:02:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(20,7888,-1002763662248,'Chartoro FX Señales Gratis','**BUENOS DIAS CHARTORO TRADERS** 👑',0,'NONE',NULL,'2026-08-20 10:17:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(21,7887,-1002763662248,'Chartoro FX Señales Gratis','[**HAZ CLIC AQUÍ PARA UNIRTE AL MÁS REAL DE LOS GRUPOS VIP**](https://t.me/m/q3-XLmhBNmY0)  💎',0,'NONE',NULL,'2026-08-20 06:34:11.000000');
+INSERT INTO "raw_telegram_messages" VALUES(22,7886,-1002763662248,'Chartoro FX Señales Gratis','**Dónde has visto este nivel de transparencia en un grupo de señales?**
+
+__Si encuentras un grupo que afirma tener un 100% de aciertos, mejor sal corriendo... __ 🏃',0,'NONE',NULL,'2026-08-20 06:34:06.000000');
+INSERT INTO "raw_telegram_messages" VALUES(23,7885,-1002763662248,'Chartoro FX Señales Gratis','**❌ SL HIT**
+
+Darle más espacio a la operación no ayudó esta vez.
+
+No pasa nada — seguiré buscando una nueva configuración clara 🔎
+
+Manténganse pacientes, equipo. Operamos con inteligencia, no con prisas. ✅',0,'NONE',NULL,'2026-08-20 04:35:40.000000');
+INSERT INTO "raw_telegram_messages" VALUES(24,7884,-1002763662248,'Chartoro FX Señales Gratis','Move SL to 4488',1,'REGEX',NULL,'2026-08-20 04:29:30.000000');
+INSERT INTO "raw_telegram_messages" VALUES(25,7883,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
 
 **📊 **#XAUUSD** **
 
 **Direction: 📉 **#BUY** **
 
-** Entry Point: **4141
-**⛔️ Stop Loss (SL): **4133
+** Entry Point:** 4498
+**⛔️ Stop Loss (SL): **4490
 
-**🏆 TP1: **4144
-**🏆 TP2:** 4149
-**🏆 TP3:** 4157
+**🏆 TP1: **4501
+**🏆 TP2:** 4506
+**🏆 TP3:** 4514
 
-**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-07-22 03:28:46.000000');
-INSERT INTO "raw_telegram_messages" VALUES(5,6946,-1002763662248,'Chartoro FX Señales Gratis','**❌ SL HIT
-**
-Lamentablemente, no podemos ganar todas las operaciones, y hoy nuestra racha de victorias ha llegado a su fin. Un aumento repentino en la volatilidad del mercado hizo que el precio se moviera de forma muy agresiva y alcanzara nuestro Stop Loss.
+**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-20 04:03:35.000000');
+INSERT INTO "raw_telegram_messages" VALUES(26,7882,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD BUY NOW 4498
+Set TP1 +30 Pips',1,'REGEX',NULL,'2026-08-20 04:01:10.000000');
+INSERT INTO "raw_telegram_messages" VALUES(27,7880,-1002763662248,'Chartoro FX Señales Gratis','**GANANCIAS TEMPRANAS ASEGURADAS ****🔥****
 
-Las pérdidas forman parte del trading, y precisamente por eso la gestión del riesgo siempre es nuestra máxima prioridad. 💪🏻
+****#XAUUSD**** TP1 HIT, +30 Pips 🏆**
 
-Como siempre, la transparencia es mi prioridad: nunca ocultaré una pérdida.
-
-Aprendemos, nos adaptamos y seguimos avanzando.
-
-🔍 Continuaré monitoreando el mercado de cerca y compartiré aquí la próxima oportunidad de alta probabilidad, como siempre.
-
-Sigamos adelante! 🔥',0,'NONE',NULL,'2026-07-22 03:49:34.000000');
-INSERT INTO "raw_telegram_messages" VALUES(6,6947,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
+__Reacción rápida, toma limpia ____💰__',0,'NONE',NULL,'2026-08-20 03:14:25.000000');
+INSERT INTO "raw_telegram_messages" VALUES(28,7879,-1002763662248,'Chartoro FX Señales Gratis','**TP1 CARGANDO… VAMOS! ****🚀**',0,'NONE',NULL,'2026-08-20 03:12:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(29,7878,-1002763662248,'Chartoro FX Señales Gratis','Move SL to 4501',1,'REGEX',NULL,'2026-08-20 03:05:59.000000');
+INSERT INTO "raw_telegram_messages" VALUES(30,7877,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
 
 **📊 **#XAUUSD** **
 
 **Direction: 📈 **#SELL** **
 
-** Entry Point: **4133
-**⛔️ Stop Loss (SL): **4141
+** Entry Point: **4491
+**⛔️ Stop Loss (SL): **4499
 
-**🏆 TP1: **4130
-**🏆 TP2:** 4125
-**🏆 TP3:** 4117
+**🏆 TP1: **4488
+**🏆 TP2:** 4483
+**🏆 TP3:** 4475
 
-**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-07-22 03:51:16.000000');
-INSERT INTO "raw_telegram_messages" VALUES(7,6948,-1002763662248,'Chartoro FX Señales Gratis','⬆️⬆️⬆️',0,'NONE',NULL,'2026-07-22 03:57:57.000000');
-INSERT INTO "raw_telegram_messages" VALUES(8,6949,-1002763662248,'Chartoro FX Señales Gratis','**TP A LA VISTA ****‼️**',0,'NONE',NULL,'2026-07-22 04:01:10.000000');
-INSERT INTO "raw_telegram_messages" VALUES(9,6950,-1002763662248,'Chartoro FX Señales Gratis','**MODO MERCADO: EN LLAMAS! ****🔥**
+**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-20 02:47:34.000000');
+INSERT INTO "raw_telegram_messages" VALUES(31,7876,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD SELL NOW 4491
+Set TP1 +30 Pips',1,'REGEX',NULL,'2026-08-20 02:47:19.000000');
+INSERT INTO "raw_telegram_messages" VALUES(32,7875,-1002763662248,'Chartoro FX Señales Gratis','🔠 **SEÑALES VIP GRATIS**
 
-**#XAUUSD**** TP1 HIT, +30 Pips ****🏆**
+**🔠** **MATERIAL EDUCATIVO GRATIS**
 
-__Breakout válido, timing perfecto, ganancia inmediata.__',0,'NONE',NULL,'2026-07-22 04:03:24.000000');
-INSERT INTO "raw_telegram_messages" VALUES(10,6952,-1002763662248,'Chartoro FX Señales Gratis','**MOVIÉNDONOS AL SIGUIENTE OBJETIVO ****🚀**',0,'NONE',NULL,'2026-07-22 04:36:09.000000');
-INSERT INTO "raw_telegram_messages" VALUES(11,6953,-1002763662248,'Chartoro FX Señales Gratis','**TENDENCIA BAJO CONTROL ****📈**
+**🔠** **MENTORÍA GRATIS**
 
-**#XAUUSD**** TP2 HIT, +80 Pips ****🏆**
+[**RECLAMA AQUÍ**](https://t.me/m/q3-XLmhBNmY0)',0,'NONE',NULL,'2026-08-20 02:14:20.000000');
+INSERT INTO "raw_telegram_messages" VALUES(33,7874,-1002763662248,'Chartoro FX Señales Gratis','**Copiar las señales dentro del VIP y empezar a ganar de inmediato** 💵💵💵
 
-__El precio se movió limpio según lo planeado. La disciplina paga.__',0,'NONE',NULL,'2026-07-22 04:37:24.000000');
-INSERT INTO "raw_telegram_messages" VALUES(12,6954,-1002763662248,'Chartoro FX Señales Gratis','💰💰💰',0,'NONE',NULL,'2026-07-22 05:47:45.000000');
-INSERT INTO "raw_telegram_messages" VALUES(13,6955,-1002763662248,'Chartoro FX Señales Gratis','**EL OBJETIVO FINAL NOS ESPERA ****🎯**',0,'NONE',NULL,'2026-07-22 06:29:48.000000');
-INSERT INTO "raw_telegram_messages" VALUES(14,6956,-1002763662248,'Chartoro FX Señales Gratis','**FINALIZANDO FUERTE! ****💎**
+👑 [**HAZ CLIC AQUÍ PARA UNIRTE AHORA**](https://t.me/m/q3-XLmhBNmY0) 👑',0,'NONE',NULL,'2026-08-19 22:38:07.000000');
+INSERT INTO "raw_telegram_messages" VALUES(34,7873,-1002763662248,'Chartoro FX Señales Gratis','Muchas gracias ❤️',0,'NONE',NULL,'2026-08-19 21:01:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(35,7872,-1002763662248,'Chartoro FX Señales Gratis','1️⃣ Copiar
 
-**#XAUUSD**** TP3 HIT, +160 Pips ****🏆**
+2️⃣ Pegar
 
-__Estructura respetada de inicio a fin. Así es como operamos.__',0,'NONE',NULL,'2026-07-22 06:31:13.000000');
-INSERT INTO "raw_telegram_messages" VALUES(15,6957,-1002763662248,'Chartoro FX Señales Gratis','🔥 Todos están reclamando su **BONO DE DEPÓSITO DOBLE** ahora mismo!
-Si aún no lo hiciste, literalmente estás dejando dinero gratis sobre la mesa 💸
+3️⃣ **GANAR DINERO** 💵💵💵
 
-Los traders dentro del grupo VIP ya están haciendo crecer sus cuentas con el bono 📈
-
-‼️NO TE QUEDES MIRANDO DESDE AFUERA OTRA VEZ ‼️
-
-Envíame un mensaje ahora antes de que se acaben los últimos lugares 👉[@SoporteChartoroFX](https://t.me/SoporteChartoroFX) 🚀',0,'NONE',NULL,'2026-07-22 06:31:42.000000');
-INSERT INTO "raw_telegram_messages" VALUES(16,6958,-1002763662248,'Chartoro FX Señales Gratis','**BUENOS DIAS TRADERS **😉',0,'NONE',NULL,'2026-07-22 10:20:01.000000');
-INSERT INTO "raw_telegram_messages" VALUES(17,6959,-1002763662248,'Chartoro FX Señales Gratis','❓ __Cuál ha sido tu mayor ganancia hasta ahora?__',0,'NONE',NULL,'2026-07-22 11:05:04.000000');
-INSERT INTO "raw_telegram_messages" VALUES(18,6960,-1002763662248,'Chartoro FX Señales Gratis','**❗️SIGNAL ALERT❗️**
-
-📊#XAUUSD📊
-
-**Direction:📈** **#BUY**
-**Entry Point**: 4126.44
-
-🏆**TP1**: 4129.44
-🏆**TP2**: 4136.44
-🏆**TP3**: 4146.44
-
-**⛔️ Stop Loss (SL)**: 4116.44
-
-⚠️ __Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-07-22 12:37:23.000000');
-INSERT INTO "raw_telegram_messages" VALUES(19,6961,-1002763662248,'Chartoro FX Señales Gratis','**La operación de hoy terminó en Stop Loss después de otro falso rompimiento del mercado.**
-
-Nuestra confirmación alcista inicial parecía sólida, pero en lugar de continuar al alza, el precio revirtió rápidamente y atrapó a los compradores. El rompimiento no logró mantenerse, convirtiéndose en un clásico **falso breakout** que invalidó nuestra configuración de entrada.
-
-Esto forma parte del trading, especialmente en condiciones de mercado laterales o volátiles, donde los falsos rompimientos pueden ocurrir de manera inesperada. Por eso, **la gestión del riesgo siempre es nuestra máxima prioridad.**
-
-Mantendremos la paciencia y esperaremos una estructura de mercado más limpia, con una confirmación más fuerte, antes de entrar en la próxima operación.
-
-**La disciplina siempre supera el impulso de perseguir operaciones. La próxima oportunidad de alta probabilidad llegará.** 💪📈',0,'NONE',NULL,'2026-07-22 13:00:42.000000');
-INSERT INTO "raw_telegram_messages" VALUES(20,6962,-1002763662248,'Chartoro FX Señales Gratis','**❗️SIGNAL ALERT❗️**
-
-📈#XAUUSD📈
-
-**Direction:📈** **#SELL**
-**Entry Point**: 4124.70
-
-🏆**TP1**: 4121.70
-🏆**TP2**: 4114.70
-🏆**TP3**: 4104.70
-
-**⛔️ Stop Loss (SL)**: 4134.70
-
-⚠️ __Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-07-22 13:11:34.000000');
-INSERT INTO "raw_telegram_messages" VALUES(21,6963,-1002763662248,'Chartoro FX Señales Gratis','🔝 **VIP NO ES SOLO UNA SALA DE SEÑALES** 🔝
-
-Es:
-🔸 4–8 señales diarias de alta calidad
-🔸 Un curso completo de trading
-🔸 Rendimiento probado y transparente
-🔸 Mentoría 24/7 cuando las decisiones realmente importan
-
-Esa combinación es rara.
-**POR ESO FUNCIONA ****✔️**',0,'NONE',NULL,'2026-07-22 13:21:02.000000');
-INSERT INTO "raw_telegram_messages" VALUES(22,6964,-1002763662248,'Chartoro FX Señales Gratis','❌ **GOLD Alcanzó el Stop Loss**
-
-Lamentablemente, esta operación terminó en **Stop Loss**. Pedimos sinceras disculpas a todos los miembros que tomaron esta operación con nosotros.
-
-Después de que el **Oro** registrara un fuerte **__impulso bajista__**, el precio comenzó a realizar un retroceso (__pullback__). En lugar de perseguir la caída inicial, esperamos pacientemente el **pullback** y abrimos una posición de **venta**, con la expectativa de que los vendedores defendieran esa zona de retroceso y empujaran el mercado nuevamente a la baja para continuar con la **tendencia bajista**.
-
-Sin embargo, el mercado no respetó la **__estructura de continuación bajista__** que esperábamos. El retroceso se extendió más de lo previsto, rompió nuestro **nivel de invalidación** y finalmente activó nuestro **Stop Loss**. Esto nos recuerda que incluso las configuraciones de **__alta probabilidad__** pueden fallar cuando las condiciones del mercado cambian de forma inesperada.
-
-Las pérdidas son una parte inevitable del trading. Por eso, cada operación está protegida con un **Stop Loss** predefinido. Mantener una **__gestión del riesgo__** consistente es lo que nos permite permanecer en el mercado y alcanzar el **éxito a largo plazo**.
-
-Gracias por su confianza y paciencia. Seguiremos esperando una **acción del precio** más clara y solo tomaremos operaciones que cumplan plenamente con nuestra **estrategia** y nuestros criterios de **__gestión del riesgo__**. 💪📈',0,'NONE',NULL,'2026-07-22 13:30:39.000000');
-INSERT INTO "raw_telegram_messages" VALUES(23,6965,-1002763662248,'Chartoro FX Señales Gratis','**DE AQUÍ SOLO PODEMOS IR HACIA ARRIBA!**  🔝',0,'NONE',NULL,'2026-07-22 13:46:13.000000');
-INSERT INTO "raw_telegram_messages" VALUES(24,6966,-1002763662248,'Chartoro FX Señales Gratis','Con la señal de anoche gracias amigo Luis',0,'NONE',NULL,'2026-07-22 14:01:55.000000');
-INSERT INTO "raw_telegram_messages" VALUES(25,6967,-1002763662248,'Chartoro FX Señales Gratis','**COMPARTE TU VIAJE TRADER AQUÍ** 👉 @SoporteChartoroFX',0,'NONE',NULL,'2026-07-22 14:30:17.000000');
-INSERT INTO "raw_telegram_messages" VALUES(26,6968,-1002763662248,'Chartoro FX Señales Gratis','Lo mejor 🏆🤩',0,'NONE',NULL,'2026-07-22 15:01:01.000000');
-INSERT INTO "raw_telegram_messages" VALUES(27,6969,-1002763662248,'Chartoro FX Señales Gratis','Ya recibiste tu sueldo o está por llegar? 💵
-
-O por fin vas a invertir una pequeña parte y empezar a cambiar tu vida para siempre? 🏆
- Esto es solo para tomadores de acción. 🚀
-**
-ÚNETE GRATIS AQUÍ**',0,'NONE',NULL,'2026-07-22 15:22:01.000000');
-INSERT INTO "raw_telegram_messages" VALUES(28,6970,-1002763662248,'Chartoro FX Señales Gratis','**EMPIEZA HOY CON TU PRIMERA OPERACIÓN SIMPLE DE COPIAR Y PEGAR!** 🫵',0,'NONE',NULL,'2026-07-22 16:55:03.000000');
-INSERT INTO "raw_telegram_messages" VALUES(29,6971,-1002763662248,'Chartoro FX Señales Gratis','‼️ [**HAZ CLIC AQUÍ PARA ASEGURAR TU CUPO**](https://t.me/m/q3-XLmhBNmY0)  ‼️',0,'NONE',NULL,'2026-07-22 17:11:01.000000');
-INSERT INTO "raw_telegram_messages" VALUES(30,6973,-1002763662248,'Chartoro FX Señales Gratis','__Y si un curso de 5 horas pudiera cambiar para siempre tu manera de operar?__ 📚💰🤯
-
-Dentro del VIP puedes acceder a un curso que incluye todas las guías necesarias para que aprendas a operar por tu cuenta y hagas tu propio análisis + además me tendrás como tu mentor 😉
-
-Interesado? Envíame un mensaje ahora 👉 👉👉@SoporteChartoroFX 🚀🚀',0,'NONE',NULL,'2026-07-22 19:33:01.000000');
-INSERT INTO "raw_telegram_messages" VALUES(31,6974,-1002763662248,'Chartoro FX Señales Gratis','[**TOCA AQUÍ SI ERES PRINCIPIANTE Y BUSCAS UN MENTOR PROFESIONAL Y MATERIAL DE TRADING GRATIS**](https://t.me/m/q3-XLmhBNmY0) 📚📈',0,'NONE',NULL,'2026-07-22 21:15:09.000000');
-INSERT INTO "raw_telegram_messages" VALUES(32,6976,-1002763662248,'Chartoro FX Señales Gratis','**Los nuevos miembros VIP ya están muy agradecidos por el curso de 5 horas en el VIP! **🚀🚀**
-
-**[**TEN LA OPORTUNIDAD DE OBTENER ACCESO AQUÍ**](https://t.me/m/q3-XLmhBNmY0)**!**',0,'NONE',NULL,'2026-07-22 23:28:01.000000');
-INSERT INTO "raw_telegram_messages" VALUES(33,6977,-1002763662248,'Chartoro FX Señales Gratis','🏆 [**SÉ PARTE DE LA COMUNIDAD VIP GRATIS**](https://t.me/m/q3-XLmhBNmY0) 🏆',0,'NONE',NULL,'2026-07-23 00:08:02.000000');
-INSERT INTO "raw_telegram_messages" VALUES(34,6978,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD SELL NOW 4118
-Set TP1 +30 Pips',1,'REGEX',NULL,'2026-07-23 02:01:20.000000');
-INSERT INTO "raw_telegram_messages" VALUES(35,6979,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
-
-**📊 **#XAUUSD** **
-
-**Direction: 📈 **#SELL** **
-
-** Entry Point: **4118
-**⛔️ Stop Loss (SL): **4126
-
-**🏆 TP1: **4115
-**🏆 TP2:** 4110
-**🏆 TP3:** 4102
-
-**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-07-23 02:03:50.000000');
-INSERT INTO "raw_telegram_messages" VALUES(36,6980,-1002763662248,'Chartoro FX Señales Gratis','**DÍA MUY FLUIDO HOY **😎
-
-**#XAUUSD**** TP1 HIT, +30 Pips 🏆**
-
-__El precio reaccionó rápido, buen comienzo.__',0,'NONE',NULL,'2026-07-23 02:05:27.000000');
+**DE VERDAD VAS A RECHAZAR ESO??? ****🤯****🤯**',0,'NONE',NULL,'2026-08-19 19:04:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(36,7871,-1002763662248,'Chartoro FX Señales Gratis','❓ **Ya tienes un mentor de trading?**',0,'NONE',NULL,'2026-08-19 17:10:30.000000');
 INSERT INTO "raw_telegram_messages" VALUES(37,6982,-1002763662248,'Chartoro FX Señales Gratis','**VAMOS TRADERSSSS **💰',0,'NONE',NULL,'2026-07-23 02:12:19.000000');
 INSERT INTO "raw_telegram_messages" VALUES(38,6983,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD BUY NOW 4125
 Set TP1 +30 Pips',1,'REGEX',NULL,'2026-07-23 02:53:09.000000');
@@ -3418,40 +3417,285 @@ INSERT INTO "raw_telegram_messages" VALUES(871,7949,-1002763662248,'Chartoro FX 
 __Sin ruido, solo ejecución limpia ____😎__',0,'NONE',NULL,'2026-08-24 02:54:05.000000');
 INSERT INTO "raw_telegram_messages" VALUES(872,7950,-1002763662248,'Chartoro FX Señales Gratis','💵 [**HAZ CLIC AQUÍ PARA GANAR DINERO**](https://t.me/m/q3-XLmhBNmY0) 💵',0,'NONE',NULL,'2026-08-24 03:49:02.000000');
 INSERT INTO "raw_telegram_messages" VALUES(873,7951,-1002763662248,'Chartoro FX Señales Gratis','Así nos fue esta semana 🫡🫡🫡🫡',0,'NONE',NULL,'2026-08-24 06:38:17.000000');
+INSERT INTO "raw_telegram_messages" VALUES(904,7918,-1002763662248,'Chartoro FX Señales Gratis','**DIRECTO A LAS GANANCIAS **⚡️
+
+**#XAUUSD**** TP1 HIT, +68 Pips 🏆**
+
+__Sesión de madrugada completada con éxito.__',0,'NONE',NULL,'2026-08-24 07:28:15.000000');
+INSERT INTO "raw_telegram_messages" VALUES(905,7906,-1002763662248,'Chartoro FX Se?ales Gratis','XAUUSD SELL NOW 4532
+Set TP1 +30 Pips',1,'REGEX',NULL,'2026-08-21 03:28:55.000000');
+INSERT INTO "raw_telegram_messages" VALUES(906,7907,-1002763662248,'Chartoro FX Se?ales Gratis','**🚨 SIGNAL ALERT🚨**
+
+**📊 **#XAUUSD** **
+
+**Direction: 📈 **#SELL** **
+
+** Entry Point: **4532
+**⛔️ Stop Loss (SL): **4540
+
+**🏆 TP1: **4529
+**🏆 TP2:** 4524
+**🏆 TP3:** 4516
+
+**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-21 03:30:48.000000');
+INSERT INTO "raw_telegram_messages" VALUES(907,7908,-1002763662248,'Chartoro FX Se?ales Gratis','**EL PRECIO EMPIEZA A IMPULSAR ****👀**',0,'NONE',NULL,'2026-08-21 03:40:50.000000');
+INSERT INTO "raw_telegram_messages" VALUES(908,7909,-1002763662248,'Chartoro FX Se?ales Gratis','**DIRECTO A LAS GANANCIAS **⚡️
+
+**#XAUUSD**** TP1 HIT, +30 Pips 🏆**
+
+__Sesión recién iniciada y el movimiento llegó rápido.__',0,'NONE',NULL,'2026-08-21 03:42:34.000000');
+INSERT INTO "raw_telegram_messages" VALUES(909,7910,-1002763662248,'Chartoro FX Se?ales Gratis','👀👀👀',0,'NONE',NULL,'2026-08-21 05:02:13.000000');
+INSERT INTO "raw_telegram_messages" VALUES(910,7911,-1002763662248,'Chartoro FX Se?ales Gratis','**BUENOS DÍAS TRADERS!**
+
+Cada operación es una pieza de tu crecimiento:
+
+✔ Sigue tu plan aunque no veas resultados inmediatos
+✔ Celebra las pequeñas victorias — son la base de las grandes
+✔ No compares tu progreso con otros, compáralo con tu “yo” de ayer
+
+**Tu objetivo no es ser perfecto, es ser consistente.**
+
+Únete al VIP y construyamos esa confianza juntos
+👉 @SoporteChartoroFX',0,'NONE',NULL,'2026-08-21 10:36:57.000000');
+INSERT INTO "raw_telegram_messages" VALUES(911,7912,-1002763662248,'Chartoro FX Se?ales Gratis','No necesitas operar más, **necesitas operar mejor** 🎯🎯🎯
+
+Los miembros VIP se enfocan en setups de calidad, no en el ruido.
+Por eso ganamos cuando otros entran en pánico.
+
+➡️➡️ [GANA CON EL VIP](http://t.me/SoporteChartoroFX)',0,'NONE',NULL,'2026-08-21 12:22:59.000000');
+INSERT INTO "raw_telegram_messages" VALUES(912,7913,-1002763662248,'Chartoro FX Se?ales Gratis','🔤🔤🔤   🔤🔤🔤🔤🔤🔤',0,'NONE',NULL,'2026-08-21 14:15:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(913,7914,-1002763662248,'Chartoro FX Se?ales Gratis','**❗️SIGNAL ALERT❗️**
+
+📊#XAUUSD📊
+
+**Direction:📈** **#BUY**
+**Entry Point**: 4590.47
+
+🏆**TP1**: 4593.47
+🏆**TP2**: 4600.47
+🏆**TP3**: 4610.47
+
+**⛔️ Stop Loss (SL)**: 4580.47
+
+⚠️ __Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__
+
+Analysis:
+Same as the original idea',1,'REGEX',NULL,'2026-08-21 14:53:40.000000');
+INSERT INTO "raw_telegram_messages" VALUES(914,7915,-1002763662248,'Chartoro FX Se?ales Gratis','**🔥 LOS BENEFICIOS HAN LLEGADO OTRA VEZ!**
+
+**#XAUUSD**** TP1 HIT, +30 Pips 🏆**
+
+__Estructura clara, ejecución limpia, resultados reales 💰__',0,'NONE',NULL,'2026-08-21 15:05:41.000000');
+INSERT INTO "raw_telegram_messages" VALUES(915,7917,-1002763662248,'Chartoro FX Se?ales Gratis','**EL MOVIMIENTO SIGUE CRECIENDO 🚀
+
+****#XAUUSD**** TP2 HIT, +100 Pips 🏆**
+
+__El impulso ahora está entrando con mucha fuerza.__',0,'NONE',NULL,'2026-08-21 15:25:19.000000');
+INSERT INTO "raw_telegram_messages" VALUES(916,7918,-1002763662248,'Chartoro FX Se?ales Gratis','**Y BOOM… OBJETIVO FINAL ALCANZADO ****🤯****
+
+****#XAUUSD**** TP3 HIT, +200 Pips 🏆**
+
+__La paciencia dio grandes resultados ____💰__',0,'NONE',NULL,'2026-08-21 15:46:09.000000');
+INSERT INTO "raw_telegram_messages" VALUES(917,7920,-1002763662248,'Chartoro FX Se?ales Gratis','🔝 **VIP NO ES SOLO UNA SALA DE SEÑALES** 🔝
+
+Es:
+🔸 4–8 señales diarias de alta calidad
+🔸 Un curso completo de trading
+🔸 Rendimiento probado y transparente
+🔸 Mentoría 24/7 cuando las decisiones realmente importan
+
+Esa combinación es rara.
+**POR ESO FUNCIONA ****✔️**',0,'NONE',NULL,'2026-08-21 18:20:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(918,7921,-1002763662248,'Chartoro FX Se?ales Gratis','❓ __Cuál ha sido tu mayor ganancia hasta ahora?__',0,'NONE',NULL,'2026-08-21 21:06:12.000000');
+INSERT INTO "raw_telegram_messages" VALUES(919,7922,-1002763662248,'Chartoro FX Se?ales Gratis','Ningún trader logró ser consistente adivinando.
+Por eso nos enfocamos en la estructura, el riesgo y la ejecución 💪🏼
+
+Quieres resultados? **APRENDE CÓMO LO HACEMOS DENTRO DEL VIP** 🤑🤑🤑',0,'NONE',NULL,'2026-08-21 23:30:33.000000');
+INSERT INTO "raw_telegram_messages" VALUES(920,7924,-1002763662248,'Chartoro FX Se?ales Gratis','**2 NUEVOS MIEMBROS VIP ACABAN DE ELEGIR GANAR INGRESOS ADICIONALES MEDIANTE EL TRADING. VAMOS!** 🤑🤑🤑',0,'NONE',NULL,'2026-08-22 06:14:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(921,7926,-1002763662248,'Chartoro FX Se?ales Gratis','**CÓMO VA TU FIN DE SEMANA?**',0,'NONE',NULL,'2026-08-22 11:02:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(922,7927,-1002763662248,'Chartoro FX Se?ales Gratis','1️⃣ Copiar
+
+2️⃣ Pegar
+
+3️⃣ **GANAR DINERO** 💵💵💵',0,'NONE',NULL,'2026-08-22 13:01:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(923,7928,-1002763662248,'Chartoro FX Se?ales Gratis','🚀 **DENTRO DEL VIP, NO TIENES QUE ELEGIR ENTRE APRENDER O GANAR**
+
+Copias de 4 a 8 señales diarias comprobadas mientras completas un curso de trading, y tienes acceso 24/7 a mentoría — para que cada operación construya habilidad, no solo ganancias.
+
+**Si quieres progreso real, no victorias temporales, aquí es donde sucede** ✨
+
+⬇️         ⬇️         ⬇️          ⬇️         ⬇️         ⬇️         ⬇️         ⬇️
+
+[**HAZ CLIC AQUÍ PARA RECLAMAR TU ACCESO GRATIS AL VIP**](https://t.me/m/q3-XLmhBNmY0)',0,'NONE',NULL,'2026-08-22 15:01:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(924,7929,-1002763662248,'Chartoro FX Se?ales Gratis','💭 **REFLEXIÓN DE FIN DE SEMANA:**
+
+Recuerdo cuando no tenía dirección y cada operación se sentía como una apuesta—__realmente no sabía lo que estaba haciendo.__ **No obtuve resultados de la noche a la mañana.** Tuve pérdidas, aprendí de la manera difícil __y seguí adelante.__
+
+**Las cosas solo cambiaron cuando me lo tomé en serio y empecé a construir disciplina real, INCLUSO LOS FINES DE SEMANA.** 
+
+**POR ESO SÉ EXACTAMENTE LO QUE SE NECESITA PARA GANAR AHORA** 🤑 🤑
+
+Comparte tus experiencias [**AQUÍ **](https://t.me/m/q3-XLmhBNmY0)también!',0,'NONE',NULL,'2026-08-22 19:33:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(925,7930,-1002763662248,'Chartoro FX Se?ales Gratis','Así nos fue esta semana 🫡🫡🫡🫡',0,'NONE',NULL,'2026-08-22 21:45:04.000000');
+INSERT INTO "raw_telegram_messages" VALUES(926,7931,-1002763662248,'Chartoro FX Se?ales Gratis','**EL VIP TE DA:**
+
+🟢 Señales VIP
+🟢 Un curso de trading de 5 horas
+🟢 Un sistema comprobado
+🟢 Mentoría
+
+💵 [**SUBE DE NIVEL CON VIP**](https://t.me/m/q3-XLmhBNmY0)  💵',0,'NONE',NULL,'2026-08-22 23:17:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(927,7932,-1002763662248,'Chartoro FX Se?ales Gratis','**QUIÉN AQUÍ AMA OPERAR ORO? ** **✨**',0,'NONE',NULL,'2026-08-23 01:10:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(928,7933,-1002763662248,'Chartoro FX Se?ales Gratis','👑 👑 👑',0,'NONE',NULL,'2026-08-23 03:11:01.000000');
+INSERT INTO "raw_telegram_messages" VALUES(929,7934,-1002763662248,'Chartoro FX Se?ales Gratis','Sabías que existe un grupo VIP donde comparto todas mis operaciones para que las copies GRATIS? ✅💵
+
+Puedes acceder a mi grupo TOTALMENTE GRATIS ‼️
+
+Envíame un mensaje 👉🏼 @SoporteChartoroFX',0,'NONE',NULL,'2026-08-23 05:02:11.000000');
+INSERT INTO "raw_telegram_messages" VALUES(930,7935,-1002763662248,'Chartoro FX Se?ales Gratis','[**⚠️**](https://t.me/m/q3-XLmhBNmY0) [**HAZ CLIC AQUÍ PARA RECIBIR DE 4 A 8 SEÑALES DIARIAS**](https://t.me/m/q3-XLmhBNmY0) [**⚠️**](https://t.me/m/q3-XLmhBNmY0)',0,'NONE',NULL,'2026-08-23 08:27:00.000000');
+INSERT INTO "raw_telegram_messages" VALUES(931,7936,-1002763662248,'Chartoro FX Se?ales Gratis','☀️ **BUENOS DÍAS TRADERS!** ☀️
+
+__El descanso también es parte del plan.__
+
+✔ Usa el fin de semana para revisar tus operaciones
+✔ Ajusta tu mentalidad, no solo tus gráficos
+✔ La claridad mental genera mejores decisiones el lunes
+
+Hoy no se opera, pero sí se crece. 🌱
+__Ya hiciste tu revisión semanal?__',0,'NONE',NULL,'2026-08-23 10:43:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(932,7937,-1002763662248,'Chartoro FX Se?ales Gratis','❓ __Cuánto tiempo dedicas al trading cada semana?__',0,'NONE',NULL,'2026-08-23 12:01:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(933,7938,-1002763662248,'Chartoro FX Se?ales Gratis','Qué pasaría si tu teléfono pudiera hacerte ganar dinero?
+
+✅ 4–8 señales diarias para copiar y pegar
+✅ Educación y soporte sencillos
+✅ 100% gratis para unirte
+
+No solo veas cómo otros ganan, empieza hoy 🚀💰',0,'NONE',NULL,'2026-08-23 13:00:04.000000');
+INSERT INTO "raw_telegram_messages" VALUES(934,7939,-1002763662248,'Chartoro FX Se?ales Gratis','**ESTÁS LISTO PARA VER LOS RESULTADOS DE LA SEMANA PASADA? **🔥📈',0,'NONE',NULL,'2026-08-23 16:14:23.000000');
+INSERT INTO "raw_telegram_messages" VALUES(935,7940,-1002763662248,'Chartoro FX Se?ales Gratis','📈 **RESULTADOS SEMANALES DE SEÑALES **📈
+__17 de Agosto – 21 de Agosto, 2026__
+
+💰 TOTAL: **+732 PIPS GANADOS **💰
+
+✔️ Win Ratio: 85% (16 ganadas / 3 perdidas)
+✔️ Operaciones totales: 19 setups
+✔️ Buy vs Sell: 10 compras / 9 ventas
+✔️ XAUUSD volvió a destacar como uno de los instrumentos principales de la semana
+✔️ Lunes (+321 pips), martes (+175 pips) y jueves (+160 pips) lideraron los resultados
+✔️ Una semana más generando oportunidades en FOREX, GOLD y otros instrumentos
+
+🤑 **QUÉ SIGNIFICA ESTO EN DINERO REAL?**
+
+• 0.01 lote → el valor depende del instrumento y del tamaño del contrato
+• 0.10 lote → el valor depende del instrumento y del tamaño del contrato
+• 1.00 lote → el valor depende del instrumento y del tamaño del contrato
+
+💰 **+732 PIPS EN SOLO UNA SEMANA**
+
+__QUIERES RECIBIR LAS PRÓXIMAS SEÑALES Y SER PARTE DE LA COMUNIDAD?__',0,'NONE',NULL,'2026-08-23 18:32:23.000000');
+INSERT INTO "raw_telegram_messages" VALUES(936,7942,-1002763662248,'Chartoro FX Se?ales Gratis','[**HAZ CLIC AQUÍ PARA GANAR COMO ELLOS**](https://t.me/m/q3-XLmhBNmY0)  🤑🤑🤑',0,'NONE',NULL,'2026-08-23 19:45:07.000000');
+INSERT INTO "raw_telegram_messages" VALUES(937,7943,-1002763662248,'Chartoro FX Se?ales Gratis','Pasas 20 minutos scrolleando? No ganas nada. 
+
+Pasas 20 minutos operando? **GENERAS INGRESOS EXTRA.** 💰',0,'NONE',NULL,'2026-08-23 21:45:07.000000');
+INSERT INTO "raw_telegram_messages" VALUES(938,7945,-1002763662248,'Chartoro FX Se?ales Gratis','⬇️         ⬇️         ⬇️         ⬇️         ⬇️
+
+                   **   **[**VIP GRATIS**](https://t.me/m/q3-XLmhBNmY0)',0,'NONE',NULL,'2026-08-24 01:02:37.000000');
+INSERT INTO "raw_telegram_messages" VALUES(939,7946,-1002763662248,'Chartoro FX Se?ales Gratis','XAUUSD SELL NOW 4637
+Set TP1 +30 Pips',1,'REGEX',NULL,'2026-08-24 02:46:05.000000');
+INSERT INTO "raw_telegram_messages" VALUES(940,7947,-1002763662248,'Chartoro FX Se?ales Gratis','**🚨 SIGNAL ALERT🚨**
+
+**📊 **#XAUUSD** **
+
+**Direction: 📈 **#SELL** **
+
+** Entry Point: **4637
+**⛔️ Stop Loss (SL): **4645
+
+**🏆 TP1: **4634
+**🏆 TP2:** 4629
+**🏆 TP3:** 4621
+
+**⚠️ **__Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__',1,'REGEX',NULL,'2026-08-24 02:47:53.000000');
+INSERT INTO "raw_telegram_messages" VALUES(941,7948,-1002763662248,'Chartoro FX Se?ales Gratis','**LA PRECISIÓN ENTREGA UNA VEZ MÁS ****⚡️**
+
+**#XAUUSD**** TP1 HIT, +30 Pips 🏆**
+
+__La paciencia fue recompensada, beneficios asegurados temprano ____🔥__',0,'NONE',NULL,'2026-08-24 02:51:33.000000');
+INSERT INTO "raw_telegram_messages" VALUES(942,7949,-1002763662248,'Chartoro FX Se?ales Gratis','**MOMENTUM A TODO RITMO ****💥**
+
+**#XAUUSD**** TP2 HIT, +80 Pips 🏆**
+
+__Sin ruido, solo ejecución limpia ____😎__',0,'NONE',NULL,'2026-08-24 02:54:05.000000');
+INSERT INTO "raw_telegram_messages" VALUES(943,7950,-1002763662248,'Chartoro FX Se?ales Gratis','💵 [**HAZ CLIC AQUÍ PARA GANAR DINERO**](https://t.me/m/q3-XLmhBNmY0) 💵',0,'NONE',NULL,'2026-08-24 03:49:02.000000');
+INSERT INTO "raw_telegram_messages" VALUES(944,7951,-1002763662248,'Chartoro FX Se?ales Gratis','Así nos fue esta semana 🫡🫡🫡🫡',0,'NONE',NULL,'2026-08-24 06:38:17.000000');
+INSERT INTO "raw_telegram_messages" VALUES(945,7953,-1002763662248,'Chartoro FX Se?ales Gratis','**HAS VISTO CUÁNTO PODRÍAS HABER GANADO LA SEMANA PASADA?**',0,'NONE',NULL,'2026-08-24 12:04:34.000000');
+INSERT INTO "raw_telegram_messages" VALUES(946,7954,-1002763662248,'Chartoro FX Se?ales Gratis','⚠️ __SEÑAL ENVIADA EN EL VIP__ ⚠️',0,'NONE',NULL,'2026-08-24 12:51:14.000000');
+INSERT INTO "raw_telegram_messages" VALUES(947,7955,-1002763662248,'Chartoro FX Se?ales Gratis','**❗️SIGNAL ALERT❗️**
+
+📊#XAUUSD📊
+
+**Direction:📈** **#BUY**
+**Entry Point**: 4664.35
+
+🏆**TP1**: 4667.35
+🏆**TP2**: 4674.35
+🏆**TP3**: 4684.35
+
+**⛔️ Stop Loss (SL)**: 4654.35
+
+⚠️ __Se recomienda no arriesgar más del 1–2% de tu balance en esta operación — ¡no es asesoramiento financiero!__
+
+Analysis:
+Price breakout the resistance zone',1,'REGEX',NULL,'2026-08-24 12:53:13.000000');
+INSERT INTO "raw_telegram_messages" VALUES(948,7956,-1002763662248,'Chartoro FX Se?ales Gratis','**PRIMER GOLPE… PAGO INMEDIATO ****💥****
+
+****#XAUUSD**** TP1 HIT, +30 Pips 🏆**
+
+__Sin esperar, reacción directa.__',0,'NONE',NULL,'2026-08-24 12:56:50.000000');
 CREATE TABLE system_audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type VARCHAR(50) NOT NULL,
-        actor VARCHAR(50) NOT NULL,
-        slot_id INTEGER,
-        ticket_id VARCHAR(50),
-        details_json TEXT,
-        created_at DATETIME NOT NULL
-    );
+	id INTEGER NOT NULL, 
+	timestamp DATETIME NOT NULL, 
+	event_type VARCHAR(60) NOT NULL, 
+	severity VARCHAR(20) NOT NULL, 
+	details_json TEXT NOT NULL, 
+	PRIMARY KEY (id)
+);
+INSERT INTO "system_audit_logs" VALUES(1,'2026-08-21 09:03:12.717881','RECONCILIATION_COMPLETED','WARNING','{"total_trades_checked": 3, "reconciled_slots": 0, "emergency_closed_slots": 3, "timestamp": "2026-08-21T09:03:12.717250+00:00"}');
 CREATE TABLE trades (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_id VARCHAR(50) UNIQUE,
-        raw_signal_id INTEGER,
-        side VARCHAR(10) NOT NULL,
-        status VARCHAR(20) NOT NULL,
-        slot_id INTEGER NOT NULL,
-        lot_size NUMERIC(10, 2) NOT NULL,
-        initial_lot_size NUMERIC(10, 2) NOT NULL,
-        entry_price NUMERIC(10, 2) NOT NULL,
-        current_sl NUMERIC(10, 2) NOT NULL,
-        initial_sl NUMERIC(10, 2) NOT NULL,
-        tp1 NUMERIC(10, 2) NOT NULL,
-        tp2 NUMERIC(10, 2),
-        tp3 NUMERIC(10, 2),
-        current_price NUMERIC(10, 2) NOT NULL,
-        current_pnl NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-        realized_pnl NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-        close_price NUMERIC(10, 2),
-        close_reason VARCHAR(100),
-        opened_at DATETIME NOT NULL,
-        closed_at DATETIME,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL
-    );
-DELETE FROM "sqlite_sequence";
-INSERT INTO "sqlite_sequence" VALUES('raw_telegram_messages',873);
+	id INTEGER NOT NULL, 
+	ticket_id VARCHAR(64) NOT NULL, 
+	slot_id INTEGER NOT NULL, 
+	symbol VARCHAR(20) NOT NULL, 
+	side VARCHAR(4) NOT NULL, 
+	status VARCHAR(26) NOT NULL, 
+	entry_price NUMERIC(18, 4) NOT NULL, 
+	current_sl NUMERIC(18, 4) NOT NULL, 
+	initial_sl NUMERIC(18, 4) NOT NULL, 
+	tp1 NUMERIC(18, 4) NOT NULL, 
+	tp2 NUMERIC(18, 4), 
+	tp3 NUMERIC(18, 4), 
+	lot_size NUMERIC(10, 2) NOT NULL, 
+	pnl NUMERIC(18, 2) NOT NULL, 
+	close_price NUMERIC(18, 4), 
+	close_reason VARCHAR(255), 
+	open_time DATETIME NOT NULL, 
+	close_time DATETIME, 
+	raw_signal_id INTEGER, realized_cash_pnl NUMERIC(18, 2) DEFAULT 0.00, peak_price NUMERIC(18, 4), 
+	PRIMARY KEY (id)
+);
+INSERT INTO "trades" VALUES(1,'TKT-REC-01',1,'XAUUSD','BUY','CLOSED_REBOOT_NO_MILESTONE',2340,2330,2330,2350,2360,2370,0.5,0,0,'REBOOT_NO_MILESTONE_EMERGENCY_CLOSE','2026-08-21 09:03:12.708236','2026-08-21 09:03:12.717078',NULL,0,NULL);
+INSERT INTO "trades" VALUES(2,'TKT-REC-02',2,'XAUUSD','BUY','CLOSED_REBOOT_NO_MILESTONE',2340,2330,2330,2350,2360,2370,0.5,0,0,'REBOOT_NO_MILESTONE_EMERGENCY_CLOSE','2026-08-21 09:03:12.710097','2026-08-21 09:03:12.717171',NULL,0,NULL);
+INSERT INTO "trades" VALUES(3,'TKT-REC-03',3,'XAUUSD','BUY','CLOSED_REBOOT_NO_MILESTONE',2340,2330,2330,2350,2360,2370,0.5,0,0,'REBOOT_NO_MILESTONE_EMERGENCY_CLOSE','2026-08-21 09:03:12.710135','2026-08-21 09:03:12.717246',NULL,0,NULL);
+INSERT INTO "trades" VALUES(4,'TKT-CB8B1B92',1,'XAUUSD','BUY','CLOSED_TP',2340,2360,2330,2350,2360,2370,0.5,1247.5,2370.5,'TP_FINAL_REACHED (2370.00)','2026-08-21 09:03:12.731351','2026-08-21 09:03:12.737910',NULL,0,NULL);
+CREATE INDEX ix_raw_telegram_messages_message_id ON raw_telegram_messages (message_id);
+CREATE INDEX ix_raw_telegram_messages_channel_id ON raw_telegram_messages (channel_id);
+CREATE INDEX ix_raw_telegram_messages_received_at ON raw_telegram_messages (received_at);
+CREATE INDEX ix_trades_slot_id ON trades (slot_id);
+CREATE INDEX ix_trades_status ON trades (status);
+CREATE UNIQUE INDEX ix_trades_ticket_id ON trades (ticket_id);
+CREATE INDEX ix_system_audit_logs_timestamp ON system_audit_logs (timestamp);
+CREATE INDEX ix_system_audit_logs_event_type ON system_audit_logs (event_type);
+CREATE INDEX ix_news_interactions_created_at ON news_interactions (created_at);
+CREATE INDEX ix_news_interactions_news_id ON news_interactions (news_id);
+CREATE INDEX ix_news_interactions_action_type ON news_interactions (action_type);
 COMMIT;
