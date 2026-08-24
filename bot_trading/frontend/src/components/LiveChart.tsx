@@ -7,14 +7,44 @@ declare global {
   }
 }
 
+export interface ChartAssetInfo {
+  name: string;
+  ticker: string;
+  tvSymbol: string;
+  price: number;
+  decimals?: number;
+  change?: number;
+}
+
 interface LiveChartProps {
   currentPrice: number;
   activeSlots: SlotTradeData[];
+  selectedAsset?: ChartAssetInfo;
+  onResetToGold?: () => void;
 }
 
-export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots }) => {
+export const LiveChart: React.FC<LiveChartProps> = ({
+  currentPrice,
+  activeSlots,
+  selectedAsset = {
+    name: 'Oro Spot',
+    ticker: 'XAUUSD (Spot)',
+    tvSymbol: 'OANDA:XAUUSD',
+    price: currentPrice || 4652.60,
+    decimals: 2,
+    change: 0.65,
+  },
+  onResetToGold,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const activeTrade = activeSlots.find((s) => s.is_active && s.side);
+  const activeTvSymbol = selectedAsset?.tvSymbol || 'OANDA:XAUUSD';
+  const isGold = activeTvSymbol === 'OANDA:XAUUSD';
+
+  // Mostrar precio del activo actual (si es Oro usar el precio de telemetría en vivo, si no el precio del activo)
+  const displayPrice = isGold
+    ? (currentPrice > 0 ? currentPrice : selectedAsset.price)
+    : selectedAsset.price;
+  const decimals = selectedAsset.decimals ?? 2;
 
   useEffect(() => {
     const renderWidget = () => {
@@ -32,7 +62,7 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
       if (window.TradingView) {
         new window.TradingView.widget({
           autosize: true,
-          symbol: 'OANDA:XAUUSD',
+          symbol: activeTvSymbol,
           interval: '60', // 1h por defecto
           timezone: 'Europe/Madrid',
           theme: 'dark',
@@ -40,7 +70,7 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
           locale: 'es',
           toolbar_bg: '#000000',
           enable_publishing: false,
-          hide_top_toolbar: false, // BARRA NATIVA DE TRADINGVIEW (Temporalidades, cambio velas a línea, indicadores)
+          hide_top_toolbar: false, // BARRA NATIVA DE TRADINGVIEW
           hide_side_toolbar: true, // OCULTAR panel lateral de dibujo
           withdateranges: false, // OCULTAR barra inferior de rangos
           hide_volume: false, // MOSTRAR volumen nativo en las velas
@@ -92,34 +122,50 @@ export const LiveChart: React.FC<LiveChartProps> = ({ currentPrice, activeSlots 
     };
 
     renderWidget();
-  }, []);
+  }, [activeTvSymbol]);
 
   return (
-    <div className="flex flex-col h-full w-full relative overflow-hidden bg-black border border-outline-variant rounded-md">
-      {/* Barra de Estado Mínima */}
+    <div className="flex flex-col h-full w-full relative overflow-hidden bg-black border border-outline-variant rounded-md min-h-0 select-none">
+      {/* Barra de Estado de la Tarjeta del Gráfico */}
       <div className="bg-[#080808] px-3 py-1.5 border-b border-outline-variant/60 flex justify-between items-center z-10 shrink-0">
         <div className="flex items-center gap-2">
           <h2 className="text-label-sm text-slate-200 font-bold uppercase tracking-widest flex items-center gap-1.5 font-mono">
             <span className="material-symbols-outlined text-[16px] text-slate-400">show_chart</span>
-            OANDA:XAUUSD
+            <span>{selectedAsset.name}</span>
+            <span className="text-slate-500 text-[11px] font-normal font-mono">({activeTvSymbol})</span>
           </h2>
+
+          {/* Botón para volver a XAUUSD si se está viendo otro activo */}
+          {!isGold && (
+            <button
+              onClick={onResetToGold}
+              title="Volver a la vista principal de Oro (XAUUSD)"
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 transition-all cursor-pointer ml-1"
+            >
+              <span className="material-symbols-outlined text-[12px]">replay</span>
+              <span>Volver a Oro</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
           <span className="text-data-sm font-mono text-slate-400">
-            PRECIO SPOT: <strong className="text-slate-100 font-bold">${currentPrice > 0 ? currentPrice.toFixed(2) : '---'}</strong>
+            PRECIO SPOT:{' '}
+            <strong className="text-slate-100 font-bold">
+              ${displayPrice > 0 ? displayPrice.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : '---'}
+            </strong>
           </span>
         </div>
       </div>
 
-      {/* Contenedor del Gráfico de TradingView Nativo (100% Fondo Negro, Controles Nativos Integrados) */}
+      {/* Contenedor del Gráfico de TradingView Nativo */}
       <div
         className="flex-1 relative w-full h-full overflow-hidden bg-black"
         ref={containerRef}
         style={{ minHeight: '450px', backgroundColor: '#000000' }}
       >
         <div className="w-full h-full flex items-center justify-center text-outline text-label-sm bg-black">
-          Cargando gráfico interactivo nativo de TradingView...
+          Cargando gráfico interactivo de {selectedAsset.name}...
         </div>
       </div>
     </div>

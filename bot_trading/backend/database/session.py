@@ -1,10 +1,16 @@
 import logging
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import event
+from sqlalchemy import event, create_engine
 from sqlalchemy.engine import Engine
 from backend.config import settings
 
 logger = logging.getLogger("trading_bot.database")
+
+# Crear el sync engine para migraciones e inicialización sin dependencia de greenlet
+sync_engine = create_engine(
+    "sqlite:///trading_bot.db",
+    echo=False
+)
 
 # Crear el async engine de SQLAlchemy para SQLite
 engine = create_async_engine(

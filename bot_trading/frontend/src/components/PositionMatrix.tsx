@@ -29,8 +29,9 @@ interface PositionMatrixProps {
   onCloseSlot: (slotId: number) => Promise<void> | void;
 }
 
-export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots, currentPrice, onCloseSlot }) => {
-  const activeCount = slots.filter((s) => s.is_active).length;
+export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots = [], currentPrice, onCloseSlot }) => {
+  const safeSlots = Array.isArray(slots) ? slots : [];
+  const activeCount = safeSlots.filter((s) => s.is_active).length;
   // Estado para controlar qué tarjetas están expandidas (Slot #1 expandido por defecto)
   const [expandedSlots, setExpandedSlots] = useState<Record<number, boolean>>({
     1: true,
@@ -58,7 +59,7 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots, currentPr
 
       {/* Contenedor con Scroll Fluido y Tarjetas Plegables Suaves */}
       <div className="flex-1 p-2 space-y-2 overflow-y-auto min-h-0 pr-1.5 scrollbar-thin">
-        {slots.map((slot) => {
+        {safeSlots.map((slot) => {
           if (!slot.is_active || !slot.side) {
             return (
               <div

@@ -30,9 +30,9 @@ export default {
         'on-error-container': '#ffdad6',
       },
       fontFamily: {
-        sans: ['Geist', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
-        'data': ['JetBrains Mono', 'monospace'],
+        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+        mono: ['"DM Mono"', 'monospace'],
+        'data': ['"DM Mono"', 'monospace'],
       },
       fontSize: {
         'label-sm': ['11px', { lineHeight: '16px', letterSpacing: '0.05em', fontWeight: '500' }],

@@ -177,7 +177,29 @@ async def google_login(req: GoogleLoginRequest):
     }
 
 
+@router.post("/dev-login")
+async def dev_login():
+    """Genera una sesión válida para desarrollo local y pruebas estéticas."""
+    email = "adriamartileyton@gmail.com"
+    session_data = {
+        "sub": "dev_operator_id",
+        "email": email,
+        "name": "Adrià Martí (Test/Dev)",
+        "picture": "",
+    }
+    jwt_token = create_access_token(session_data)
+    logger.info(f"⚡ [AUTH DEV] Acceso modo test/desarrollo concedido para: {email}")
+    return {
+        "status": "success",
+        "access_token": jwt_token,
+        "token_type": "bearer",
+        "expires_in_hours": settings.JWT_EXPIRATION_HOURS,
+        "user": session_data,
+    }
+
+
 @router.get("/me")
 async def get_me(user: Dict[str, Any] = Depends(get_current_user)):
     """Verifica el estado de la sesión actual y devuelve los datos del operador."""
     return {"status": "authenticated", "user": user}
+

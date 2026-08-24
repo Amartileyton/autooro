@@ -3,9 +3,10 @@ import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List
-from sqlalchemy import select, update
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from backend.database.session import AsyncSessionLocal
+from backend.database.session import sync_engine
 from backend.database.models import Trade, TradeStatus, OrderSide, SystemAuditLog
 from backend.broker.base import BaseBrokerAdapter, BrokerTick
 from backend.risk.state_machine import TradeStateMachine, ActiveSlotTrade
@@ -28,7 +29,7 @@ async def run_startup_reconciliation(
     """
     logger.info("Iniciando Protocolo de Reconciliación Post-Reinicio...")
 
-    async with AsyncSessionLocal() as session:
+    with Session(sync_engine) as session:
         # 1. Consultar trades abiertos en DB
         stmt = select(Trade).where(
             Trade.status.in_([
@@ -38,8 +39,7 @@ async def run_startup_reconciliation(
                 TradeStatus.PENDING
             ])
         )
-        result = await session.execute(stmt)
-        open_trades: List[Trade] = list(result.scalars().all())
+        open_trades: List[Trade] = list(session.scalars(stmt).all())
 
         if not open_trades:
             logger.info("Reconciliación completa: No existen órdenes abiertas en base de datos.")
@@ -145,7 +145,7 @@ async def run_startup_reconciliation(
             })
         )
         session.add(audit_entry)
-        await session.commit()
+        session.commit()
 
     logger.info(
         f"Reconciliación finalizada con éxito. "

@@ -16,12 +16,25 @@ const { title } = Astro.props;
 		<title>{title}</title>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+		<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=Roboto+Mono:wght@400;500;600;700&family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 		<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 		<!-- Google Identity Services SDK para OAuth 2.0 -->
 		<script src="https://accounts.google.com/gsi/client" async defer></script>
+		<script is:inline>
+			// Aplicar tipografía personalizada seleccionada en el estudio si existe
+			try {
+				const savedFont = localStorage.getItem('goldex_custom_font_preset');
+				if (savedFont) {
+					const preset = JSON.parse(savedFont);
+					if (preset && preset.sansFont) {
+						document.documentElement.style.setProperty('--user-sans-font', preset.sansFont);
+						document.documentElement.style.setProperty('--user-mono-font', preset.monoFont);
+					}
+				}
+			} catch (e) {}
+		</script>
 	</head>
-	<body class="bg-background text-on-surface h-screen flex flex-col overflow-hidden select-none font-sans">
+	<body class="bg-background text-on-surface h-screen flex flex-col overflow-hidden select-none font-sans" style="font-family: var(--user-sans-font, 'Plus Jakarta Sans', sans-serif);">
 		<slot />
 	</body>
 </html>
@@ -32,10 +45,10 @@ const { title } = Astro.props;
 	@tailwind utilities;
 
 	body {
-		font-family: 'Geist', sans-serif;
+		font-family: var(--user-sans-font, 'Plus Jakarta Sans', sans-serif);
 	}
-	.data-font {
-		font-family: 'JetBrains Mono', monospace;
+	.font-mono, [class*="font-mono"], .data-font {
+		font-family: var(--user-mono-font, 'DM Mono', monospace) !important;
 	}
 	
 	/* Custom scrollbar */
@@ -105,8 +118,29 @@ const { title } = Astro.props;
 		}
 	}
 
+	/* American Stock Ticker Marquee Animation */
+	@keyframes ticker-marquee {
+		0% {
+			transform: translate3d(0, 0, 0);
+		}
+		100% {
+			transform: translate3d(-50%, 0, 0);
+		}
+	}
+
+	.ticker-track {
+		display: inline-flex;
+		width: max-content;
+		animation: ticker-marquee 38s linear infinite;
+	}
+
+	.ticker-track:hover {
+		animation-play-state: paused;
+	}
+
 	/* Ocultar marcas de agua y branding */
 	.tradingview-widget-copyright {
 		display: none !important;
 	}
 </style>
+

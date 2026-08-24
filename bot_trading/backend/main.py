@@ -161,28 +161,35 @@ async def lifespan(app: FastAPI):
     logger.info(" INICIANDO MOTOR DE TRADING AUTÓNOMO XAUUSD")
     logger.info("==================================================")
 
-    # 1. Crear tablas en SQLite WAL
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # 1. Crear tablas en SQLite WAL con sync_engine seguro
+    from backend.database.session import sync_engine
+    Base.metadata.create_all(bind=sync_engine)
     logger.info("Base de datos SQLite WAL inicializada correctamente.")
 
+    # 1.1 Si la base de datos está vacía, sembrar historial desde dump.sql
     # 1.1 Si la base de datos está vacía, sembrar historial desde dump.sql
     try:
         import os
         import sqlite3
-        async with AsyncSessionLocal() as session:
-            check_msg = await session.execute(select(RawTelegramMessage).limit(1))
-            if not check_msg.scalars().first():
-                dump_candidates = ["dump.sql", "bot_trading/dump.sql", "/app/dump.sql"]
-                for dp in dump_candidates:
-                    if os.path.exists(dp):
-                        logger.info(f"Cargando histórico inicial de mensajes desde {dp}...")
-                        sync_conn = sqlite3.connect("trading_bot.db")
-                        with open(dp, "r", encoding="utf-8") as f:
-                            sync_conn.executescript(f.read())
-                        sync_conn.close()
-                        logger.info("Histórico inicial cargado exitosamente en SQLite.")
-                        break
+        sync_conn = sqlite3.connect("trading_bot.db")
+        cursor = sync_conn.cursor()
+        try:
+            cursor.execute("SELECT count(*) FROM raw_telegram_messages;")
+            count = cursor.fetchone()[0]
+        except Exception:
+            count = 0
+
+        if count == 0:
+            dump_candidates = ["dump.sql", "bot_trading/dump.sql", "/app/dump.sql"]
+            for dp in dump_candidates:
+                if os.path.exists(dp):
+                    logger.info(f"Cargando histórico inicial de mensajes desde {dp}...")
+                    with open(dp, "r", encoding="utf-8") as f:
+                        sync_conn.executescript(f.read())
+                    logger.info("Histórico inicial cargado exitosamente en SQLite.")
+                    break
+        cursor.close()
+        sync_conn.close()
     except Exception as e:
         logger.warning(f"Aviso al sembrar dump.sql inicial: {e}")
 

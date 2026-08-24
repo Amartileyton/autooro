@@ -3,10 +3,26 @@ import { HeaderTelemetry } from './HeaderTelemetry';
 import { PositionMatrix, type SlotTradeData } from './PositionMatrix';
 import { SignalFeed, type TradeLifecycleCardItem } from './SignalFeed';
 import { LiveChart } from './LiveChart';
+import { NewsFeed } from './NewsFeed';
+import { MobileOperatorDashboard } from './MobileOperatorDashboard';
+import type { MarketAsset } from './MarketTicker';
 import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
 import { SystemHealthModal } from './SystemHealthModal';
 import { LoginScreen } from './LoginScreen';
+
+const GOLD_ASSET: MarketAsset = {
+  id: 'xauusd',
+  name: 'Oro Spot',
+  ticker: 'XAUUSD (Spot)',
+  tvSymbol: 'OANDA:XAUUSD',
+  market: 'Global',
+  type: 'Metal Precioso Spot',
+  description: 'Cotización SPOT del oro frente al dólar estadounidense (XAU/USD). Activo refugio físico.',
+  price: 4652.60,
+  change: 0.65,
+  decimals: 2,
+};
 
 const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
@@ -79,6 +95,8 @@ export const DashboardApp: React.FC = () => {
   const [isControlDropdownOpen, setIsControlDropdownOpen] = useState<boolean>(false);
   const [latencyMs, setLatencyMs] = useState<number>(12);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [selectedAsset, setSelectedAsset] = useState<MarketAsset>(GOLD_ASSET);
+  const [desktopRightTab, setDesktopRightTab] = useState<'chart' | 'news'>('chart');
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -98,6 +116,14 @@ export const DashboardApp: React.FC = () => {
       if (!token) {
         setAuthToken(null);
         setAuthUser(null);
+        setIsAuthChecking(false);
+        return;
+      }
+
+      if (token === 'dev_mock_token_2026') {
+        const storedUser = localStorage.getItem('goldex_auth_user');
+        setAuthUser(storedUser ? JSON.parse(storedUser) : { email: 'adriamartileyton@gmail.com', name: 'Adrià Martí (Dev)' });
+        setAuthToken(token);
         setIsAuthChecking(false);
         return;
       }
@@ -418,83 +444,158 @@ export const DashboardApp: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen w-full overflow-hidden bg-background">
-      {/* 1. Header de Telemetría con botón de controles, usuario autenticado y diagnóstico */}
-      <HeaderTelemetry
-        xauusdPrice={xauusdPrice}
-        balance={balance}
-        hasLiveBalance={hasLiveBalance}
-        botActive={botActive}
-        authUser={authUser}
-        onOpenSettings={() => setIsControlDropdownOpen(!isControlDropdownOpen)}
-        onOpenDiagnostics={() => setIsHealthModalOpen(true)}
-        onLogout={handleLogout}
-      />
-
-      {/* Desplegable de Control y Kill Switch anclado al Header */}
-      <ControlDropdown
-        isOpen={isControlDropdownOpen}
-        onClose={() => setIsControlDropdownOpen(false)}
-        ingestionEnabled={ingestionEnabled}
-        autoExecutionEnabled={autoExecutionEnabled}
-        onToggleIngestion={handleToggleIngestion}
-        onToggleAutoExecution={handleToggleAutoExecution}
-        onPanicClose={handlePanicClose}
-        onInjectTestSignal={handleInjectTestSignal}
-        onOpenAudit={handleOpenAuditModal}
-      />
-
-      {/* 2. Cuerpo Principal con 3 Columnas Proporcionales Perfectamente Distribuidas */}
-      <div className="flex flex-1 w-full overflow-hidden">
-        {/* Columna 1 (Izquierda): Registro de Trades */}
-        <aside className="w-[310px] xl:w-[340px] flex flex-col h-full bg-surface-container border-r border-outline-variant shrink-0 overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <SignalFeed trades={trades} />
-          </div>
-        </aside>
-
-        {/* Columna 2 (Centro): Matriz de Posiciones con Tarjetas Enriquecidas */}
-        <section className="w-[330px] xl:w-[360px] p-2 flex flex-col h-full shrink-0 border-r border-outline-variant/60 bg-background overflow-hidden min-h-0">
-          <PositionMatrix slots={slots} currentPrice={xauusdPrice} onCloseSlot={handleCloseSlot} />
-        </section>
-
-        {/* Columna 3 (Derecha): Gráfico de TradingView Ampliado */}
-        <main className="flex-1 p-2 flex flex-col h-full overflow-hidden bg-background">
-          <LiveChart currentPrice={xauusdPrice} activeSlots={slots} />
-        </main>
+    <>
+      {/* 1. Vista Móvil Especializada con 3 Pantallas Deslizantes (Swipe), Kill Switch y Bottom Nav */}
+      <div className="block md:hidden h-screen w-screen overflow-hidden">
+        <MobileOperatorDashboard
+          balance={balance ?? 10000.0}
+          floatingPnl={floatingPnl}
+          currentPrice={xauusdPrice}
+          slots={slots}
+          trades={trades}
+          isIngestionActive={ingestionEnabled}
+          isAutoExecutionActive={autoExecutionEnabled}
+          onToggleIngestion={handleToggleIngestion}
+          onToggleAutoExecution={handleToggleAutoExecution}
+          onEmergencyClose={handlePanicClose}
+          onCloseSlot={handleCloseSlot}
+          onEmitTestSignal={handleInjectTestSignal}
+          userEmail={authUser?.email || null}
+          onLogout={handleLogout}
+        />
       </div>
 
-      {/* 3. Footer Limpio sin textos de branding */}
-      <footer className="w-full z-40 flex justify-end items-center px-4 py-1 h-7 bg-surface-container-lowest border-t border-outline-variant shrink-0">
-        <div className="flex gap-6 font-mono text-[11px] text-outline">
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-green" /> Status: Nominal
-          </span>
-          <span>Latencia: {latencyMs}ms</span>
-          <span className={wsConnected ? 'text-primary' : 'text-error'}>
-            WS: {wsConnected ? 'Connected' : 'Offline'}
-          </span>
+      {/* 2. Vista de Escritorio Profesional (3 Columnas con Gráfico / Radar de Noticias Opción C) */}
+      <div className="hidden md:flex flex-col h-screen w-full overflow-hidden bg-background">
+        {/* Header de Telemetría con botón de controles, usuario autenticado y diagnóstico */}
+        <HeaderTelemetry
+          xauusdPrice={xauusdPrice}
+          balance={balance}
+          hasLiveBalance={hasLiveBalance}
+          botActive={botActive}
+          authUser={authUser}
+          selectedTvSymbol={selectedAsset.tvSymbol}
+          onSelectAsset={(asset) => {
+            setSelectedAsset(asset);
+            setDesktopRightTab('chart');
+          }}
+          onOpenSettings={() => setIsControlDropdownOpen(!isControlDropdownOpen)}
+          onOpenDiagnostics={() => setIsHealthModalOpen(true)}
+          onLogout={handleLogout}
+        />
+
+        {/* Desplegable de Control y Kill Switch anclado al Header */}
+        <ControlDropdown
+          isOpen={isControlDropdownOpen}
+          onClose={() => setIsControlDropdownOpen(false)}
+          ingestionEnabled={ingestionEnabled}
+          autoExecutionEnabled={autoExecutionEnabled}
+          onToggleIngestion={handleToggleIngestion}
+          onToggleAutoExecution={handleToggleAutoExecution}
+          onPanicClose={handlePanicClose}
+          onInjectTestSignal={handleInjectTestSignal}
+          onOpenAudit={handleOpenAuditModal}
+        />
+
+        {/* Cuerpo Principal con 3 Columnas Proporcionales */}
+        <div className="flex flex-1 w-full overflow-hidden min-h-0">
+          {/* Columna 1 (Izquierda): Registro de Señales en Formato Tarjeta */}
+          <aside className="w-[310px] xl:w-[340px] p-2 flex flex-col h-full shrink-0 border-r border-outline-variant/60 bg-background overflow-hidden min-h-0">
+            <SignalFeed trades={trades} />
+          </aside>
+
+          {/* Columna 2 (Centro): Matriz de Posiciones con Tarjetas Enriquecidas */}
+          <section className="w-[330px] xl:w-[360px] p-2 flex flex-col h-full shrink-0 border-r border-outline-variant/60 bg-background overflow-hidden min-h-0">
+            <PositionMatrix slots={slots} currentPrice={xauusdPrice} onCloseSlot={handleCloseSlot} />
+          </section>
+
+          {/* Columna 3 (Derecha): Pestañas Gráfico TradingView / Radar de Noticias IA (Opción C) */}
+          <main className="flex-1 p-2 flex flex-col h-full overflow-hidden bg-background min-h-0">
+            {/* Selector de Pestañas Superior */}
+            <div className="flex items-center justify-between mb-1.5 px-1 shrink-0">
+              <div className="flex items-center gap-1 bg-surface-container p-0.5 rounded border border-outline-variant">
+                <button
+                  onClick={() => setDesktopRightTab('chart')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono transition-all ${
+                    desktopRightTab === 'chart'
+                      ? 'bg-primary text-black font-bold shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <span>📈</span>
+                  <span>Gráfico {selectedAsset.name}</span>
+                </button>
+
+                <button
+                  onClick={() => setDesktopRightTab('news')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono transition-all ${
+                    desktopRightTab === 'news'
+                      ? 'bg-primary text-black font-bold shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <span>📰</span>
+                  <span>Radar de Noticias IA</span>
+                </button>
+              </div>
+
+              {desktopRightTab === 'chart' && selectedAsset.id !== 'xauusd' && (
+                <button
+                  onClick={() => setSelectedAsset(GOLD_ASSET)}
+                  className="text-[11px] font-mono text-primary hover:underline flex items-center gap-1"
+                >
+                  <span>↩ Volver a Oro Spot</span>
+                </button>
+              )}
+            </div>
+
+            {/* Contenedor Activo */}
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {desktopRightTab === 'chart' ? (
+                <LiveChart
+                  currentPrice={xauusdPrice}
+                  activeSlots={slots}
+                  selectedAsset={selectedAsset}
+                  onResetToGold={() => setSelectedAsset(GOLD_ASSET)}
+                />
+              ) : (
+                <NewsFeed />
+              )}
+            </div>
+          </main>
         </div>
-      </footer>
 
-      {/* Modal de Auditoría */}
-      <AuditLogsModal
-        isOpen={isAuditModalOpen}
-        onClose={() => setIsAuditModalOpen(false)}
-        auditLogs={auditLogs}
-        tradeHistory={tradeHistory}
-      />
+        {/* Footer Limpio con latencia y estado nominal */}
+        <footer className="w-full z-40 flex justify-end items-center px-4 py-1 h-7 bg-surface-container-lowest border-t border-outline-variant shrink-0">
+          <div className="flex gap-6 font-mono text-[11px] text-outline">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-green" /> Status: Nominal
+            </span>
+            <span>Latencia: {latencyMs}ms</span>
+            <span className={wsConnected ? 'text-primary' : 'text-error'}>
+              WS: {wsConnected ? 'Connected' : 'Offline'}
+            </span>
+          </div>
+        </footer>
 
-      {/* Modal de Diagnóstico de APIs & Salud del Servidor */}
-      <SystemHealthModal
-        isOpen={isHealthModalOpen}
-        onClose={() => setIsHealthModalOpen(false)}
-        wsConnected={wsConnected}
-        latencyMs={latencyMs}
-        botActive={botActive}
-        hasCtraderToken={hasLiveBalance}
-        xauusdPrice={xauusdPrice}
-      />
-    </div>
+        {/* Modales de Auditoría y Diagnóstico */}
+        <AuditLogsModal
+          isOpen={isAuditModalOpen}
+          onClose={() => setIsAuditModalOpen(false)}
+          auditLogs={auditLogs}
+          tradeHistory={tradeHistory}
+        />
+
+        <SystemHealthModal
+          isOpen={isHealthModalOpen}
+          onClose={() => setIsHealthModalOpen(false)}
+          wsConnected={wsConnected}
+          latencyMs={latencyMs}
+          botActive={botActive}
+          hasCtraderToken={hasLiveBalance}
+          xauusdPrice={xauusdPrice}
+        />
+      </div>
+    </>
   );
 };

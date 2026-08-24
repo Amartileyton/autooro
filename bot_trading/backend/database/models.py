@@ -97,3 +97,21 @@ class SystemAuditLog(Base):
     event_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(20), default="INFO")  # INFO / WARNING / CRITICAL
     details_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class NewsInteraction(Base):
+    """Registro persistente de clics, likes, dislikes y consultas IA del usuario sobre noticias."""
+    __tablename__ = "news_interactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    news_id: Mapped[str] = mapped_column(String(128), index=True)
+    news_title: Mapped[str] = mapped_column(String(300), nullable=False)
+    news_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    news_asset: Mapped[Optional[str]] = mapped_column(String(60), nullable=True, default="MACRO")
+    action_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)  # 'click', 'like', 'dislike', 'summarize'
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True
+    )
+

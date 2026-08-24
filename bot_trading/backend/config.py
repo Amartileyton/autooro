@@ -82,11 +82,15 @@ class Settings(BaseSettings):
     CTRADER_HOST: str = Field(default="live.ctraderapi.com", description="Host cTrader Open API")
     CTRADER_PORT: int = Field(default=5035, description="Puerto cTrader Open API")
 
-    # IA Fallback (Opcional para rescate de señales no estructuradas)
-    AI_FALLBACK_ENABLED: bool = Field(default=False, description="Activar IA como parser de rescate secundario")
-    AI_API_KEY: str = Field(default="", description="API Key de OpenAI o Gemini")
-    AI_PROVIDER: str = Field(default="gemini", description="'gemini' o 'openai'")
-    AI_MODEL: str = Field(default="gemini-2.0-flash", description="Modelo de ultra-baja latencia")
+    # IA Fallback y DeepSeek AI para Resumen de Noticias
+    AI_FALLBACK_ENABLED: bool = Field(default=False, description="Flag para rescate de señales con IA")
+    AI_API_KEY: str = Field(default="", description="API Key para el fallback de IA")
+    AI_PROVIDER: str = Field(default="gemini", description="Proveedor de IA: 'gemini' u 'openai'")
+    AI_MODEL: str = Field(default="gemini-2.0-flash", description="Modelo LLM a emplear")
+
+    DEEPSEEK_API_KEY: str = Field(default="", description="API Key de DeepSeek para resumen y análisis de noticias")
+    DEEPSEEK_API_URL: str = Field(default="https://api.deepseek.com/v1/chat/completions", description="Endpoint DeepSeek API")
+    DEEPSEEK_MODEL: str = Field(default="deepseek-chat", description="Modelo de DeepSeek a utilizar")
 
     @field_validator("TG_API_ID", "TARGET_CHANNEL_ID", "ADMIN_TELEGRAM_USER_ID", "CTRADER_ACCOUNT_ID", "PORT", "MAX_CONCURRENT_SLOTS", "CTRADER_PORT", mode="before")
     @classmethod

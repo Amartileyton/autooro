@@ -52,17 +52,15 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
   const displayTrades = (trades || []).slice(0, 10);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#12141c]">
-      {/* Header del Feed en Gris Institucional */}
-      <div className="px-3 py-2 border-b border-outline-variant bg-surface-container flex justify-between items-center shrink-0">
-        <div className="flex items-center gap-1.5">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-[#12141c] border border-outline-variant rounded-md min-h-0 select-none">
+      {/* Header del Feed en Gris Institucional Fijo */}
+      <div className="bg-surface-container px-3 py-2 border-b border-outline-variant flex justify-between items-center shrink-0">
+        <h2 className="text-label-sm text-white font-bold uppercase tracking-widest flex items-center gap-1.5 font-mono">
           <span className="material-symbols-outlined text-[16px] text-slate-400">history_edu</span>
-          <span className="text-label-sm text-slate-200 uppercase font-bold tracking-wider">
-            Registro de Trades (10 Últimos)
-          </span>
-        </div>
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-slate-400 font-bold">
-          {displayTrades.length} Trades
+          Registro de Señales
+        </h2>
+        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-white font-bold">
+          {displayTrades.length} SEÑALES
         </span>
       </div>
 

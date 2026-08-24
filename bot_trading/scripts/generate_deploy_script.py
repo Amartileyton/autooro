@@ -68,4 +68,4 @@ sudo docker ps
 with open("deploy_to_gcp.sh", "w", encoding="utf-8") as f:
     f.write(script_content)
 
-print("✅ Archivo 'deploy_to_gcp.sh' generado con éxito.")
+print("Archivo deploy_to_gcp.sh generado con exito.")

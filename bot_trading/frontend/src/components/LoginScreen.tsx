@@ -106,7 +106,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     } catch (err: any) {
       console.error('Error al verificar sesión en backend:', err);
-      setErrorMsg(`No se pudo conectar con el servidor de autenticación. Entra en https://34.175.69.118.nip.io (sin el puerto :4321).`);
+      setErrorMsg(`No se pudo conectar con el servidor de autenticación de Google en local.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDevLogin = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      let res: Response;
+      try {
+        res = await fetch(`${apiBaseUrl}/api/v1/auth/dev-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch {
+        res = await fetch('/api/v1/auth/dev-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('goldex_auth_token', data.access_token);
+        localStorage.setItem('goldex_auth_user', JSON.stringify(data.user));
+        onLoginSuccess(data.access_token, data.user);
+      } else {
+        // Fallback local directo para diseño/test
+        const devUser = { email: 'adriamartileyton@gmail.com', name: 'Adrià Martí (Dev/Test)' };
+        localStorage.setItem('goldex_auth_token', 'dev_mock_token_2026');
+        localStorage.setItem('goldex_auth_user', JSON.stringify(devUser));
+        onLoginSuccess('dev_mock_token_2026', devUser);
+      }
+    } catch {
+      // Fallback si backend está offline
+      const devUser = { email: 'adriamartileyton@gmail.com', name: 'Adrià Martí (Dev/Test)' };
+      localStorage.setItem('goldex_auth_token', 'dev_mock_token_2026');
+      localStorage.setItem('goldex_auth_user', JSON.stringify(devUser));
+      onLoginSuccess('dev_mock_token_2026', devUser);
     } finally {
       setLoading(false);
     }
@@ -161,7 +201,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {loading ? (
             <div className="flex items-center gap-3 py-2 text-xs text-amber-400 font-mono">
               <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-              Validando credenciales con Google...
+              Validando credenciales...
             </div>
           ) : (
             <div ref={googleBtnRef} className="flex justify-center w-full" />
@@ -173,6 +213,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
           )}
         </div>
+
+        {/* Separador y Botón Modo Test / Desarrollo */}
+        <div className="w-full my-4 flex items-center gap-3">
+          <div className="flex-1 h-px bg-[#262833]" />
+          <span className="text-[10px] uppercase font-mono text-[#6b6d7a] tracking-wider">o</span>
+          <div className="flex-1 h-px bg-[#262833]" />
+        </div>
+
+        <button
+          onClick={handleDevLogin}
+          disabled={loading}
+          className="w-full py-2.5 px-4 rounded-xl bg-[#1e202b] hover:bg-[#282a3a] active:scale-[0.98] border border-amber-500/30 text-amber-400 hover:text-amber-300 font-mono text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-amber-500/10"
+        >
+          <span className="material-symbols-outlined text-base">bolt</span>
+          <span>Entrar en Modo Test / Edición UI</span>
+        </button>
 
         {/* Footer */}
         <div className="mt-8 pt-4 border-t border-[#22242e] w-full flex items-center justify-between text-[10px] text-[#6b6d7a] font-mono">

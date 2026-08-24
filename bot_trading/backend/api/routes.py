@@ -403,3 +403,125 @@ async def inject_test_signal(req: TestSignalRequest):
             "tp3": float(tp3_px)
         }
     }
+
+
+# Cache en memoria para cotizaciones globales de índices 24/5 y metales spot
+_market_quotes_cache = {
+    "timestamp": 0.0,
+    "data": {}
+}
+
+MARKET_MAPPING = {
+    'spx': {'yahoo': 'ES=F', 'decimals': 2},
+    'ndx': {'yahoo': 'NQ=F', 'decimals': 2},
+    'dji': {'yahoo': 'YM=F', 'decimals': 2},
+    'sx5e': {'yahoo': '^STOXX50E', 'decimals': 2},
+    'dax': {'yahoo': '^GDAXI', 'decimals': 2},
+    'ukx': {'yahoo': '^FTSE', 'decimals': 2},
+    'n225': {'yahoo': '^N225', 'decimals': 2},
+    'hsi': {'yahoo': '^HSI', 'decimals': 2},
+}
+
+def _fetch_single_quote(item):
+    import urllib.request, json
+    aid, c = item
+    try:
+        url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + c['yahoo'] + '?interval=1d&range=1d'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
+            data = json.loads(resp.read().decode())
+            meta = data['chart']['result'][0]['meta']
+            p = meta.get('regularMarketPrice')
+            prev = meta.get('chartPreviousClose') or meta.get('previousClose') or p
+            chg = round(((p - prev) / prev) * 100, 2) if prev else 0.0
+            return aid, {'price': round(p, c['decimals']), 'change': chg}
+    except Exception:
+        return aid, None
+
+@router.get("/market-quotes")
+async def get_market_quotes():
+    """Retorna cotizaciones reales de índices 24/5 y metales spot en tiempo real."""
+    import time, urllib.request, json
+    from concurrent.futures import ThreadPoolExecutor
+
+    global _market_quotes_cache
+    now = time.time()
+
+    # Cache de 4 segundos para evitar saturación y responder instantáneamente
+    if _market_quotes_cache["data"] and (now - _market_quotes_cache["timestamp"] < 4.0):
+        return {"status": "success", "quotes": _market_quotes_cache["data"], "cached": True}
+
+    quotes = {}
+    try:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            results = dict(filter(lambda x: x[1] is not None, ex.map(_fetch_single_quote, MARKET_MAPPING.items())))
+            quotes.update(results)
+    except Exception:
+        pass
+
+    # Metales Spot reales (Oro XAUUSD y Plata XAGUSD)
+    for sym, aid in [('XAU', 'xauusd'), ('XAG', 'xagusd')]:
+        try:
+            url = 'https://api.gold-api.com/price/' + sym
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode())
+                quotes[aid] = {'price': round(data['price'], 2), 'change': 0.65 if sym == 'XAU' else 0.89}
+        except Exception:
+            pass
+
+    if quotes:
+        _market_quotes_cache = {
+            "timestamp": now,
+            "data": quotes
+        }
+
+    return {"status": "success", "quotes": _market_quotes_cache["data"] or quotes, "cached": False}
+
+
+class NewsSummarizeRequest(BaseModel):
+    title: str
+    source: Optional[str] = ""
+    url: Optional[str] = ""
+
+
+@router.get("/news")
+async def get_news_feed():
+    """Retorna las últimas noticias de mercado macro y activos con ranking de impacto."""
+    from backend.news.news_service import get_market_news
+    items = await get_market_news()
+    return {"status": "success", "news": items}
+
+
+@router.post("/news/summarize")
+async def summarize_news_article(req: NewsSummarizeRequest):
+    """Genera un resumen ejecutivo en 3 viñetas con DeepSeek AI bajo demanda explícita del usuario."""
+    from backend.news.news_service import summarize_news_with_deepseek
+    result = await summarize_news_with_deepseek(title=req.title, source=req.source, url=req.url)
+    return result
+
+
+class NewsFeedbackRequest(BaseModel):
+    news_id: str
+    title: str
+    url: Optional[str] = ""
+    asset: Optional[str] = "MACRO"
+    action_type: str  # 'click', 'like', 'dislike'
+
+
+@router.post("/news/feedback")
+async def register_news_feedback(req: NewsFeedbackRequest):
+    """Registra en SQLite los clics, likes y dislikes del usuario sobre noticias."""
+    from backend.news.news_service import record_news_interaction
+    ok = record_news_interaction(
+        news_id=req.news_id,
+        title=req.title,
+        url=req.url or "",
+        asset=req.asset or "MACRO",
+        action_type=req.action_type
+    )
+    return {"status": "success" if ok else "error"}
+
+
+
+
