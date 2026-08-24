@@ -83,19 +83,37 @@ class TelegramIngestionClient:
         if not settings.INGESTION_ENABLED:
             return
 
-        text = event.raw_text
+        text = event.raw_text or ""
         msg_id = event.id
         channel_id = event.chat_id
         timestamp = event.date or datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
 
-        # 1. Guardar mensaje RAW en base de datos para auditoría inmutable
+        logger.info(f"Mensaje recibido [{msg_id}] en canal {channel_id}: '{text[:60]}...'")
+
+        # 1. Intento de Parsing Primario con Regex Determinista (< 1ms)
+        parsed_event = parse_signal(text, msg_id, channel_id)
+
+        # 2. Si falla y la IA está habilitada, intento de Parsing Fallback con LLM
+        if not parsed_event and settings.AI_FALLBACK_ENABLED:
+            logger.info(f"Regex no detectó señal en [{msg_id}]. Intentando Fallback IA ({settings.AI_PROVIDER})...")
+            parsed_event = await parse_with_ai(text, msg_id, channel_id)
+
+        is_sig = bool(parsed_event)
+        p_used = (parsed_event.parser_type.value if hasattr(parsed_event, 'parser_type') else "REGEX") if is_sig else "NONE"
+
+        # 3. Guardar mensaje RAW en base de datos para auditoría inmutable
         try:
             async with AsyncSessionLocal() as session:
                 raw_msg = RawTelegramMessage(
                     message_id=msg_id,
                     channel_id=channel_id,
+                    channel_name="Chartoro FX Señales Gratis",
                     raw_text=text,
-                    is_signal=False,
+                    parsed_success=is_sig,
+                    parser_used=p_used,
+                    error_reason=None,
                     received_at=timestamp
                 )
                 session.add(raw_msg)
@@ -103,30 +121,23 @@ class TelegramIngestionClient:
         except Exception as e:
             logger.error(f"Error al guardar mensaje raw en DB: {e}")
 
-        logger.info(f"Mensaje recibido [{msg_id}] en canal {channel_id}: '{text[:60]}...'")
-
-        # 2. Intento de Parsing Primario con Regex Determinista (< 1ms)
-        parsed_event = parse_signal(text, msg_id, channel_id)
-
-        # 3. Si falla y la IA está habilitada, intento de Parsing Fallback con LLM
-        if not parsed_event and settings.AI_FALLBACK_ENABLED:
-            logger.info(f"Regex no detectó señal en [{msg_id}]. Intentando Fallback IA ({settings.AI_PROVIDER})...")
-            parsed_event = await parse_with_ai(text, msg_id, channel_id)
-
+        # 4. Encolar señal si es una orden ejecutable
         if parsed_event:
             logger.info(
-                f"SEÑAL DETECTADA [{parsed_event.parser_used.value}]: "
+                f"SEÑAL DETECTADA [{p_used}]: "
                 f"{type(parsed_event).__name__} en canal {channel_id}"
             )
             # Encolar en la cola asíncrona para consumo desacoplado
             await self.signal_queue.put(parsed_event)
 
-            # Notificar WebSocket en tiempo real
-            try:
-                from backend.api.ws import manager
-                await manager.broadcast({
-                    "type": "SIGNAL_PARSED",
-                    "event": parsed_event.model_dump() if hasattr(parsed_event, "model_dump") else str(parsed_event)
-                })
-            except Exception as ws_err:
-                logger.debug(f"Aviso al notificar señal por WS: {ws_err}")
+        # 5. Notificar WebSocket en tiempo real para refrescar tarjetas del dashboard
+        try:
+            from backend.api.ws import manager
+            await manager.broadcast({
+                "type": "SIGNAL_PARSED",
+                "message_id": msg_id,
+                "is_signal": is_sig,
+                "event": parsed_event.model_dump() if hasattr(parsed_event, "model_dump") else str(parsed_event) if parsed_event else None
+            })
+        except Exception as ws_err:
+            logger.debug(f"Aviso al notificar señal por WS: {ws_err}")

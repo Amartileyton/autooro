@@ -238,13 +238,17 @@ async def get_consolidated_trade_cards(limit: int = 10, db: AsyncSession = Depen
     - Cierre en Verde (Win) o Rojo (Loss)
     """
     from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
-    # Leer hasta 250 mensajes de Telegram crudos para abarcar los ciclos completos
-    stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(250)
-    result = await db.execute(stmt)
-    messages = result.scalars().all()
+    try:
+        # Leer hasta 500 mensajes de Telegram crudos para abarcar los ciclos completos
+        stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(500)
+        result = await db.execute(stmt)
+        messages = result.scalars().all()
 
-    trade_cards = consolidate_telegram_trade_lifecycle(messages)
-    return trade_cards[:limit]
+        trade_cards = consolidate_telegram_trade_lifecycle(messages)
+        return trade_cards[:limit]
+    except Exception as e:
+        logger.error(f"Error al consolidar tarjetas de trade: {e}")
+        return []
 
 
 @router.get("/audit")

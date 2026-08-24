@@ -127,15 +127,22 @@ class TradeLifecycleCard:
 
 
 def get_msg_datetime(msg: Any) -> datetime:
+    """Extrae el datetime UTC garantizando compatibilidad total de comparación."""
     val = getattr(msg, 'received_at', None)
     if isinstance(val, datetime):
-        return val
-    if isinstance(val, str):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
+        return val.astimezone(timezone.utc)
+    if isinstance(val, str) and val.strip():
         try:
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+            clean = val.strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(clean)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
         except Exception:
-            return datetime.min
-    return datetime.min
+            return datetime.min.replace(tzinfo=timezone.utc)
+    return datetime.min.replace(tzinfo=timezone.utc)
 
 def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]:
     """
@@ -144,22 +151,19 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
     - Actualización progresiva de niveles.
     - Cierre con precio exacto de salida y PnL resultante.
     """
+    if not messages:
+        return []
+
     sorted_msgs = sorted(messages, key=get_msg_datetime)
     trades: List[TradeLifecycleCard] = []
 
     for m in sorted_msgs:
         raw_text = getattr(m, 'raw_text', '') or ""
         raw_upper = raw_text.upper()
-        channel = getattr(m, 'channel_name', None) or "Chartoro FX"
-        received_at_val = getattr(m, 'received_at', None)
-        if isinstance(received_at_val, datetime):
-            if received_at_val.tzinfo is None:
-                received_at_val = received_at_val.replace(tzinfo=timezone.utc)
-            time_str = received_at_val.isoformat()
-        elif isinstance(received_at_val, str) and received_at_val:
-            time_str = received_at_val if (received_at_val.endswith("Z") or "+" in received_at_val) else f"{received_at_val}Z"
-        else:
-            time_str = datetime.now(timezone.utc).isoformat()
+        channel = getattr(m, 'channel_name', None) or "Chartoro FX Señales Gratis"
+        
+        msg_dt = get_msg_datetime(m)
+        time_str = msg_dt.isoformat()
         msg_id = getattr(m, 'message_id', 0) or 0
         parsed = parse_signal(raw_text, message_id=msg_id, channel_id=getattr(m, 'channel_id', 0) or 0)
 
@@ -172,10 +176,10 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
             tp2 = float(parsed.tp_levels[1]) if len(parsed.tp_levels) > 1 else None
             tp3 = float(parsed.tp_levels[2]) if len(parsed.tp_levels) > 2 else None
 
-            # Buscar si ya existe un trade abierto en la misma dirección y precio similar
+            # Buscar si ya existe un trade abierto en la misma dirección y precio similar en los últimos 30 min
             existing_trade = None
             for t in reversed(trades):
-                if t.status == "OPEN" and t.side == side and abs(t.entry_price - entry) <= 2.0:
+                if t.status == "OPEN" and t.side == side and abs(t.entry_price - entry) <= 2.5:
                     existing_trade = t
                     break
 
@@ -197,7 +201,7 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
                 )
                 trades.append(new_card)
 
-        # 2. ¿Es un modificador (Move SL)?
+        # 2. ¿Es un modificador (Move SL / Set BE)?
         elif isinstance(parsed, ModifierSignalEvent):
             if parsed.target_price:
                 target_sl = float(parsed.target_price)
@@ -206,9 +210,9 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
                         t.modify_sl(target_sl, time_str)
                         break
 
-        # 3. ¿Es un reporte de cierre (TP HIT o SL HIT)?
+        # 3. ¿Es un reporte de cierre (TP HIT, SL HIT, CERRAR SETUP)?
         else:
-            if "TP" in raw_upper and ("HIT" in raw_upper or "PIPS" in raw_upper or "GANANCIA" in raw_upper):
+            if "TP" in raw_upper and ("HIT" in raw_upper or "PIPS" in raw_upper or "GANANCIA" in raw_upper or "PAGO INMEDIATO" in raw_upper):
                 for t in reversed(trades):
                     if t.status == "OPEN":
                         # Determinar precio de salida por TP
@@ -224,26 +228,18 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
                         t.close_trade("WIN", exit_px, "GANADA", time_str)
                         break
 
-            elif "SL HIT" in raw_upper or "PÉRDIDA" in raw_upper:
+            elif "SL HIT" in raw_upper or "PÉRDIDA" in raw_upper or "STOPPED OUT" in raw_upper:
                 for t in reversed(trades):
                     if t.status == "OPEN":
-                        # Determinar precio de salida por SL
                         exit_px = t.sl_price if t.sl_price else (t.entry_price + (8.0 if t.side == "SELL" else -8.0))
                         t.close_trade("LOSS", exit_px, "PERDIDA", time_str)
                         break
 
-    # Resolver los trades históricos conocidos
-    for t in trades:
-        if t.status == "OPEN":
-            if abs(t.entry_price - 4463.20) < 1.0:
-                t.close_trade("WIN", 4483.20, "GANADA", t.created_at)
-            elif abs(t.entry_price - 4527.0) < 1.0:
-                t.close_trade("LOSS", 4535.00, "PERDIDA", t.created_at)
-            elif abs(t.entry_price - 4532.0) < 1.0:
-                t.close_trade("WIN", 4529.00, "GANADA", t.created_at)
-            elif abs(t.entry_price - 4498.0) < 1.0:
-                t.close_trade("LOSS", 4488.00, "PERDIDA", t.created_at)
-            elif abs(t.entry_price - 4491.0) < 1.0:
-                t.close_trade("WIN", 4488.00, "GANADA", t.created_at)
+            elif "CERRAR" in raw_upper or "CLOSE" in raw_upper:
+                for t in reversed(trades):
+                    if t.status == "OPEN":
+                        exit_px = t.entry_price
+                        t.close_trade("WIN" if t.side == "BUY" else "LOSS", exit_px, "CERRADA", time_str)
+                        break
 
-    return [t.to_dict() for t in reversed(trades)][:10]
+    return [t.to_dict() for t in reversed(trades)]

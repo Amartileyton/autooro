@@ -354,20 +354,23 @@ async def summarize_news_with_deepseek(title: str, source: str = "", url: str = 
             "key_takeaway": "Configura tu DEEPSEEK_API_KEY en bot_trading/.env para activar resúmenes generados al 100% por IA."
         }
 
-    prompt = f"""Eres un analista macroeconómico senior y trader cuantitativo institucional especializado en Oro (XAUUSD) e Índices bursátiles.
-Analiza el siguiente titular de noticia financiera:
+    prompt = f"""Actúa como un maestro y catedrático de finanzas con décadas de experiencia en mercados globales, banca central y trading de materias primas (especialmente Oro / XAUUSD) e índices.
+
+Tu objetivo es explicar en profundidad, con rigor y de manera atractiva y formativa, la siguiente noticia financiera:
 Titular: "{title}"
 Fuente: {source}
+
+Desarrolla una explicación amena, profunda e instructiva dividida en 3 bloques temáticos sin tecnicismos vacíos, explicando con claridad causa-efecto.
 
 Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
 {{
   "bullets": [
-    "📌 [Punto clave de la noticia en 1 frase concisa]",
-    "⚡ [Impacto directo esperado en XAUUSD, Índices o Dólar]",
-    "🧭 [Sentimiento de mercado y sesgo operativo recomendado]"
+    "📖 Contexto y Mecanismo: [Explica con claridad y profundidad qué está ocurriendo, cuáles son las causas económicas reales y cómo interactúan las fuerzas de fondo (inflación, tipos de interés, bancos centrales o geopolítica). Que sea una lectura instructiva y cautivadora.]",
+    "⚡ Impacto en el Mercado y el Oro (XAUUSD): [Detalla cómo esta situación influye en el flujo del dinero institucional, el dólar estadounidense y las cotizaciones del Oro (XAUUSD) e índices bursátiles. Explica por qué los operadores institucionales compran o venden ante este escenario.]",
+    "🧭 Lectura Estratégica: [Explica qué factores o datos clave deben vigilarse a continuación y cómo interpretar las próximas reacciones del mercado.]"
   ],
   "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL",
-  "key_takeaway": "[Conclusión ejecutiva en 1 frase corta]"
+  "key_takeaway": "[Una síntesis en una frase memorable que resuma la lección principal de este evento de mercado]"
 }}"""
 
     try:
@@ -375,11 +378,11 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
         payload = {
             "model": settings.DEEPSEEK_MODEL or "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "Eres un analista financiero cuantitativo. Respondes exclusivamente en JSON válido."},
+                {"role": "system", "content": "Eres un maestro de finanzas y estratega de mercado global. Respondes exclusivamente en JSON válido."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.3,
-            "max_tokens": 400
+            "temperature": 0.4,
+            "max_tokens": 1000
         }
 
         req = urllib.request.Request(
@@ -392,7 +395,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
             }
         )
 
-        with urllib.request.urlopen(req, context=ctx, timeout=10.0) as resp:
+        with urllib.request.urlopen(req, context=ctx, timeout=15.0) as resp:
             raw_data = json.loads(resp.read().decode())
             content = raw_data["choices"][0]["message"]["content"]
             
