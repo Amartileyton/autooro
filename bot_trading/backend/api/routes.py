@@ -293,12 +293,13 @@ async def toggle_auto_execution():
 
 @router.post("/control/panic-close", dependencies=[Depends(verify_auth_or_key)])
 async def panic_close():
-    """Ejecuta el Kill-Switch: Cierre inmediato de todas las posiciones abiertas."""
+    """Ejecuta el Kill-Switch: Cierre inmediato de todas las posiciones abiertas y apagado total del bot."""
     from backend.main import app_state
     state_machine = app_state["state_machine"]
     await state_machine.panic_close_all(reason="DASHBOARD_PANIC_KILL_SWITCH")
     settings.INGESTION_ENABLED = False
-    return {"status": "success", "message": "KILL-SWITCH ejecutado: Todas las posiciones han sido cerradas"}
+    settings.AUTO_EXECUTION_ENABLED = False
+    return {"status": "success", "message": "KILL-SWITCH ejecutado: Todas las posiciones han sido cerradas y el bot está totalmente apagado"}
 
 
 @router.post("/control/close-slot/{slot_id}", dependencies=[Depends(verify_auth_or_key)])
