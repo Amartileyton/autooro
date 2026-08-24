@@ -235,9 +235,7 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
     # Resolver los trades históricos conocidos
     for t in trades:
         if t.status == "OPEN":
-            if abs(t.entry_price - 4635.20) < 1.0:
-                t.close_trade("WIN", 4642.00, "GANADA (TP1)", t.closed_at or t.created_at)
-            elif abs(t.entry_price - 4463.20) < 1.0:
+            if abs(t.entry_price - 4463.20) < 1.0:
                 t.close_trade("WIN", 4483.20, "GANADA", t.created_at)
             elif abs(t.entry_price - 4527.0) < 1.0:
                 t.close_trade("LOSS", 4535.00, "PERDIDA", t.created_at)

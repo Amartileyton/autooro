@@ -11,26 +11,6 @@ CREATE TABLE raw_telegram_messages (
 	received_at DATETIME NOT NULL, 
 	PRIMARY KEY (id)
 );
-INSERT INTO "raw_telegram_messages" VALUES(904,7918,-1002763662248,'Chartoro FX Señales Gratis','**DIRECTO A LAS GANANCIAS **⚡️
-
-**#XAUUSD**** TP1 HIT, +68 Pips 🏆**
-
-__Sesión de madrugada completada con éxito.__',0,'NONE',NULL,'2026-08-24 07:28:15.000000');
-INSERT INTO "raw_telegram_messages" VALUES(903,7917,-1002763662248,'Chartoro FX Señales Gratis','⚡️ Move SL to 4635.20 (Break Even)',1,'REGEX',NULL,'2026-08-24 07:22:45.000000');
-INSERT INTO "raw_telegram_messages" VALUES(902,7916,-1002763662248,'Chartoro FX Señales Gratis','**🚨 SIGNAL ALERT🚨**
-
-**📊 **#XAUUSD** **
-
-**Direction: 📈 **#BUY** **
-
-** Entry Point: **4635.20
-**⛔️ Stop Loss (SL): **4627.00
-
-**🏆 TP1: **4642.00
-**🏆 TP2:** 4647.00
-**🏆 TP3:** 4655.00',1,'REGEX',NULL,'2026-08-24 07:16:10.000000');
-INSERT INTO "raw_telegram_messages" VALUES(901,7915,-1002763662248,'Chartoro FX Señales Gratis','XAUUSD BUY NOW 4635.20
-Set TP1 +68 Pips',1,'REGEX',NULL,'2026-08-24 07:15:22.000000');
 INSERT INTO "raw_telegram_messages" VALUES(1,7909,-1002763662248,'Chartoro FX Señales Gratis','**DIRECTO A LAS GANANCIAS **⚡️
 
 **#XAUUSD**** TP1 HIT, +30 Pips 🏆**
