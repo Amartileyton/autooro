@@ -176,6 +176,41 @@ def get_user_news_feedback() -> Dict[str, Dict[str, Any]]:
         return {}
 
 
+def robust_parse_pubdate(pub_str: Optional[str]) -> datetime:
+    """Parsea de forma infalible múltiples formatos de fecha RFC822, ISO y feeds RSS."""
+    now_dt = datetime.now(timezone.utc)
+    if not pub_str or not pub_str.strip():
+        return now_dt
+    pub_str = pub_str.strip()
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%a, %d %b %Y %H:%M:%S %Z",
+        "%a, %d %b %Y %H:%M:%S",
+        "%d %b %Y %H:%M:%S %z",
+        "%d %b %Y %H:%M:%S"
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(pub_str, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            pass
+    try:
+        dt = email.utils.parsedate_to_datetime(pub_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+    return now_dt
+
+
 async def refresh_news_from_sources() -> List[Dict[str, Any]]:
     """Consulta activamente las APIs y feeds RSS externos para obtener noticias frescas."""
     global _news_cache
@@ -200,7 +235,7 @@ async def refresh_news_from_sources() -> List[Dict[str, Any]]:
                 )
                 with urllib.request.urlopen(req, context=ctx, timeout=3.0) as resp:
                     root = ET.fromstring(resp.read())
-                    for idx, item_elem in enumerate(root.findall(".//item")[:5]):
+                    for idx, item_elem in enumerate(root.findall(".//item")[:6]):
                         title_el = item_elem.find("title")
                         link_el = item_elem.find("link")
                         pubdate_el = item_elem.find("pubDate")
@@ -210,14 +245,12 @@ async def refresh_news_from_sources() -> List[Dict[str, Any]]:
                         link = link_el.text.strip() if link_el is not None and link_el.text else ""
 
                         # Parsear fecha real del artículo
-                        pub_dt = now_dt - timedelta(minutes=(idx + 1) * 10)
-                        if pubdate_el is not None and pubdate_el.text:
-                            try:
-                                parsed_pub = email.utils.parsedate_to_datetime(pubdate_el.text)
-                                if parsed_pub:
-                                    pub_dt = parsed_pub.astimezone(timezone.utc)
-                            except Exception:
-                                pass
+                        pub_dt = robust_parse_pubdate(pubdate_el.text if pubdate_el is not None else None)
+                        
+                        # Si la fecha parseada es de hace más de 48 horas o futura, recalcular a ventana reciente
+                        diff_sec = (now_dt - pub_dt).total_seconds()
+                        if diff_sec < 0 or diff_sec > 172800:
+                            pub_dt = now_dt - timedelta(minutes=(idx + 1) * 12)
 
                         # Filtrar enlaces con paywall
                         if is_url_paywalled(link, publisher):

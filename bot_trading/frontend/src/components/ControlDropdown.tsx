@@ -178,7 +178,34 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
         </button>
       </div>
 
-      {/* 4. Inyección de Prueba y Auditoría */}
+      {/* 4. Radar de Noticias Macroeconómicas (Worker Horario 1h) */}
+      <div className="flex justify-between items-center p-2 rounded bg-surface border border-outline-variant/40">
+        <div>
+          <div className="text-[11px] font-bold text-on-surface flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <span>Radar de Noticias Macro</span>
+          </div>
+          <div className="text-[10px] text-outline">Ciclo horario automático (3600s)</div>
+        </div>
+        <button
+          onClick={async () => {
+            try {
+              const base = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1') ? 'http://127.0.0.1:8000' : window.location.origin;
+              await fetch(`${base}/api/v1/news/refresh`, { method: 'POST' });
+              window.dispatchEvent(new CustomEvent('news_refreshed'));
+            } catch (e) {
+              console.error(e);
+            }
+          }}
+          title="Forzar actualización de titulares ahora"
+          className="px-2 py-1 rounded text-[10px] font-mono font-bold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 flex items-center gap-1 transition-colors"
+        >
+          <span className="material-symbols-outlined text-[13px]">refresh</span>
+          ACTUALIZAR
+        </button>
+      </div>
+
+      {/* 5. Inyección de Prueba y Auditoría */}
       <div className="space-y-1.5 pt-1">
         <button
           onClick={() => {

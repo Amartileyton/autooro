@@ -523,9 +523,26 @@ class NewsSummarizeRequest(BaseModel):
 @router.get("/news")
 async def get_news_feed():
     """Retorna las últimas noticias de mercado macro y activos con ranking de impacto."""
-    from backend.news.news_service import get_market_news
+    from backend.news.news_service import get_market_news, _news_cache
     items = await get_market_news()
-    return {"status": "success", "news": items}
+    return {
+        "status": "success",
+        "last_updated": _news_cache.get("timestamp", 0),
+        "news": items
+    }
+
+
+@router.post("/news/refresh")
+async def manual_refresh_news():
+    """Fuerza la recarga inmediata de todas las fuentes RSS y limpia la caché."""
+    from backend.news.news_service import refresh_news_from_sources, _news_cache
+    items = await refresh_news_from_sources()
+    return {
+        "status": "success",
+        "message": f"Radar de noticias actualizado con {len(items)} titulares frescos",
+        "last_updated": _news_cache.get("timestamp", 0),
+        "news": items
+    }
 
 
 @router.post("/news/summarize")

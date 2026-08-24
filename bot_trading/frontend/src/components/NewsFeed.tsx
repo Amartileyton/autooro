@@ -176,9 +176,12 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
   // Ciclo de refresco periódico y avance dinámico del reloj cada 30 segundos
   useEffect(() => {
     fetchNews();
+    const handleNewsRefreshed = () => fetchNews();
+    window.addEventListener('news_refreshed', handleNewsRefreshed);
     const fetchInterval = setInterval(() => fetchNews(), 60000); // Consulta periódica al backend cada 1 min
     const clockInterval = setInterval(() => setTick(Date.now()), 30000); // Re-renderizado de tiempos relativos cada 30s
     return () => {
+      window.removeEventListener('news_refreshed', handleNewsRefreshed);
       clearInterval(fetchInterval);
       clearInterval(clockInterval);
     };
