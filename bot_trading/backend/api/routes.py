@@ -270,6 +270,11 @@ async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
 async def pause_ingestion():
     """Pausa la ingesta de nuevas señales de Telegram."""
     settings.INGESTION_ENABLED = False
+    try:
+        from backend.telegram_admin.notifier import dispatch_telegram_alert
+        await dispatch_telegram_alert("INGESTION_PAUSED")
+    except Exception:
+        pass
     return {"status": "success", "message": "Ingesta pausada correctamente", "ingestion_enabled": False}
 
 
@@ -277,6 +282,11 @@ async def pause_ingestion():
 async def resume_ingestion():
     """Reanuda la ingesta de señales."""
     settings.INGESTION_ENABLED = True
+    try:
+        from backend.telegram_admin.notifier import dispatch_telegram_alert
+        await dispatch_telegram_alert("INGESTION_RESUMED")
+    except Exception:
+        pass
     return {"status": "success", "message": "Ingesta reanudada correctamente", "ingestion_enabled": True}
 
 
@@ -296,9 +306,15 @@ async def panic_close():
     """Ejecuta el Kill-Switch: Cierre inmediato de todas las posiciones abiertas y apagado total del bot."""
     from backend.main import app_state
     state_machine = app_state["state_machine"]
+    closed_count = len(state_machine.active_slots)
     await state_machine.panic_close_all(reason="DASHBOARD_PANIC_KILL_SWITCH")
     settings.INGESTION_ENABLED = False
     settings.AUTO_EXECUTION_ENABLED = False
+    try:
+        from backend.telegram_admin.notifier import dispatch_telegram_alert
+        await dispatch_telegram_alert("EMERGENCY_SHUTDOWN", {"reason": "KILL SWITCH MÓVIL / DASHBOARD", "closed_count": closed_count})
+    except Exception:
+        pass
     return {"status": "success", "message": "KILL-SWITCH ejecutado: Todas las posiciones han sido cerradas y el bot está totalmente apagado"}
 
 
@@ -307,6 +323,11 @@ async def rearm_bot():
     """Reactiva el bot por completo: Habilita la ingesta de Telegram y la auto-ejecución."""
     settings.INGESTION_ENABLED = True
     settings.AUTO_EXECUTION_ENABLED = True
+    try:
+        from backend.telegram_admin.notifier import dispatch_telegram_alert
+        await dispatch_telegram_alert("BOT_REARMED", {"reason": "REARME DESDE TERMINAL / MÓVIL"})
+    except Exception:
+        pass
     return {
         "status": "success",
         "message": "Bot reactivado y rearmado con éxito: Ingesta y Auto-ejecución habilitadas",

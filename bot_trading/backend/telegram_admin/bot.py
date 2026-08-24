@@ -226,6 +226,30 @@ class TelegramAdminBot:
                 f"• *PnL Neto:* `{'+' if pnl >= 0 else ''}${pnl:.2f} USD`\n"
                 f"• *Motivo:* `{data.get('reason')}`"
             )
+        elif event_type in ("EMERGENCY_SHUTDOWN", "KILL_SWITCH"):
+            text = (
+                "🚨 *ALERTA GOLD-EX: APAGADO GENERAL (KILL SWITCH)*\n"
+                "══════════════════════════════════════\n"
+                "• *Estado:* `🔴 BOT DETENIDO Y PAUSADO`\n"
+                f"• *Motivo:* `{data.get('reason', 'KILL SWITCH')}`\n"
+                f"• *Posiciones Cerradas:* `{data.get('closed_count', 0)}`\n"
+                "• *Ingesta Telegram:* `🔴 PAUSADA`\n"
+                "• *Auto-Ejecución:* `🔴 DESACTIVADA`\n"
+                "──────────────────────────────────────\n"
+                "⚠️ _Todas las posiciones han sido cerradas a mercado._"
+            )
+        elif event_type in ("BOT_REARMED", "REARM"):
+            text = (
+                "🟢 *ALERTA GOLD-EX: SISTEMA REENCENDIDO Y REARMADO*\n"
+                "══════════════════════════════════════\n"
+                "• *Estado:* `🟢 BOT EN VIVO Y ACTIVO`\n"
+                f"• *Acción:* `{data.get('reason', 'REARME DE SISTEMA')}`\n"
+                "• *Ingesta Telegram:* `🟢 ESCUCHANDO SEÑALES`\n"
+                "• *Auto-Ejecución:* `🟢 HABILITADA`\n"
+                "• *Slots Disponibles:* `4 / 4` (100% Margen Libre)\n"
+                "──────────────────────────────────────\n"
+                "⚡ _El sistema operará normalmente ante cualquier nueva señal._"
+            )
         elif event_type == "CRITICAL_ERROR":
             text = f"🚨 *ALERTA CRÍTICA:* `{data.get('message')}`"
 
