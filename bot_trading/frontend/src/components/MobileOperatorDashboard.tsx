@@ -1,14 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { PositionMatrix, type SlotTradeData } from './PositionMatrix';
 import { SignalFeed, type TradeLifecycleCardItem } from './SignalFeed';
 import { NewsFeed } from './NewsFeed';
-import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
 import { SystemHealthModal } from './SystemHealthModal';
 
 interface MobileOperatorDashboardProps {
-  balance: number;
-  floatingPnl: number;
+  balance?: number | null;
+  hasLiveBalance?: boolean;
   currentPrice: number;
   slots: SlotTradeData[];
   trades: TradeLifecycleCardItem[];
@@ -25,7 +24,7 @@ interface MobileOperatorDashboardProps {
 
 export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = ({
   balance,
-  floatingPnl,
+  hasLiveBalance = false,
   currentPrice,
   slots = [],
   trades = [],
@@ -75,7 +74,6 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
   };
 
   const activeSlotsCount = slots.filter((s) => s.is_active).length;
-  const isProfit = floatingPnl >= 0;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-text-primary overflow-hidden select-none">
@@ -97,14 +95,28 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
           </div>
         </div>
 
-        {/* Acciones Rápidas: KILL SWITCH ROJO & Menú */}
-        <div className="flex items-center gap-2">
+        {/* Acciones Rápidas: BALANCE a la izquierda del KILL SWITCH & Menú */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Bloque Balance cTrader (Muestra 'No disponible' si no hay token) */}
+          <div className="flex items-center gap-1 font-mono text-xs">
+            <span className="text-[9px] text-text-secondary font-semibold tracking-tight">BAL:</span>
+            {hasLiveBalance && balance !== null && balance !== undefined ? (
+              <span className="font-bold text-text-primary text-[11px] font-mono whitespace-nowrap">
+                ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            ) : (
+              <span className="text-[10px] text-text-secondary/75 italic font-mono whitespace-nowrap">
+                No disponible
+              </span>
+            )}
+          </div>
+
           {/* Botón Kill Switch de Pánico */}
           <button
             onClick={() => setShowKillSwitchConfirm(true)}
             className="flex items-center gap-1 bg-error hover:bg-red-700 text-white font-mono font-bold text-[11px] px-2.5 py-1.5 rounded border border-red-400/50 shadow-sm active:scale-95 transition-transform"
           >
-            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
             <span>KILL SWITCH</span>
           </button>
 
@@ -188,27 +200,7 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
         </div>
       </header>
 
-      {/* 2. Barra de Estado Resumido (Balance, PnL y Precio XAUUSD) */}
-      <div className="bg-surface-container px-3 py-1.5 border-b border-outline-variant flex items-center justify-between font-mono text-xs shrink-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-text-secondary">BAL:</span>
-          <span className="font-bold text-text-primary">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-text-secondary">FLOTANTE:</span>
-          <span className={`font-bold ${isProfit ? 'text-primary' : 'text-error'}`}>
-            {isProfit ? '+' : ''}${floatingPnl.toFixed(2)}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1 text-[10px] text-text-secondary bg-surface px-1.5 py-0.5 rounded border border-outline-variant">
-          <span>ORO:</span>
-          <span className="text-primary font-bold">${currentPrice > 0 ? currentPrice.toFixed(2) : '4,647.74'}</span>
-        </div>
-      </div>
-
-      {/* 3. Área de Contenido con Deslizamiento Táctil (Swipe Carousel) */}
+      {/* 2. Área de Contenido con Deslizamiento Táctil (Swipe Carousel) */}
       <main
         className="flex-1 relative overflow-hidden min-h-0"
         onTouchStart={onTouchStart}
@@ -240,7 +232,7 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
         </div>
       </main>
 
-      {/* 4. Barra de Navegación Táctil Inferior (Bottom Touch Nav) */}
+      {/* 3. Barra de Navegación Táctil Inferior (Bottom Touch Nav) */}
       <nav className="h-14 border-t border-outline-variant bg-surface px-2 grid grid-cols-3 items-center shrink-0 z-30 shadow-lg">
         {/* Pestaña 0: Señales */}
         <button
@@ -260,13 +252,13 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
             activeTab === 1 ? 'text-primary font-bold' : 'text-text-secondary hover:text-text-primary'
           }`}
         >
+          <span className="text-base">⚡</span>
+          <span className="text-[10px] font-mono tracking-tight">Posiciones</span>
           {activeSlotsCount > 0 && (
-            <span className="absolute top-1 right-6 w-4 h-4 bg-primary text-black font-bold text-[9px] rounded-full flex items-center justify-center font-mono">
+            <span className="absolute top-1 right-6 w-4 h-4 bg-primary text-black font-bold font-mono text-[9px] rounded-full flex items-center justify-center animate-pulse">
               {activeSlotsCount}
             </span>
           )}
-          <span className="text-base">🔲</span>
-          <span className="text-[10px] font-mono tracking-tight">Posiciones</span>
         </button>
 
         {/* Pestaña 2: Noticias */}
@@ -277,27 +269,25 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
           }`}
         >
           <span className="text-base">📰</span>
-          <span className="text-[10px] font-mono tracking-tight">Noticias IA</span>
+          <span className="text-[10px] font-mono tracking-tight">Noticias</span>
         </button>
       </nav>
 
-      {/* Modal de Confirmación de Kill Switch Inmediato */}
+      {/* Modal de Confirmación de Kill Switch Móvil */}
       {showKillSwitchConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-surface-container-highest border border-error/50 rounded-lg p-4 max-w-xs w-full shadow-2xl flex flex-col gap-3 font-mono text-center animate-in zoom-in-95">
-            <div className="w-12 h-12 rounded-full bg-error/20 border border-error flex items-center justify-center mx-auto text-xl text-error">
-              ⚠️
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
+          <div className="bg-surface-container-highest border-2 border-error rounded-lg p-5 max-w-sm w-full shadow-2xl flex flex-col gap-4 font-mono">
+            <div className="flex items-center gap-2 text-error">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="font-bold text-sm uppercase">EMERGENCIA KILL SWITCH</h3>
             </div>
-            <div className="text-sm font-bold text-text-primary">
-              ¿EJECUTAR KILL SWITCH?
-            </div>
-            <p className="text-[11px] text-text-secondary leading-snug">
-              Se enviará una orden de cierre de mercado inmediato a todos los slots activos ({activeSlotsCount}) y se pausará el motor.
+            <p className="text-xs text-text-primary leading-relaxed">
+              ¿Estás seguro de que deseas cerrar <strong>TODAS LAS POSICIONES ABIERTAS</strong> inmediatamente y detener el bot?
             </p>
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="flex gap-2 justify-end pt-2">
               <button
                 onClick={() => setShowKillSwitchConfirm(false)}
-                className="px-3 py-2 rounded bg-surface-container text-text-secondary hover:bg-surface-container-high text-xs font-semibold"
+                className="px-3 py-1.5 rounded bg-surface hover:bg-surface-container text-text-secondary text-xs font-bold border border-outline-variant"
               >
                 Cancelar
               </button>
@@ -306,18 +296,32 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
                   onEmergencyClose();
                   setShowKillSwitchConfirm(false);
                 }}
-                className="px-3 py-2 rounded bg-error hover:bg-red-700 text-white text-xs font-bold shadow-lg"
+                className="px-4 py-1.5 rounded bg-error hover:bg-red-700 text-white text-xs font-bold shadow-lg"
               >
-                CONFIRMAR
+                CONFIRMAR CIERRE TOTAL
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modales de Soporte */}
-      <AuditLogsModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} />
-      <SystemHealthModal isOpen={showHealthModal} onClose={() => setShowHealthModal(false)} />
+      {/* Modales de Diagnóstico y Auditoría */}
+      <AuditLogsModal
+        isOpen={showAuditModal}
+        onClose={() => setShowAuditModal(false)}
+        auditLogs={[]}
+        tradeHistory={[]}
+      />
+
+      <SystemHealthModal
+        isOpen={showHealthModal}
+        onClose={() => setShowHealthModal(false)}
+        wsConnected={true}
+        latencyMs={12}
+        botActive={isIngestionActive}
+        hasCtraderToken={hasLiveBalance}
+        xauusdPrice={currentPrice}
+      />
     </div>
   );
 };

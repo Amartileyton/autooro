@@ -448,8 +448,8 @@ export const DashboardApp: React.FC = () => {
       {/* 1. Vista Móvil Especializada con 3 Pantallas Deslizantes (Swipe), Kill Switch y Bottom Nav */}
       <div className="block md:hidden h-screen w-screen overflow-hidden">
         <MobileOperatorDashboard
-          balance={balance ?? 10000.0}
-          floatingPnl={floatingPnl}
+          balance={balance}
+          hasLiveBalance={hasLiveBalance}
           currentPrice={xauusdPrice}
           slots={slots}
           trades={trades}
