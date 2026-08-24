@@ -512,6 +512,7 @@ export const DashboardApp: React.FC = () => {
           autoExecutionEnabled={autoExecutionEnabled}
           onToggleIngestion={handleToggleIngestion}
           onToggleAutoExecution={handleToggleAutoExecution}
+          onRearmBot={handleRearmBot}
           onPanicClose={handlePanicClose}
           onInjectTestSignal={handleInjectTestSignal}
           onOpenAudit={handleOpenAuditModal}
