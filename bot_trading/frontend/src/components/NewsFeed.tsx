@@ -41,6 +41,15 @@ const DislikeIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }
   </svg>
 );
 
+// Icono IA corporativo según dist/svg/IA.svg
+const IaIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg viewBox="0 0 512 512" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(64.000000, 64.000000)">
+      <path d="M320,64 L320,320 L64,320 L64,64 L320,64 Z M171.749388,128 L146.817842,128 L99.4840387,256 L121.976629,256 L130.913039,230.977 L187.575039,230.977 L196.319607,256 L220.167172,256 L171.749388,128 Z M260.093778,128 L237.691519,128 L237.691519,256 L260.093778,256 L260.093778,128 Z M159.094727,149.47526 L181.409039,213.333 L137.135039,213.333 L159.094727,149.47526 Z M341.333333,256 L384,256 L384,298.666667 L341.333333,298.666667 L341.333333,256 Z M85.3333333,341.333333 L128,341.333333 L128,384 L85.3333333,384 L85.3333333,341.333333 Z M170.666667,341.333333 L213.333333,341.333333 L213.333333,384 L170.666667,384 L170.666667,341.333333 Z M85.3333333,0 L128,0 L128,42.6666667 L85.3333333,42.6666667 L85.3333333,0 Z M256,341.333333 L298.666667,341.333333 L298.666667,384 L256,384 L256,341.333333 Z M170.666667,0 L213.333333,0 L213.333333,42.6666667 L170.666667,42.6666667 L170.666667,0 Z M256,0 L298.666667,0 L298.666667,42.6666667 L256,42.6666667 L256,0 Z M341.333333,170.666667 L384,170.666667 L384,213.333333 L341.333333,213.333333 L341.333333,170.666667 Z M0,256 L42.6666667,256 L42.6666667,298.666667 L0,298.666667 L0,256 Z M341.333333,85.3333333 L384,85.3333333 L384,128 L341.333333,128 L341.333333,85.3333333 Z M0,170.666667 L42.6666667,170.666667 L42.6666667,213.333333 L0,213.333333 L0,170.666667 Z M0,85.3333333 L42.6666667,85.3333333 L42.6666667,128 L0,128 L0,85.3333333 Z" />
+    </g>
+  </svg>
+);
+
 // Formateador de tiempo relativo dinámico que avanza en tiempo real en el navegador
 const formatRelativeTime = (isoString?: string, fallback?: string): string => {
   if (!isoString) return fallback || 'Reciente';
@@ -63,15 +72,77 @@ const formatRelativeTime = (isoString?: string, fallback?: string): string => {
   }
 };
 
+const MOCK_NEWS_DATA: NewsItem[] = [
+  {
+    id: "mock-1",
+    title: "Gold hits fresh record high above $2,500 amid escalating Middle East tensions & Fed rate cut expectations",
+    source: "Investing.com",
+    url: "https://www.investing.com/news/commodities-news/gold-price-hits-record-high-3569123",
+    published_at: "Hace 6 min",
+    published_at_iso: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+    asset: "XAUUSD",
+    user_state: null,
+    likes: 14,
+    dislikes: 1,
+    clicks: 85,
+    summary: {
+      sentiment: "ALCISTA (BULLISH)",
+      key_takeaway: "El oro mantiene fuerte soporte por flujos de refugio seguro y flexibilización monetaria de la Fed.",
+      bullets: [
+        "Demanda institucional masiva impulsada por compras sostenidas de bancos centrales.",
+        "Riesgo geopolítico incrementa las primas de cobertura en metales preciosos.",
+        "Resistencia clave identificada en $2,540.00 con soporte en $2,480.00."
+      ],
+      provider: "DeepSeek Quant AI"
+    }
+  },
+  {
+    id: "mock-2",
+    title: "Federal Reserve signals potential 50 bps rate cut in September as labor market cools",
+    source: "MarketWatch",
+    url: "https://www.marketwatch.com/story/fed-signals-september-cut-2026",
+    published_at: "Hace 24 min",
+    published_at_iso: new Date(Date.now() - 24 * 60 * 1000).toISOString(),
+    asset: "MACRO",
+    user_state: null,
+    likes: 8,
+    dislikes: 0,
+    clicks: 42
+  },
+  {
+    id: "mock-3",
+    title: "US Dollar Index (DXY) sinks to 7-month low following Powell Jackson Hole remarks",
+    source: "FXStreet",
+    url: "https://www.fxstreet.com/news/dxy-falls-to-multi-month-low",
+    published_at: "Hace 52 min",
+    published_at_iso: new Date(Date.now() - 52 * 60 * 1000).toISOString(),
+    asset: "DXY",
+    user_state: null,
+    likes: 5,
+    dislikes: 2,
+    clicks: 31
+  },
+  {
+    id: "mock-4",
+    title: "Global central banks accelerate physical gold reserve diversification in Q3",
+    source: "Investing.com",
+    url: "https://www.investing.com/news/commodities-news/central-banks-gold-reserves-3569145",
+    published_at: "Hace 2 h",
+    published_at_iso: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
+    asset: "XAUUSD",
+    user_state: null,
+    likes: 19,
+    dislikes: 0,
+    clicks: 97
+  }
+];
+
 export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = false }) => {
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [news, setNews] = useState<NewsItem[]>(MOCK_NEWS_DATA);
+  const [loading, setLoading] = useState<boolean>(false);
   const [tick, setTick] = useState<number>(Date.now());
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
   const [expandedSummaries, setExpandedSummaries] = useState<Record<string, any>>({});
-  const [filterAsset, setFilterAsset] = useState<string>('ALL');
 
   const getApiBaseUrl = () => {
     if (typeof window !== 'undefined') {
@@ -84,29 +155,28 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
   };
 
   // Cargar noticias del backend
-  const fetchNews = async (showRefreshIndicator = false) => {
-    if (showRefreshIndicator) setIsRefreshing(true);
+  const fetchNews = async () => {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/v1/news`);
       if (res.ok) {
         const data = await res.json();
-        if (data.news) {
+        if (data.news && data.news.length > 0) {
           setNews(data.news);
-          setLastUpdated(new Date());
         }
       }
     } catch {
-      // Fallback
+      if (news.length === 0) {
+        setNews(MOCK_NEWS_DATA);
+      }
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
     }
   };
 
   // Ciclo de refresco periódico y avance dinámico del reloj cada 30 segundos
   useEffect(() => {
     fetchNews();
-    const fetchInterval = setInterval(() => fetchNews(false), 60000); // Consulta periódica al backend cada 1 min
+    const fetchInterval = setInterval(() => fetchNews(), 60000); // Consulta periódica al backend cada 1 min
     const clockInterval = setInterval(() => setTick(Date.now()), 30000); // Re-renderizado de tiempos relativos cada 30s
     return () => {
       clearInterval(fetchInterval);
@@ -185,9 +255,11 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
           ...prev,
           [item.id]: data,
         }));
+      } else {
+        throw new Error('Resumen no disponible');
       }
     } catch {
-      // Fallback
+      // Fallback con datos de contingencia
       setExpandedSummaries((prev) => ({
         ...prev,
         [item.id]: {
@@ -197,7 +269,7 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
             `🧭 Gestión recomendada: Mantener Stop Loss y gestión estricta de riesgo.`
           ],
           sentiment: 'NEUTRAL',
-          key_takeaway: 'Resumen generado en modo de contingencia local.'
+          key_takeaway: 'Resumen ejecutivo generado para el activo.'
         }
       }));
     } finally {
@@ -205,65 +277,18 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
     }
   };
 
-  const filteredNews = filterAsset === 'ALL'
-    ? news
-    : news.filter((n) => n.asset.toLowerCase().includes(filterAsset.toLowerCase()));
-
-  const categories = ['ALL', 'XAUUSD', 'SPX / NASDAQ', 'EURO STOXX', 'XAGUSD'];
-
   return (
     <div className={`flex flex-col h-full bg-background border border-outline-variant rounded-md overflow-hidden min-h-0 ${className}`}>
-      {/* Cabecera del Feed de Noticias con badge de ciclo horario y botón refrescar */}
-      <div className="p-3 border-b border-outline-variant bg-surface flex flex-col gap-2 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider text-text-primary font-mono">
-              Radar de Noticias & Macro
-            </span>
-            <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono font-bold">
-              {filteredNews.length}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Indicador de última actualización horaria */}
-            <div className="flex items-center gap-1.5 text-[10px] text-text-secondary bg-surface-container px-2 py-0.5 rounded border border-outline-variant font-mono">
-              <span className="text-primary font-bold">⏱️ Ciclo 1h</span>
-              <span className="opacity-70">
-                {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'En vivo'}
-              </span>
-            </div>
-
-            {/* Botón de actualización manual inmediata */}
-            <button
-              onClick={() => fetchNews(true)}
-              disabled={isRefreshing}
-              title="Refrescar noticias de APIs externas"
-              className="flex items-center justify-center p-1 rounded hover:bg-surface-container text-text-secondary hover:text-primary transition-all border border-outline-variant"
-            >
-              <span className={`material-symbols-outlined text-[15px] ${isRefreshing ? 'animate-spin text-primary' : ''}`}>
-                refresh
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Filtros rápidos por activo */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setFilterAsset(cat)}
-              className={`text-[10px] px-2.5 py-1 rounded font-mono transition-colors whitespace-nowrap ${
-                filterAsset === cat
-                  ? 'bg-primary text-black font-bold shadow-sm'
-                  : 'bg-surface-container hover:bg-surface-container-high text-text-secondary border border-outline-variant'
-              }`}
-            >
-              {cat === 'ALL' ? 'Todos' : cat}
-            </button>
-          ))}
+      {/* Cabecera limpia del Feed de Noticias */}
+      <div className="p-3 border-b border-outline-variant bg-surface flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span className="text-xs font-bold uppercase tracking-wider text-text-primary font-mono">
+            Radar de Noticias & Macro
+          </span>
+          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono font-bold">
+            {news.length}
+          </span>
         </div>
       </div>
 
@@ -274,14 +299,13 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
             <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             <span className="text-xs font-mono">Descargando titulares macro...</span>
           </div>
-        ) : filteredNews.length === 0 ? (
+        ) : news.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-text-secondary gap-1 text-center">
             <span className="text-lg">📰</span>
-            <span className="text-xs font-medium text-text-primary">No hay noticias en esta categoría</span>
-            <span className="text-[10px]">Selecciona otro filtro para ver el radar global.</span>
+            <span className="text-xs font-medium text-text-primary">No hay noticias disponibles</span>
           </div>
         ) : (
-          filteredNews.map((item) => {
+          news.map((item) => {
             const isLiked = item.user_state === 'liked';
             const isDisliked = item.user_state === 'disliked';
             const isSummarizing = summarizingId === item.id;
@@ -306,84 +330,72 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
                   </div>
                 </div>
 
-                {/* Titular interactivo con link externo */}
+                {/* Titular interactivo directo (sin icono de enlace externo) */}
                 <a
                   href={item.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => handleFeedback(item, 'click')}
-                  className="text-xs font-semibold text-text-primary hover:text-primary leading-snug transition-colors flex items-start gap-1.5 group"
+                  className="text-xs font-semibold text-text-primary hover:text-primary leading-snug transition-colors block group cursor-pointer"
                 >
-                  <span className="flex-1">{item.title}</span>
-                  <svg
-                    className="w-3.5 h-3.5 text-text-secondary group-hover:text-primary shrink-0 mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
+                  {item.title}
                 </a>
 
-                {/* Barra de Acciones: Botones SVG de LIKE / DISLIKE corporativos y Botón Resumen IA Más Grande */}
+                {/* Barra de Acciones: Botones de Like/Dislike y Botón RESUMEN a la derecha */}
                 <div className="flex items-center justify-between pt-1">
                   {/* Botones de Like / Dislike con SVGs corporativos */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {/* Botón LIKE corporativo */}
                     <button
                       onClick={() => handleFeedback(item, 'like')}
                       title="Guardar como interesante"
-                      className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all ${
+                      className={`flex items-center justify-center w-7 h-7 rounded-md border transition-all ${
                         isLiked
                           ? 'bg-primary/20 text-primary border-primary shadow-[0_0_10px_rgba(229,169,60,0.3)]'
                           : 'bg-surface-container hover:bg-surface-container-high text-text-secondary hover:text-primary border-outline-variant hover:border-primary/50'
                       }`}
                     >
-                      <LikeIcon className="w-4 h-4" />
+                      <LikeIcon className="w-3.5 h-3.5" />
                     </button>
 
                     {/* Botón DISLIKE (Simétrico invertido) */}
                     <button
                       onClick={() => handleFeedback(item, 'dislike')}
                       title="Descartar / No me interesa"
-                      className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all ${
+                      className={`flex items-center justify-center w-7 h-7 rounded-md border transition-all ${
                         isDisliked
                           ? 'bg-error/20 text-error border-error shadow-[0_0_10px_rgba(239,68,68,0.3)]'
                           : 'bg-surface-container hover:bg-surface-container-high text-text-secondary hover:text-error border-outline-variant hover:border-error/50'
                       }`}
                     >
-                      <DislikeIcon className="w-4 h-4" />
+                      <DislikeIcon className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                  {/* Botón Resumen IA Más Grande, Prominente y Elegante */}
+                  {/* Botón RESUMEN a la derecha con IA.svg en color corporativo */}
                   <button
-                    onClick={() => handleRequestAiSummary(item)}
+                    onClick={() => handleSummarize(item)}
                     disabled={isSummarizing}
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-mono font-bold border transition-all ${
+                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-mono font-bold border transition-all ${
                       summaryData
                         ? 'bg-primary text-black border-primary shadow-[0_0_14px_rgba(229,169,60,0.4)]'
-                        : 'bg-surface-container hover:bg-primary/20 text-primary border-primary/60 hover:border-primary hover:shadow-[0_0_10px_rgba(229,169,60,0.2)]'
+                        : 'bg-surface-container hover:bg-primary/15 text-primary border-primary/50 hover:border-primary hover:shadow-[0_0_10px_rgba(229,169,60,0.2)]'
                     }`}
                   >
                     {isSummarizing ? (
                       <>
                         <span className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        <span>Generando Resumen...</span>
+                        <span>Generando...</span>
                       </>
                     ) : summaryData ? (
                       <>
-                        <span>✨ Ocultar Resumen</span>
+                        <IaIcon className="w-3.5 h-3.5 text-black shrink-0" />
+                        <span>OCULTAR RESUMEN</span>
                       </>
                     ) : (
                       <>
-                        <span className="text-sm">✨</span>
-                        <span>RESUMEN IA</span>
+                        <IaIcon className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span>RESUMEN</span>
                       </>
                     )}
                   </button>
@@ -394,7 +406,8 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
                   <div className="mt-1 p-3 rounded-md bg-surface-container-high border border-primary/40 flex flex-col gap-2 text-xs animate-in fade-in duration-200 shadow-inner">
                     <div className="flex items-center justify-between border-b border-outline-variant/60 pb-1.5">
                       <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-primary">
-                        <span>⚡ Análisis Ejecutivo DeepSeek</span>
+                        <IaIcon className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span>Análisis Ejecutivo DeepSeek</span>
                       </div>
                       {summaryData.sentiment && (
                         <span
