@@ -33,13 +33,13 @@ class TelegramIngestionClient:
             return
 
         session_candidates = [
-            "bot_session",
-            "/app/bot_session",
             "data/bot_session",
             "/app/data/bot_session",
+            "bot_session",
+            "/app/bot_session",
             settings.TG_SESSION_NAME
         ]
-        session_name = "bot_session"
+        session_name = "data/bot_session"
         for candidate in session_candidates:
             if os.path.exists(f"{candidate}.session") or os.path.exists(candidate):
                 session_name = candidate
