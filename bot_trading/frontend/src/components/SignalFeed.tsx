@@ -27,12 +27,15 @@ interface SignalFeedProps {
   trades: TradeLifecycleCardItem[];
 }
 
-// Función auxiliar para formatear fecha completa DD/MM/YYYY HH:mm:ss
-const formatFullDateTime = (isoString: string, fallback?: string): string => {
-  if (fallback) return fallback;
+// Función auxiliar para formatear fecha completa DD/MM/YYYY HH:mm:ss en la zona horaria local del navegador
+const formatFullDateTime = (isoString?: string, fallback?: string): string => {
+  if (!isoString && fallback) return fallback;
+  if (!isoString) return '';
   try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
+    // Normalizar string UTC para asegurar que JavaScript aplique el offset local correctamente
+    const raw = isoString.endsWith('Z') || isoString.includes('+') ? isoString : `${isoString}Z`;
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return fallback || isoString;
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = d.getFullYear();
@@ -41,7 +44,7 @@ const formatFullDateTime = (isoString: string, fallback?: string): string => {
     const seconds = String(d.getSeconds()).padStart(2, '0');
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   } catch {
-    return isoString;
+    return fallback || isoString;
   }
 };
 

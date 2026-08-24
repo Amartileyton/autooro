@@ -114,7 +114,11 @@ class TelegramIngestionClient:
         except Exception:
             pass
 
-        # 5. Auditoría 100% inmutable en SQLite WAL
+        # 5. Auditoría 100% inmutable en SQLite WAL con fecha oficial de Telegram
+        msg_date = getattr(message, 'date', None) or datetime.now(timezone.utc)
+        if msg_date.tzinfo is None:
+            msg_date = msg_date.replace(tzinfo=timezone.utc)
+
         await self._persist_raw_message(
             message_id=msg_id,
             channel_id=channel_id,
@@ -122,7 +126,8 @@ class TelegramIngestionClient:
             raw_text=raw_text,
             parsed_success=parsed_success,
             parser_used=parser_used,
-            error_reason=error_reason
+            error_reason=error_reason,
+            received_at=msg_date
         )
 
         # 6. Emisión a cola desacoplada para el Risk Engine
@@ -138,7 +143,8 @@ class TelegramIngestionClient:
         raw_text: str,
         parsed_success: bool,
         parser_used: str,
-        error_reason: Optional[str]
+        error_reason: Optional[str],
+        received_at: Optional[datetime] = None
     ):
         """Guarda el mensaje raw auditado en SQLite de forma asíncrona."""
         try:
@@ -150,7 +156,8 @@ class TelegramIngestionClient:
                     raw_text=raw_text,
                     parsed_success=parsed_success,
                     parser_used=parser_used,
-                    error_reason=error_reason
+                    error_reason=error_reason,
+                    received_at=received_at or datetime.now(timezone.utc)
                 )
                 session.add(raw_msg)
                 await session.commit()

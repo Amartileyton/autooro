@@ -144,8 +144,8 @@ async def get_trade_history(limit: int = 50, db: AsyncSession = Depends(get_db))
                 "pnl": float(t.pnl),
                 "status": t.status.value,
                 "close_reason": t.close_reason,
-                "open_time": t.open_time.isoformat() if t.open_time else None,
-                "close_time": t.close_time.isoformat() if t.close_time else None
+                "open_time": (t.open_time.isoformat() if t.open_time.tzinfo else f"{t.open_time.isoformat()}Z") if t.open_time else None,
+                "close_time": (t.close_time.isoformat() if t.close_time.tzinfo else f"{t.close_time.isoformat()}Z") if t.close_time else None
             }
             for t in trades
         ]
@@ -222,7 +222,7 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
             "signal_details": signal_details,
             "outcome": outcome,
             "error_reason": m.error_reason,
-            "received_at": m.received_at.isoformat()
+            "received_at": m.received_at.isoformat() if m.received_at.tzinfo else f"{m.received_at.isoformat()}Z"
         })
 
     return formatted
@@ -257,7 +257,7 @@ async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
     return [
         {
             "id": l.id,
-            "timestamp": l.timestamp.isoformat(),
+            "timestamp": l.timestamp.isoformat() if l.timestamp.tzinfo else f"{l.timestamp.isoformat()}Z",
             "event_type": l.event_type,
             "severity": l.severity,
             "details": l.details_json

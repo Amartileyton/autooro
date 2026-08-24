@@ -3,18 +3,35 @@ from typing import List, Optional, Dict, Any
 from backend.ingesta.schemas import TradingSignalEvent, ModifierSignalEvent, OrderSide
 from backend.ingesta.parser import parse_signal
 
+try:
+    from zoneinfo import ZoneInfo
+    MADRID_TZ = ZoneInfo("Europe/Madrid")
+except Exception:
+    MADRID_TZ = None
+
 def format_full_datetime(dt_val: Any) -> str:
-    """Formatea la fecha y hora al formato DD/MM/YYYY HH:MM:SS."""
+    """Formatea la fecha y hora al formato DD/MM/YYYY HH:MM:SS en hora local de España (Europe/Madrid)."""
+    if not dt_val:
+        return ""
     if isinstance(dt_val, str):
         try:
-            # Parse ISO string
             clean_str = dt_val.replace("Z", "+00:00")
             dt = datetime.fromisoformat(clean_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if MADRID_TZ:
+                dt = dt.astimezone(MADRID_TZ)
             return dt.strftime("%d/%m/%Y %H:%M:%S")
         except Exception:
             return dt_val
     elif isinstance(dt_val, datetime):
-        return dt_val.strftime("%d/%m/%Y %H:%M:%S")
+        if dt_val.tzinfo is None:
+            dt = dt_val.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt_val
+        if MADRID_TZ:
+            dt = dt.astimezone(MADRID_TZ)
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
     return str(dt_val)
 
 
@@ -135,7 +152,14 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
         raw_upper = raw_text.upper()
         channel = getattr(m, 'channel_name', None) or "Chartoro FX"
         received_at_val = getattr(m, 'received_at', None)
-        time_str = received_at_val.isoformat() if hasattr(received_at_val, 'isoformat') else str(received_at_val or datetime.utcnow().isoformat())
+        if isinstance(received_at_val, datetime):
+            if received_at_val.tzinfo is None:
+                received_at_val = received_at_val.replace(tzinfo=timezone.utc)
+            time_str = received_at_val.isoformat()
+        elif isinstance(received_at_val, str) and received_at_val:
+            time_str = received_at_val if (received_at_val.endswith("Z") or "+" in received_at_val) else f"{received_at_val}Z"
+        else:
+            time_str = datetime.now(timezone.utc).isoformat()
         msg_id = getattr(m, 'message_id', 0) or 0
         parsed = parse_signal(raw_text, message_id=msg_id, channel_id=getattr(m, 'channel_id', 0) or 0)
 
