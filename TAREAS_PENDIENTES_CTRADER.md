@@ -61,4 +61,15 @@ CTRADER_PORT=5035
 
 ---
 
-*Documento generado y sincronizado con el repositorio oficial para ejecución inmediata en cuanto se introduzcan las credenciales.*
+## ☁️ 5. [FUTURO / FASE 2] Réplica Asíncrona y Copia de Seguridad en Supabase
+
+- [ ] **Configuración de Conector Supabase (`.env`):**
+  - `SUPABASE_URL` y `SUPABASE_KEY` (service_role / anon).
+- [ ] **Worker de Sincronización Asíncrona (Non-Blocking):**
+  - Implementar worker en segundo plano (fire-and-forget) para replicar cada operación cerrada (`Trade`), mensaje de señal (`RawTelegramMessage`) y log de auditoría (`SystemAuditLog`) a PostgreSQL en Supabase.
+- [ ] **Data Warehouse & Dashboard Móvil:**
+  - Mantener SQLite WAL en local como motor de ultra-baja latencia (<0.1ms) y Supabase como almacén en la nube para consultas, visualización en app móvil y copias de seguridad continuas.
+
+---
+
+*Documento actualizado y sincronizado con el repositorio oficial.*
