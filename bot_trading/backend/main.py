@@ -167,29 +167,9 @@ async def lifespan(app: FastAPI):
     logger.info("Base de datos SQLite WAL inicializada correctamente.")
 
     # 1.1 Si la base de datos está vacía, sembrar historial desde dump.sql
-    # 1.1 Si la base de datos está vacía, sembrar historial desde dump.sql
     try:
-        import os
-        import sqlite3
-        sync_conn = sqlite3.connect("trading_bot.db")
-        cursor = sync_conn.cursor()
-        try:
-            cursor.execute("SELECT count(*) FROM raw_telegram_messages;")
-            count = cursor.fetchone()[0]
-        except Exception:
-            count = 0
-
-        if count == 0:
-            dump_candidates = ["dump.sql", "bot_trading/dump.sql", "/app/dump.sql"]
-            for dp in dump_candidates:
-                if os.path.exists(dp):
-                    logger.info(f"Cargando histórico inicial de mensajes desde {dp}...")
-                    with open(dp, "r", encoding="utf-8") as f:
-                        sync_conn.executescript(f.read())
-                    logger.info("Histórico inicial cargado exitosamente en SQLite.")
-                    break
-        cursor.close()
-        sync_conn.close()
+        from scripts.seed_messages import seed_database
+        seed_database()
     except Exception as e:
         logger.warning(f"Aviso al sembrar dump.sql inicial: {e}")
 
