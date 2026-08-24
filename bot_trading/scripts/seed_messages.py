@@ -1,9 +1,14 @@
 import os
-import re
 import sqlite3
 
 def seed_database():
+    db_candidates = ["trading_bot.db", "bot_trading/trading_bot.db", "/app/trading_bot.db"]
     db_path = "trading_bot.db"
+    for db in db_candidates:
+        if os.path.exists(db):
+            db_path = db
+            break
+
     dump_candidates = ["dump.sql", "bot_trading/dump.sql", "/app/dump.sql"]
     dump_path = None
     for dp in dump_candidates:
@@ -12,10 +17,10 @@ def seed_database():
             break
 
     if not dump_path:
-        print("No se encontró dump.sql")
+        print("No se encontro dump.sql")
         return
 
-    print(f"Leyendo señales históricas desde {dump_path}...")
+    print(f"Leyendo senales historicas desde {dump_path} para {db_path}...")
     with open(dump_path, "r", encoding="utf-8") as f:
         dump_text = f.read()
 
