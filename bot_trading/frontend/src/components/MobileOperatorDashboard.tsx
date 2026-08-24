@@ -232,46 +232,30 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
         </div>
       </main>
 
-      {/* 3. Barra de Navegación Táctil Inferior (Bottom Touch Nav) */}
-      <nav className="h-14 border-t border-outline-variant bg-surface px-2 grid grid-cols-3 items-center shrink-0 z-30 shadow-lg">
-        {/* Pestaña 0: Señales */}
+      {/* 3. Indicador Discreto de Pantalla Deslizable (Paginación Minimalista) */}
+      <div className="h-3 flex items-center justify-center gap-1.5 pb-1 shrink-0 bg-background">
         <button
           onClick={() => setActiveTab(0)}
-          className={`flex flex-col items-center justify-center py-1 gap-0.5 transition-colors ${
-            activeTab === 0 ? 'text-primary font-bold' : 'text-text-secondary hover:text-text-primary'
+          className={`h-1 rounded-full transition-all ${
+            activeTab === 0 ? 'bg-primary w-4' : 'bg-outline-variant w-1.5'
           }`}
-        >
-          <span className="text-base">📋</span>
-          <span className="text-[10px] font-mono tracking-tight">Señales</span>
-        </button>
-
-        {/* Pestaña 1: Posiciones (Home) */}
+          title="Señales"
+        />
         <button
           onClick={() => setActiveTab(1)}
-          className={`relative flex flex-col items-center justify-center py-1 gap-0.5 transition-colors ${
-            activeTab === 1 ? 'text-primary font-bold' : 'text-text-secondary hover:text-text-primary'
+          className={`h-1 rounded-full transition-all ${
+            activeTab === 1 ? 'bg-primary w-4' : 'bg-outline-variant w-1.5'
           }`}
-        >
-          <span className="text-base">⚡</span>
-          <span className="text-[10px] font-mono tracking-tight">Posiciones</span>
-          {activeSlotsCount > 0 && (
-            <span className="absolute top-1 right-6 w-4 h-4 bg-primary text-black font-bold font-mono text-[9px] rounded-full flex items-center justify-center animate-pulse">
-              {activeSlotsCount}
-            </span>
-          )}
-        </button>
-
-        {/* Pestaña 2: Noticias */}
+          title="Posiciones"
+        />
         <button
           onClick={() => setActiveTab(2)}
-          className={`flex flex-col items-center justify-center py-1 gap-0.5 transition-colors ${
-            activeTab === 2 ? 'text-primary font-bold' : 'text-text-secondary hover:text-text-primary'
+          className={`h-1 rounded-full transition-all ${
+            activeTab === 2 ? 'bg-primary w-4' : 'bg-outline-variant w-1.5'
           }`}
-        >
-          <span className="text-base">📰</span>
-          <span className="text-[10px] font-mono tracking-tight">Noticias</span>
-        </button>
-      </nav>
+          title="Noticias"
+        />
+      </div>
 
       {/* Modal de Confirmación de Kill Switch Móvil */}
       {showKillSwitchConfirm && (
