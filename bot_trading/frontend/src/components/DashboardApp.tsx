@@ -359,6 +359,7 @@ export const DashboardApp: React.FC = () => {
       });
       if (res.ok) {
         setIngestionEnabled(false);
+        setAutoExecutionEnabled(false);
         setBotActive(false);
         setSlots((prev) => prev.map((s) => ({ slot_id: s.slot_id, is_active: false })));
         setFloatingPnl(0);
@@ -366,6 +367,24 @@ export const DashboardApp: React.FC = () => {
       }
     } catch (err) {
       console.error('Error al ejecutar Kill-Switch:', err);
+    }
+  };
+
+  const handleRearmBot = async () => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/control/rearm`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIngestionEnabled(data.ingestion_enabled);
+        setAutoExecutionEnabled(data.auto_execution_enabled);
+        setBotActive(true);
+        await fetchInitialData();
+      }
+    } catch (err) {
+      console.error('Error al rearmar el bot:', err);
     }
   };
 
@@ -457,6 +476,7 @@ export const DashboardApp: React.FC = () => {
           isAutoExecutionActive={autoExecutionEnabled}
           onToggleIngestion={handleToggleIngestion}
           onToggleAutoExecution={handleToggleAutoExecution}
+          onRearmBot={handleRearmBot}
           onEmergencyClose={handlePanicClose}
           onCloseSlot={handleCloseSlot}
           onEmitTestSignal={handleInjectTestSignal}

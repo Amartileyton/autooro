@@ -15,6 +15,7 @@ interface MobileOperatorDashboardProps {
   isAutoExecutionActive: boolean;
   onToggleIngestion: () => void;
   onToggleAutoExecution: () => void;
+  onRearmBot?: () => void;
   onEmergencyClose: () => void;
   onCloseSlot: (slotId: number) => void;
   onEmitTestSignal: () => void;
@@ -29,7 +30,7 @@ const CashLogoIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" 
   </svg>
 );
 
-// KILL SWITCH.svg dinámico estilo interruptor mecánico deslizante
+// KILL SWITCH.svg dinámico estilo interruptor mecánico deslizante con soporte ON y OFF
 const KillSwitchToggle: React.FC<{
   isOn: boolean;
   onClick: () => void;
@@ -37,7 +38,7 @@ const KillSwitchToggle: React.FC<{
   return (
     <button
       onClick={onClick}
-      title={isOn ? "KILL SWITCH: Pulsa para apagar bot y cerrar todas las posiciones" : "Bot Apagado / Modo Emergencia Activo"}
+      title={isOn ? "KILL SWITCH ACTIVO: Pulsa para apagar bot y cerrar todas las posiciones" : "BOT DETENIDO (OFF): Pulsa para reactivar operativa y reanudar escucha"}
       className="flex items-center gap-1.5 p-1 rounded hover:bg-surface-container active:scale-95 transition-all cursor-pointer select-none group shrink-0"
     >
       <div className="w-10 h-5 relative shrink-0">
@@ -86,6 +87,7 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
   isAutoExecutionActive,
   onToggleIngestion,
   onToggleAutoExecution,
+  onRearmBot,
   onEmergencyClose,
   onCloseSlot,
   onEmitTestSignal,
@@ -98,6 +100,24 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
   const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
   const [showHealthModal, setShowHealthModal] = useState<boolean>(false);
   const [showUserMenu, setShowUserMenu] = useState<boolean>(false);
+
+  const isBotFullyActive = isIngestionActive && isAutoExecutionActive;
+
+  // Manejador interactivo para alternar el Kill Switch en ambas direcciones
+  const handleKillSwitchClick = () => {
+    if (isBotFullyActive) {
+      // Si está activo -> solicitar confirmación de parada de emergencia
+      setShowKillSwitchConfirm(true);
+    } else {
+      // Si está detenido -> reactivar de inmediato
+      if (onRearmBot) {
+        onRearmBot();
+      } else {
+        if (!isIngestionActive) onToggleIngestion();
+        if (!isAutoExecutionActive) onToggleAutoExecution();
+      }
+    }
+  };
 
   // Control táctil para gestos de Swipe
   const touchStartX = useRef<number | null>(null);
@@ -139,9 +159,9 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
           <div className="flex flex-col leading-tight">
             <span className="font-bold text-xs tracking-wider text-text-primary">GOLD-EX</span>
             <div className="flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${isIngestionActive ? 'bg-primary animate-pulse' : 'bg-error'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isBotFullyActive ? 'bg-primary animate-pulse' : 'bg-error'}`} />
               <span className="text-[9px] font-mono text-text-secondary">
-                {isIngestionActive ? 'EN VIVO' : 'PAUSADO'}
+                {isBotFullyActive ? 'EN VIVO' : 'PAUSADO'}
               </span>
             </div>
           </div>
@@ -163,10 +183,10 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
             )}
           </div>
 
-          {/* Interruptor Dinámico KILL SWITCH con KILL SWITCH.svg */}
+          {/* Interruptor Dinámico KILL SWITCH con soporte bidireccional ON/OFF */}
           <KillSwitchToggle
-            isOn={isIngestionActive && isAutoExecutionActive}
-            onClick={() => setShowKillSwitchConfirm(true)}
+            isOn={isBotFullyActive}
+            onClick={handleKillSwitchClick}
           />
 
           {/* Menú de Controles y Perfil */}
@@ -183,6 +203,19 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
                 <div className="p-1 border-b border-outline-variant/50 text-[10px] text-text-secondary truncate">
                   {userEmail || 'Operador Autorizado'}
                 </div>
+
+                {!isBotFullyActive && (
+                  <button
+                    onClick={() => {
+                      if (onRearmBot) onRearmBot();
+                      setShowUserMenu(false);
+                    }}
+                    className="flex items-center justify-center p-2 rounded bg-primary/20 text-primary border border-primary/40 font-bold text-center hover:bg-primary/30"
+                  >
+                    🟢 REARMAR Y ACTIVAR BOT
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     onToggleIngestion();

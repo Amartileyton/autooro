@@ -302,6 +302,19 @@ async def panic_close():
     return {"status": "success", "message": "KILL-SWITCH ejecutado: Todas las posiciones han sido cerradas y el bot está totalmente apagado"}
 
 
+@router.post("/control/rearm", dependencies=[Depends(verify_auth_or_key)])
+async def rearm_bot():
+    """Reactiva el bot por completo: Habilita la ingesta de Telegram y la auto-ejecución."""
+    settings.INGESTION_ENABLED = True
+    settings.AUTO_EXECUTION_ENABLED = True
+    return {
+        "status": "success",
+        "message": "Bot reactivado y rearmado con éxito: Ingesta y Auto-ejecución habilitadas",
+        "ingestion_enabled": True,
+        "auto_execution_enabled": True
+    }
+
+
 @router.post("/control/close-slot/{slot_id}", dependencies=[Depends(verify_auth_or_key)])
 async def close_slot_manually(slot_id: int):
     """Cierra manualmente un slot específico a precio de mercado."""
