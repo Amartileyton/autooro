@@ -38,24 +38,17 @@ def seed_database():
     count = 0
     if dump_path and os.path.exists(dump_path):
         print(f"Leyendo senales historicas desde {dump_path} para {db_path}...")
-        with open(dump_path, "r", encoding="utf-8") as f:
-            dump_text = f.read()
+        try:
+            with open(dump_path, "r", encoding="utf-8") as f:
+                dump_text = f.read()
+            cursor.executescript(dump_text)
+            conn.commit()
+        except Exception as e:
+            print(f"Aviso al ejecutar dump: {e}")
 
-        for stmt in dump_text.split(";\n"):
-            stmt = stmt.strip()
-            if "raw_telegram_messages" in stmt and stmt.startswith("INSERT INTO"):
-                stmt = stmt.replace('INSERT INTO "raw_telegram_messages"', 'INSERT OR IGNORE INTO raw_telegram_messages (id, message_id, channel_id, channel_name, raw_text, parsed_success, parser_used, error_reason, received_at)')
-                stmt = stmt.replace('INSERT INTO raw_telegram_messages', 'INSERT OR IGNORE INTO raw_telegram_messages (id, message_id, channel_id, channel_name, raw_text, parsed_success, parser_used, error_reason, received_at)')
-                try:
-                    cursor.execute(stmt + ";")
-                    count += 1
-                except Exception as e:
-                    pass
-
-    conn.commit()
     cursor.execute("SELECT count(*) FROM raw_telegram_messages;")
     total = cursor.fetchone()[0]
-    print(f"Seeding completado. Mensajes procesados: {count} | Total en base de datos: {total}")
+    print(f"Seeding completado. Total en base de datos: {total}")
     conn.close()
 
 if __name__ == "__main__":
