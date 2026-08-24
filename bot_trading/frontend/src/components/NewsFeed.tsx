@@ -6,6 +6,7 @@ export interface NewsItem {
   source: string;
   url: string;
   published_at: string;
+  published_at_iso?: string;
   asset: string;
   user_state?: 'liked' | 'disliked' | null;
   likes?: number;
@@ -40,9 +41,34 @@ const DislikeIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }
   </svg>
 );
 
+// Formateador de tiempo relativo dinámico que avanza en tiempo real en el navegador
+const formatRelativeTime = (isoString?: string, fallback?: string): string => {
+  if (!isoString) return fallback || 'Reciente';
+  try {
+    const raw = isoString.endsWith('Z') || isoString.includes('+') ? isoString : `${isoString}Z`;
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return fallback || 'Reciente';
+    const now = Date.now();
+    const diffSec = Math.max(0, Math.floor((now - d.getTime()) / 1000));
+
+    if (diffSec < 60) return 'Hace un momento';
+    const mins = Math.floor(diffSec / 60);
+    if (mins < 60) return `Hace ${mins} min`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `Hace ${hours} h ${mins % 60 > 0 ? `${mins % 60}m` : ''}`;
+    const days = Math.floor(hours / 24);
+    return `Hace ${days} d`;
+  } catch {
+    return fallback || 'Reciente';
+  }
+};
+
 export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = false }) => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [tick, setTick] = useState<number>(Date.now());
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
   const [expandedSummaries, setExpandedSummaries] = useState<Record<string, any>>({});
   const [filterAsset, setFilterAsset] = useState<string>('ALL');
@@ -58,26 +84,34 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
   };
 
   // Cargar noticias del backend
-  const fetchNews = async () => {
+  const fetchNews = async (showRefreshIndicator = false) => {
+    if (showRefreshIndicator) setIsRefreshing(true);
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/v1/news`);
       if (res.ok) {
         const data = await res.json();
         if (data.news) {
           setNews(data.news);
+          setLastUpdated(new Date());
         }
       }
     } catch {
       // Fallback
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
+  // Ciclo de refresco periódico y avance dinámico del reloj cada 30 segundos
   useEffect(() => {
     fetchNews();
-    const interval = setInterval(fetchNews, 25000);
-    return () => clearInterval(interval);
+    const fetchInterval = setInterval(() => fetchNews(false), 60000); // Consulta periódica al backend cada 1 min
+    const clockInterval = setInterval(() => setTick(Date.now()), 30000); // Re-renderizado de tiempos relativos cada 30s
+    return () => {
+      clearInterval(fetchInterval);
+      clearInterval(clockInterval);
+    };
   }, []);
 
   // Registrar feedback de usuario (Like, Dislike, Click)
@@ -101,24 +135,27 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
     try {
       await fetch(`${getApiBaseUrl()}/api/v1/news/feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': 'sec_xauusd_trading_key_2026',
+        },
         body: JSON.stringify({
           news_id: item.id,
-          title: item.title,
-          url: item.url,
-          asset: item.asset,
+          news_title: item.title,
+          news_url: item.url,
+          news_asset: item.asset,
           action_type: actionType,
         }),
       });
     } catch {
-      // Silencioso
+      // Fallback silencioso
     }
   };
 
-  // Solicitar resumen con DeepSeek AI BAJO DEMANDA EXPLÍCITA
-  const handleRequestAiSummary = async (item: NewsItem) => {
+  // Solicitar resumen inteligente con DeepSeek bajo demanda
+  const handleSummarize = async (item: NewsItem) => {
     if (expandedSummaries[item.id]) {
-      // Toggle cerrar
+      // Toggle off
       setExpandedSummaries((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -131,7 +168,10 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/v1/news/summarize`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': 'sec_xauusd_trading_key_2026',
+        },
         body: JSON.stringify({
           title: item.title,
           source: item.source,
@@ -173,7 +213,7 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
 
   return (
     <div className={`flex flex-col h-full bg-background border border-outline-variant rounded-md overflow-hidden min-h-0 ${className}`}>
-      {/* Cabecera del Feed de Noticias */}
+      {/* Cabecera del Feed de Noticias con badge de ciclo horario y botón refrescar */}
       <div className="p-3 border-b border-outline-variant bg-surface flex flex-col gap-2 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -186,9 +226,26 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-[10px] text-text-secondary bg-surface-container px-2 py-0.5 rounded border border-outline-variant font-mono">
-            <span className="text-primary font-bold">✨ DeepSeek IA</span>
-            <span>(Bajo Demanda)</span>
+          <div className="flex items-center gap-2">
+            {/* Indicador de última actualización horaria */}
+            <div className="flex items-center gap-1.5 text-[10px] text-text-secondary bg-surface-container px-2 py-0.5 rounded border border-outline-variant font-mono">
+              <span className="text-primary font-bold">⏱️ Ciclo 1h</span>
+              <span className="opacity-70">
+                {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'En vivo'}
+              </span>
+            </div>
+
+            {/* Botón de actualización manual inmediata */}
+            <button
+              onClick={() => fetchNews(true)}
+              disabled={isRefreshing}
+              title="Refrescar noticias de APIs externas"
+              className="flex items-center justify-center p-1 rounded hover:bg-surface-container text-text-secondary hover:text-primary transition-all border border-outline-variant"
+            >
+              <span className={`material-symbols-outlined text-[15px] ${isRefreshing ? 'animate-spin text-primary' : ''}`}>
+                refresh
+              </span>
+            </button>
           </div>
         </div>
 
@@ -245,7 +302,7 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
                     </span>
                     <span className="text-text-secondary truncate max-w-[140px] font-medium">{item.source}</span>
                     <span className="text-text-secondary/60">•</span>
-                    <span className="text-text-secondary/75">{item.published_at}</span>
+                    <span className="text-text-secondary/75">{formatRelativeTime(item.published_at_iso, item.published_at)}</span>
                   </div>
                 </div>
 

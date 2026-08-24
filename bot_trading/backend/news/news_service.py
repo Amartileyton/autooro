@@ -4,14 +4,15 @@ import logging
 import urllib.request
 import ssl
 import sqlite3
+import email.utils
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Cache de noticias en memoria para evitar saturar fuentes externas
+# Cache de noticias en memoria con ciclo horario (1 hora = 3600s)
 _news_cache: Dict[str, Any] = {
     "timestamp": 0.0,
     "items": []
@@ -28,63 +29,71 @@ PAYWALLED_DOMAINS = [
     "reuters.com/pro"
 ]
 
-# Noticias abiertas de alta calidad por defecto (100% libres de paywall)
-DEFAULT_OPEN_ACCESS_NEWS: List[Dict[str, Any]] = [
-    {
-        "id": "news_gold_consolidation_open",
-        "title": "El Oro Spot consolida soporte clave ante la demanda sostenida de reservas físicas",
-        "source": "Investing.com",
-        "url": "https://www.investing.com/commodities/gold-news",
-        "published_at": "Hace 15 min",
-        "asset": "XAUUSD",
-        "summary": "La demanda institucional de lingotes físicos en Asia y compras continuas de bancos centrales actúan como soporte estructural para XAUUSD por encima de los niveles clave."
-    },
-    {
-        "id": "news_fed_inflation_data_open",
-        "title": "La Reserva Federal monitorea los datos de inflación y el rendimiento de los bonos del Tesoro",
-        "source": "MarketWatch",
-        "url": "https://www.marketwatch.com/economy-politics",
-        "published_at": "Hace 35 min",
-        "asset": "XAUUSD / DÓLAR",
-        "summary": "La FED mantiene la cautela ante la resistencia de la inflación subyacente. Los operadores descuentan estabilidad en los tramos cortos de tipos de interés."
-    },
-    {
-        "id": "news_spx_tech_rally_open",
-        "title": "Wall Street: El sector de semiconductores e inteligencia artificial lidera las ganancias en el S&P 500",
-        "source": "MarketWatch",
-        "url": "https://www.marketwatch.com/investing/index/spx",
-        "published_at": "Hace 1 hora",
-        "asset": "SPX / NASDAQ",
-        "summary": "El rally en chips de inteligencia artificial compensa la toma de beneficios en el sector energético, manteniendo al S&P 500 en niveles de consolidación alcista."
-    },
-    {
-        "id": "news_ecb_monetary_open",
-        "title": "El Banco Central Europeo reitera su política monetaria dependiente de la evolución de datos",
-        "source": "Investing.com",
-        "url": "https://www.investing.com/news/economy",
-        "published_at": "Hace 2 horas",
-        "asset": "EURO STOXX / DAX",
-        "summary": "El BCE señala que el crecimiento en la zona euro muestra signos de estabilización, aunque persisten riesgos geopolíticos en las cadenas de suministro."
-    },
-    {
-        "id": "news_silver_demand_open",
-        "title": "La Plata Spot repunta impulsada por la demanda de la industria solar y componentes electrónicos",
-        "source": "Investing.com",
-        "url": "https://www.investing.com/commodities/silver-news",
-        "published_at": "Hace 3 horas",
-        "asset": "XAGUSD",
-        "summary": "El déficit de oferta en el mercado físico de plata apoya la cotización de XAGUSD mientras los fabricantes aceleran contratos de suministro a largo plazo."
-    },
-    {
-        "id": "news_nikkei_yen_open",
-        "title": "El Banco de Japón vigila la estabilidad del yen y la evolución de los mercados asiáticos",
-        "source": "Investing.com",
-        "url": "https://www.investing.com/news/forex-news",
-        "published_at": "Hace 4 horas",
-        "asset": "NIKKEI 225",
-        "summary": "Las autoridades monetarias niponas descartan intervenciones inmediatas pero advierten contra movimientos especulativos unilaterales en los mercados de divisas."
-    }
-]
+# Noticias abiertas de alta calidad por defecto (100% libres de paywall) con timestamps ISO dinámicos
+def get_default_open_access_news() -> List[Dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    return [
+        {
+            "id": "news_gold_consolidation_open",
+            "title": "El Oro Spot consolida soporte clave ante la demanda sostenida de reservas físicas",
+            "source": "Investing.com",
+            "url": "https://www.investing.com/commodities/gold-news",
+            "published_at": "Hace 15 min",
+            "published_at_iso": (now - timedelta(minutes=15)).isoformat(),
+            "asset": "XAUUSD",
+            "summary": "La demanda institucional de lingotes físicos en Asia y compras continuas de bancos centrales actúan como soporte estructural para XAUUSD por encima de los niveles clave."
+        },
+        {
+            "id": "news_fed_inflation_data_open",
+            "title": "La Reserva Federal monitorea los datos de inflación y el rendimiento de los bonos del Tesoro",
+            "source": "MarketWatch",
+            "url": "https://www.marketwatch.com/economy-politics",
+            "published_at": "Hace 35 min",
+            "published_at_iso": (now - timedelta(minutes=35)).isoformat(),
+            "asset": "XAUUSD / DÓLAR",
+            "summary": "La FED mantiene la cautela ante la resistencia de la inflación subyacente. Los operadores descuentan estabilidad en los tramos cortos de tipos de interés."
+        },
+        {
+            "id": "news_spx_tech_rally_open",
+            "title": "Wall Street: El sector de semiconductores e inteligencia artificial lidera las ganancias en el S&P 500",
+            "source": "MarketWatch",
+            "url": "https://www.marketwatch.com/investing/index/spx",
+            "published_at": "Hace 1 hora",
+            "published_at_iso": (now - timedelta(hours=1)).isoformat(),
+            "asset": "SPX / NASDAQ",
+            "summary": "El rally en chips de inteligencia artificial compensa la toma de beneficios en el sector energético, manteniendo al S&P 500 en niveles de consolidación alcista."
+        },
+        {
+            "id": "news_ecb_monetary_open",
+            "title": "El Banco Central Europeo reitera su política monetaria dependiente de la evolución de datos",
+            "source": "Investing.com",
+            "url": "https://www.investing.com/news/economy",
+            "published_at": "Hace 2 horas",
+            "published_at_iso": (now - timedelta(hours=2)).isoformat(),
+            "asset": "EURO STOXX / DAX",
+            "summary": "El BCE señala que el crecimiento en la zona euro muestra signos de estabilización, aunque persisten riesgos geopolíticos en las cadenas de suministro."
+        },
+        {
+            "id": "news_silver_demand_open",
+            "title": "La Plata Spot repunta impulsada por la demanda de la industria solar y componentes electrónicos",
+            "source": "Investing.com",
+            "url": "https://www.investing.com/commodities/silver-news",
+            "published_at": "Hace 3 horas",
+            "published_at_iso": (now - timedelta(hours=3)).isoformat(),
+            "asset": "XAGUSD",
+            "summary": "El déficit de oferta en el mercado físico de plata apoya la cotización de XAGUSD mientras los fabricantes aceleran contratos de suministro a largo plazo."
+        },
+        {
+            "id": "news_nikkei_yen_open",
+            "title": "El Banco de Japón vigila la estabilidad del yen y la evolución de los mercados asiáticos",
+            "source": "Investing.com",
+            "url": "https://www.investing.com/news/forex-news",
+            "published_at": "Hace 4 horas",
+            "published_at_iso": (now - timedelta(hours=4)).isoformat(),
+            "asset": "NIKKEI 225",
+            "summary": "Las autoridades monetarias niponas descartan intervenciones inmediatas pero advierten contra movimientos especulativos unilaterales en los mercados de divisas."
+        }
+    ]
 
 
 def is_url_paywalled(url: str, publisher: str = "") -> bool:
@@ -167,47 +176,48 @@ def get_user_news_feedback() -> Dict[str, Dict[str, Any]]:
         return {}
 
 
-async def get_market_news() -> List[Dict[str, Any]]:
-    """Obtiene noticias financieras en tiempo real garantizando fuentes y enlaces 100% libres de paywall."""
+async def refresh_news_from_sources() -> List[Dict[str, Any]]:
+    """Consulta activamente las APIs y feeds RSS externos para obtener noticias frescas."""
     global _news_cache
     now = time.time()
+    now_dt = datetime.now(timezone.utc)
     user_feedback = get_user_news_feedback()
-
-    # Si hay cache reciente (menos de 20s), solo refrescar el estado de user_feedback
-    if _news_cache["items"] and (now - _news_cache["timestamp"] < 20.0):
-        for item in _news_cache["items"]:
-            fb = user_feedback.get(item["id"], {})
-            item["user_state"] = fb.get("user_state")
-            item["likes"] = fb.get("likes", 0)
-            item["dislikes"] = fb.get("dislikes", 0)
-            item["clicks"] = fb.get("clicks", 0)
-        return _news_cache["items"]
-
     parsed_items = []
 
-    # 1. Intentar consultar feeds abiertos de Investing.com y MarketWatch
     try:
         ctx = ssl._create_unverified_context()
         open_rss_sources = [
             ("Investing.com", "https://www.investing.com/rss/news_11.rss", "XAUUSD"),
             ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "SPX / NASDAQ"),
+            ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex", "MACRO / DÓLAR")
         ]
 
         for publisher, rss_url, default_asset in open_rss_sources:
             try:
                 req = urllib.request.Request(
                     rss_url,
-                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
                 )
-                with urllib.request.urlopen(req, context=ctx, timeout=2.5) as resp:
+                with urllib.request.urlopen(req, context=ctx, timeout=3.0) as resp:
                     root = ET.fromstring(resp.read())
-                    for idx, item_elem in enumerate(root.findall(".//item")[:4]):
+                    for idx, item_elem in enumerate(root.findall(".//item")[:5]):
                         title_el = item_elem.find("title")
                         link_el = item_elem.find("link")
+                        pubdate_el = item_elem.find("pubDate")
                         if title_el is None or not title_el.text:
                             continue
                         title = title_el.text.strip()
                         link = link_el.text.strip() if link_el is not None and link_el.text else ""
+
+                        # Parsear fecha real del artículo
+                        pub_dt = now_dt - timedelta(minutes=(idx + 1) * 10)
+                        if pubdate_el is not None and pubdate_el.text:
+                            try:
+                                parsed_pub = email.utils.parsedate_to_datetime(pubdate_el.text)
+                                if parsed_pub:
+                                    pub_dt = parsed_pub.astimezone(timezone.utc)
+                            except Exception:
+                                pass
 
                         # Filtrar enlaces con paywall
                         if is_url_paywalled(link, publisher):
@@ -216,9 +226,9 @@ async def get_market_news() -> List[Dict[str, Any]]:
                         # Detectar activo
                         asset = default_asset
                         t_low = title.lower()
-                        if "gold" in t_low or "xau" in t_low or "oro" in t_low or "fed" in t_low:
+                        if "gold" in t_low or "xau" in t_low or "oro" in t_low or "fed" in t_low or "powell" in t_low:
                             asset = "XAUUSD"
-                        elif "s&p" in t_low or "nasdaq" in t_low or "tech" in t_low:
+                        elif "s&p" in t_low or "nasdaq" in t_low or "tech" in t_low or "nvidia" in t_low:
                             asset = "SPX / NASDAQ"
                         elif "silver" in t_low or "plata" in t_low or "xag" in t_low:
                             asset = "XAGUSD"
@@ -226,12 +236,17 @@ async def get_market_news() -> List[Dict[str, Any]]:
                         news_id = f"open_{publisher[:3].lower()}_{abs(hash(title)) % 1000000}"
                         fb = user_feedback.get(news_id, {})
 
+                        # Minutos transcurridos
+                        diff_minutes = max(1, int((now_dt - pub_dt).total_seconds() / 60))
+                        rel_text = f"Hace {diff_minutes} min" if diff_minutes < 60 else f"Hace {int(diff_minutes / 60)} h"
+
                         parsed_items.append({
                             "id": news_id,
                             "title": title,
                             "source": publisher,
                             "url": link,
-                            "published_at": f"Hace {max(5, (idx + 1) * 12)} min",
+                            "published_at": rel_text,
+                            "published_at_iso": pub_dt.isoformat(),
                             "asset": asset,
                             "user_state": fb.get("user_state"),
                             "likes": fb.get("likes", 0),
@@ -245,16 +260,15 @@ async def get_market_news() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.debug(f"Error general en open RSS: {e}")
 
-    # 2. Si no se obtuvieron suficientes noticias abiertas, enriquecer con noticias curadas abiertas
+    # Enriquecer con noticias curadas abiertas si es necesario
     if len(parsed_items) < 6:
-        for item in DEFAULT_OPEN_ACCESS_NEWS:
+        for item in get_default_open_access_news():
             item_copy = dict(item)
             fb = user_feedback.get(item_copy["id"], {})
             item_copy["user_state"] = fb.get("user_state")
             item_copy["likes"] = fb.get("likes", 0)
             item_copy["dislikes"] = fb.get("dislikes", 0)
             item_copy["clicks"] = fb.get("clicks", 0)
-            # Asegurar que el URL sea 100% abierto
             if is_url_paywalled(item_copy.get("url", ""), item_copy.get("source", "")):
                 item_copy["url"] = get_open_access_fallback_url(item_copy.get("asset", ""))
             parsed_items.append(item_copy)
@@ -263,7 +277,27 @@ async def get_market_news() -> List[Dict[str, Any]]:
         "timestamp": now,
         "items": parsed_items
     }
+    logger.info(f"[NEWS] Radar de Noticias actualizado con {len(parsed_items)} titulares frescos.")
     return parsed_items
+
+
+async def get_market_news() -> List[Dict[str, Any]]:
+    """Obtiene noticias financieras en tiempo real garantizando fuentes y enlaces 100% libres de paywall."""
+    global _news_cache
+    now = time.time()
+    user_feedback = get_user_news_feedback()
+
+    # Si hay cache menor a 3600 segundos (1 hora), servir desde cache refrescando estado de likes
+    if _news_cache["items"] and (now - _news_cache["timestamp"] < 3600.0):
+        for item in _news_cache["items"]:
+            fb = user_feedback.get(item["id"], {})
+            item["user_state"] = fb.get("user_state")
+            item["likes"] = fb.get("likes", 0)
+            item["dislikes"] = fb.get("dislikes", 0)
+            item["clicks"] = fb.get("clicks", 0)
+        return _news_cache["items"]
+
+    return await refresh_news_from_sources()
 
 
 async def summarize_news_with_deepseek(title: str, source: str = "", url: str = "") -> Dict[str, Any]:

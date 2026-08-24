@@ -226,6 +226,22 @@ async def lifespan(app: FastAPI):
         signal_consumer_worker(signal_queue, risk_engine, state_machine, broker)
     )
 
+    # 10. Iniciar Worker de Actualización Horaria de Noticias (cada 3600s)
+    async def news_hourly_refresh_worker():
+        from backend.news.news_service import refresh_news_from_sources
+        while True:
+            try:
+                await asyncio.sleep(3600)
+                logger.info("[NEWS WORKER] Ejecutando actualización horaria de noticias macro...")
+                await refresh_news_from_sources()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[NEWS WORKER] Error en actualización de noticias: {e}")
+                await asyncio.sleep(60)
+
+    news_task = asyncio.create_task(news_hourly_refresh_worker())
+
     logger.info("Sistema completamente operativo y listo para recibir señales.")
 
     yield
@@ -233,6 +249,7 @@ async def lifespan(app: FastAPI):
     # Apagado limpio y seguro
     logger.info("Deteniendo servicios...")
     consumer_task.cancel()
+    news_task.cancel()
     await telegram_client.stop()
     await telegram_bot.stop()
     await broker.disconnect()
