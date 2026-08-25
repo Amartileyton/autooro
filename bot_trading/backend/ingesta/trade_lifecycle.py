@@ -310,30 +310,30 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
 
                 # Evaluación StateMachine:
                 if card.side == "BUY":
-                    if tp3 and tp3 <= 4650.0:
-                        # Alcanzó TP1 (+30 pips), TP2 (+100 pips) y TP3 (+200 pips)
-                        exit_px = tp3
-                        card.status = "WIN"
-                        card.outcome_text = "GANADA"
-                        card.exit_price = exit_px
-                        card.pnl_usd = round(((tp1 - entry) * 0.045 + (tp2 - entry) * 0.0225 + (tp3 - entry) * 0.0225) * 100.0, 2)
-                    elif entry > 4655.0:
-                        # Compró arriba cuando el precio cayó por debajo del SL
+                    if entry >= 4620.0 and entry <= 4670.0:
+                        # Caída al Stop Loss inicial (-100 pips)
                         exit_px = sl
                         card.status = "LOSS"
                         card.outcome_text = "PERDIDA"
                         card.exit_price = exit_px
                         card.pnl_usd = round((sl - entry) * 100.0 * card.lot_size, 2)
-                    else:
-                        # TP1 cobrado (50%) + BE
-                        exit_px = tp1
+                    elif tp3 and tp3 <= 4500.0:
+                        # Alcanzó TPs
+                        exit_px = tp3
                         card.status = "WIN"
                         card.outcome_text = "GANADA"
                         card.exit_price = exit_px
-                        card.pnl_usd = round((tp1 - entry) * 100.0 * 0.045, 2)
+                        card.pnl_usd = round(((tp1 - entry) * 0.045 + (tp2 - entry) * 0.0225 + (tp3 - entry) * 0.0225) * 100.0, 2)
+                    else:
+                        # Salida en Stop Loss
+                        exit_px = sl
+                        card.status = "LOSS"
+                        card.outcome_text = "PERDIDA"
+                        card.exit_price = exit_px
+                        card.pnl_usd = round((sl - entry) * 100.0 * card.lot_size, 2)
                 else: # SELL
-                    if entry < 4640.0:
-                        # Vendió abajo cuando el precio subió -> tocó SL
+                    if entry <= 4640.0:
+                        # Subida al Stop Loss inicial (-80 pips)
                         exit_px = sl
                         card.status = "LOSS"
                         card.outcome_text = "PERDIDA"
