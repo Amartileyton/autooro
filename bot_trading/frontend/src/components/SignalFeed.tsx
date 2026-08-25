@@ -27,12 +27,32 @@ interface SignalFeedProps {
   trades: TradeLifecycleCardItem[];
 }
 
+// Helpers defensivos ultra-seguros contra valores nulos o tipos inesperados
+const safePrice = (val: any, fallback = '---'): string => {
+  if (val === null || val === undefined || val === '') return fallback;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return isNaN(num) ? fallback : num.toFixed(2);
+};
+
+const safeNum = (val: any, fallback = 0): number => {
+  if (val === null || val === undefined || val === '') return fallback;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return isNaN(num) ? fallback : num;
+};
+
+const safePnlStr = (val: any): string => {
+  if (val === null || val === undefined || val === '') return '$0.00';
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  if (isNaN(num)) return '$0.00';
+  const sign = num >= 0 ? '+' : '-';
+  return `${sign}$${Math.abs(num).toFixed(2)}`;
+};
+
 // Función auxiliar para formatear fecha completa DD/MM/YYYY HH:mm:ss en la zona horaria local del navegador
 const formatFullDateTime = (isoString?: string, fallback?: string): string => {
   if (!isoString && fallback) return fallback;
   if (!isoString) return '';
   try {
-    // Normalizar string UTC para asegurar que JavaScript aplique el offset local correctamente
     const raw = isoString.endsWith('Z') || isoString.includes('+') ? isoString : `${isoString}Z`;
     const d = new Date(raw);
     if (isNaN(d.getTime())) return fallback || isoString;
@@ -49,7 +69,8 @@ const formatFullDateTime = (isoString?: string, fallback?: string): string => {
 };
 
 export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
-  const displayTrades = (trades || []).slice(0, 10);
+  const safeTradesList = Array.isArray(trades) ? trades : [];
+  const displayTrades = safeTradesList.slice(0, 10);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-[#12141c] border border-outline-variant rounded-md min-h-0 select-none">
@@ -72,20 +93,27 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
             <p>Esperando señales de Telegram...</p>
           </div>
         ) : (
-          displayTrades.map((t) => {
-            const isBuy = t.side === 'BUY';
-            const isWin = t.status === 'WIN';
-            const isLoss = t.status === 'LOSS';
-            const isOpen = t.status === 'OPEN';
+          displayTrades.map((t, idx) => {
+            const side = t.side || 'BUY';
+            const isBuy = side === 'BUY';
+            const status = t.status || 'OPEN';
+            const isWin = status === 'WIN';
+            const isLoss = status === 'LOSS';
+            const isOpen = status === 'OPEN';
 
-            const isModified = (t.modifications && t.modifications.length > 0) || (t.initial_sl && t.sl_price && t.initial_sl !== t.sl_price);
+            const pnlNum = t.pnl_usd !== null && t.pnl_usd !== undefined ? safeNum(t.pnl_usd) : null;
+            const isModified = Boolean((t.modifications && t.modifications.length > 0) || (t.initial_sl && t.sl_price && t.initial_sl !== t.sl_price));
             const fullDateStr = formatFullDateTime(t.created_at, t.formatted_created_at);
 
+            const exitPriceNum = safeNum(t.exit_price, 0);
+            const tp3Num = safeNum(t.tp3, 0);
+            const tp2Num = safeNum(t.tp2, 0);
+
             // Identificar qué nivel disparó la orden
-            const isTp3Triggered = isWin && t.exit_price && t.tp3 && Math.abs(t.exit_price - t.tp3) < 1.0;
-            const isTp2Triggered = isWin && !isTp3Triggered && t.exit_price && t.tp2 && Math.abs(t.exit_price - t.tp2) < 1.0;
-            const isTp1Triggered = isWin && !isTp3Triggered && !isTp2Triggered; // Default a TP1 en operaciones ganadas
-            const isSlTriggered = isLoss; // Disparo de SL en operaciones perdidas
+            const isTp3Triggered = isWin && exitPriceNum > 0 && tp3Num > 0 && Math.abs(exitPriceNum - tp3Num) < 1.5;
+            const isTp2Triggered = isWin && !isTp3Triggered && exitPriceNum > 0 && tp2Num > 0 && Math.abs(exitPriceNum - tp2Num) < 1.5;
+            const isTp1Triggered = isWin && !isTp3Triggered && !isTp2Triggered;
+            const isSlTriggered = isLoss;
 
             // Estilos de tarjeta general
             let borderColor = 'border-outline-variant/50';
@@ -106,9 +134,11 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
               statusBadge = 'bg-primary/25 text-primary border-primary/60 font-bold';
             }
 
+            const cardKey = t.trade_id || `signal-card-${idx}`;
+
             return (
               <div
-                key={t.trade_id}
+                key={cardKey}
                 className={`p-3 border rounded-md relative overflow-hidden transition-all space-y-2.5 ${bgColor} ${borderColor}`}
               >
                 {/* Borde lateral indicador de estado */}
@@ -118,21 +148,21 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                   }`}
                 />
 
-                {/* Fila 1: Origen + Estado (Solo SVG sin texto GANADA/PERDIDA) */}
+                {/* Fila 1: Origen + Estado */}
                 <div className="flex justify-between items-center pl-1.5 gap-2">
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface-container-highest text-slate-300 border border-outline-variant/60 flex items-center gap-1 font-semibold">
                     <span className="material-symbols-outlined text-[11px] text-slate-400">send</span>
-                    {t.channel_name}
+                    {t.channel_name || 'Chartoro FX'}
                   </span>
 
                   <div className="flex items-center gap-1.5">
-                    {t.pnl_usd !== null && t.pnl_usd !== undefined && (
-                      <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded ${t.pnl_usd >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-crimson-red/20 text-crimson-red'}`}>
-                        {t.pnl_usd >= 0 ? `+$${t.pnl_usd.toFixed(2)}` : `-$${Math.abs(t.pnl_usd).toFixed(2)}`}
+                    {pnlNum !== null && (
+                      <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded ${pnlNum >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-crimson-red/20 text-crimson-red'}`}>
+                        {safePnlStr(pnlNum)}
                       </span>
                     )}
 
-                    {/* Insignia con SVG Oficial Puro Flotante (sin recuadro exterior) */}
+                    {/* Insignia con SVG Oficial */}
                     {isWin ? (
                       <svg
                         className="w-5 h-5 fill-current text-emerald-400 shrink-0 drop-shadow-[0_0_6px_rgba(16,185,129,0.4)]"
@@ -165,7 +195,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                 {/* Fila 2: Fecha y Hora Completa */}
                 <div className="pl-1.5 flex items-center gap-1 text-[10px] font-mono text-outline">
                   <span className="material-symbols-outlined text-[13px] opacity-70">schedule</span>
-                  <span>{fullDateStr}</span>
+                  <span>{fullDateStr || 'Reciente'}</span>
                 </div>
 
                 {/* Fila 3: Tarjeta de Inversión, Entrada y Salida */}
@@ -180,7 +210,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                     </span>
 
                     <span className="text-[11px] text-slate-300 font-semibold">
-                      Margen: {t.margin_usd ? `$${t.margin_usd.toFixed(0)}` : '$1,000'} <span className="text-outline font-normal">({t.lot_size ? t.lot_size.toFixed(2) : '0.22'}L)</span>
+                      Margen: ${safeNum(t.margin_usd, 250).toFixed(0)} <span className="text-outline font-normal">({safePrice(t.lot_size, '0.09')}L)</span>
                     </span>
                   </div>
 
@@ -188,14 +218,14 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                   <div className="flex justify-between items-center text-[11px] font-mono pt-1 border-t border-white/5">
                     <div>
                       <span className="text-outline text-[10px] mr-1">ENTRADA:</span>
-                      <strong className="text-on-surface font-bold">${t.entry_price?.toFixed(2)}</strong>
+                      <strong className="text-on-surface font-bold">${safePrice(t.entry_price, '2650.00')}</strong>
                     </div>
 
                     <div>
                       <span className="text-outline text-[10px] mr-1">SALIDA:</span>
                       {t.exit_price ? (
                         <strong className={`font-bold ${isWin ? 'text-emerald-400' : 'text-crimson-red'}`}>
-                          ${t.exit_price.toFixed(2)}
+                          ${safePrice(t.exit_price)}
                         </strong>
                       ) : (
                         <span className="text-primary font-mono text-[10px] italic">En Curso...</span>
@@ -204,9 +234,9 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                   </div>
                 </div>
 
-                {/* Fila 4: Rejilla de Niveles de SL y Take Profits con Sombreado Puro (sin marcadores de texto) */}
+                {/* Fila 4: Rejilla de Niveles de SL y Take Profits */}
                 <div className="pl-1.5 grid grid-cols-4 gap-1.5">
-                  {/* Stop Loss (Sombreado en rojo si disparó pérdida) */}
+                  {/* Stop Loss */}
                   <div
                     className={`p-1 rounded flex flex-col transition-all border ${
                       isSlTriggered
@@ -221,11 +251,11 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                       {isModified && <span className="text-amber-400 font-bold text-[7px]">MOD</span>}
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isSlTriggered ? 'text-white' : t.sl_price ? 'text-crimson-red' : 'text-outline/40'}`}>
-                      {t.sl_price ? `$${t.sl_price.toFixed(2)}` : '---'}
+                      {t.sl_price ? `$${safePrice(t.sl_price)}` : '---'}
                     </span>
                   </div>
 
-                  {/* TP1 (Sombreado en verde si disparó ganancia) */}
+                  {/* TP1 */}
                   <div
                     className={`p-1 rounded flex flex-col transition-all border ${
                       isTp1Triggered
@@ -237,11 +267,11 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                       TP1
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp1Triggered ? 'text-white' : t.tp1 ? 'text-emerald-400' : 'text-outline/40'}`}>
-                      {t.tp1 ? `$${t.tp1.toFixed(2)}` : '---'}
+                      {t.tp1 ? `$${safePrice(t.tp1)}` : '---'}
                     </span>
                   </div>
 
-                  {/* TP2 (Sombreado en verde si disparó ganancia) */}
+                  {/* TP2 */}
                   <div
                     className={`p-1 rounded flex flex-col transition-all border ${
                       isTp2Triggered
@@ -253,11 +283,11 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                       TP2
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp2Triggered ? 'text-white' : t.tp2 ? 'text-emerald-400' : 'text-outline/40'}`}>
-                      {t.tp2 ? `$${t.tp2.toFixed(2)}` : '---'}
+                      {t.tp2 ? `$${safePrice(t.tp2)}` : '---'}
                     </span>
                   </div>
 
-                  {/* TP3 (Sombreado en verde si disparó ganancia) */}
+                  {/* TP3 */}
                   <div
                     className={`p-1 rounded flex flex-col transition-all border ${
                       isTp3Triggered
@@ -269,7 +299,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                       TP3
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp3Triggered ? 'text-white' : t.tp3 ? 'text-emerald-400' : 'text-outline/40'}`}>
-                      {t.tp3 ? `$${t.tp3.toFixed(2)}` : '---'}
+                      {t.tp3 ? `$${safePrice(t.tp3)}` : '---'}
                     </span>
                   </div>
                 </div>

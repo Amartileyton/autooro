@@ -242,15 +242,23 @@ async def get_consolidated_trade_cards(limit: int = 10, db: AsyncSession = Depen
     """
     from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
     try:
-        # Leer hasta 500 mensajes de Telegram crudos para abarcar los ciclos completos
         stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(500)
         result = await db.execute(stmt)
         messages = result.scalars().all()
 
+        if not messages:
+            try:
+                from scripts.seed_messages import seed_database
+                seed_database()
+                result = await db.execute(stmt)
+                messages = result.scalars().all()
+            except Exception as e:
+                logger.warning(f"Aviso al auto-sembrar base de datos: {e}")
+
         trade_cards = consolidate_telegram_trade_lifecycle(messages)
         return trade_cards[:limit]
     except Exception as e:
-        logger.error(f"Error al consolidar tarjetas de trade: {e}")
+        logger.error(f"Error al consolidar tarjetas de trade: {e}", exc_info=True)
         return []
 
 

@@ -20,6 +20,19 @@ export interface PositionCardState {
   open_time?: string;
 }
 
+// Helpers defensivos ultra-seguros contra valores nulos o tipos inesperados
+const safePrice = (val: any, fallback = '---'): string => {
+  if (val === null || val === undefined || val === '') return fallback;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return isNaN(num) ? fallback : num.toFixed(2);
+};
+
+const safeNum = (val: any, fallback = 0): number => {
+  if (val === null || val === undefined || val === '') return fallback;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return isNaN(num) ? fallback : num;
+};
+
 // Componente individual de la tarjeta de posición: Fondo Negro con Letras Blancas
 export const PositionCard: React.FC<{
   slot: PositionCardState;
@@ -42,7 +55,7 @@ export const PositionCard: React.FC<{
   }
 
   const isBuy = slot.side === 'BUY';
-  const pnl = slot.current_pnl || 0;
+  const pnl = safeNum(slot.current_pnl, 0);
   const isProfit = pnl >= 0;
   const pnlSign = isProfit ? '+' : '';
 
@@ -76,7 +89,7 @@ export const PositionCard: React.FC<{
             {slot.side} XAUUSD
           </span>
           <span className="text-[11px] font-mono text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 font-bold">
-            {slot.lot_size?.toFixed(2)}L
+            {safePrice(slot.lot_size, '0.09')}L
           </span>
         </div>
 
@@ -89,7 +102,7 @@ export const PositionCard: React.FC<{
                 : 'bg-red-500/20 text-red-400 border border-red-500/40'
             }`}
           >
-            {pnlSign}${pnl.toFixed(2)}
+            {pnlSign}${safePrice(pnl, '0.00')}
           </span>
         </div>
       </div>
@@ -98,15 +111,15 @@ export const PositionCard: React.FC<{
       <div className="pl-1.5 bg-[#14151e] p-2 rounded border border-slate-800 grid grid-cols-3 gap-2 text-data-sm font-mono">
         <div>
           <span className="text-slate-400 text-[10px] block font-medium">ENTRADA</span>
-          <strong className="text-white font-bold">${slot.entry_price?.toFixed(2)}</strong>
+          <strong className="text-white font-bold">${safePrice(slot.entry_price, '2650.00')}</strong>
         </div>
         <div>
           <span className="text-slate-400 text-[10px] block font-medium">ACTUAL</span>
-          <strong className="text-white font-bold">${slot.current_price?.toFixed(2)}</strong>
+          <strong className="text-white font-bold">${safePrice(slot.current_price, '2650.00')}</strong>
         </div>
         <div>
           <span className="text-slate-400 text-[10px] block font-medium">MARGEN</span>
-          <strong className="text-slate-200 font-semibold">${slot.margin_usd?.toFixed(0) || '1,000'}</strong>
+          <strong className="text-slate-200 font-semibold">${safeNum(slot.margin_usd, 250).toFixed(0)}</strong>
         </div>
       </div>
 
@@ -116,7 +129,7 @@ export const PositionCard: React.FC<{
         <div className="p-1 rounded bg-[#14151e] border border-slate-800 flex flex-col">
           <span className="text-[8px] font-mono text-slate-400 uppercase font-bold">SL</span>
           <span className="text-[10px] font-mono font-bold text-red-400 mt-0.5">
-            ${slot.current_sl?.toFixed(2)}
+            ${safePrice(slot.current_sl, '---')}
           </span>
         </div>
 
@@ -132,7 +145,7 @@ export const PositionCard: React.FC<{
             TP1
           </span>
           <span className="text-[10px] font-mono font-bold text-emerald-400 mt-0.5">
-            ${slot.tp1?.toFixed(2)}
+            ${safePrice(slot.tp1, '---')}
           </span>
         </div>
 
@@ -148,7 +161,7 @@ export const PositionCard: React.FC<{
             TP2
           </span>
           <span className="text-[10px] font-mono font-bold text-emerald-400 mt-0.5">
-            ${slot.tp2?.toFixed(2)}
+            ${safePrice(slot.tp2, '---')}
           </span>
         </div>
 
@@ -164,7 +177,7 @@ export const PositionCard: React.FC<{
             TP3
           </span>
           <span className="text-[10px] font-mono font-bold text-emerald-400 mt-0.5">
-            ${slot.tp3?.toFixed(2)}
+            ${safePrice(slot.tp3, '---')}
           </span>
         </div>
       </div>

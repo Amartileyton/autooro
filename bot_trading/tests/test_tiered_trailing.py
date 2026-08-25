@@ -6,6 +6,7 @@ from backend.broker.paper import LocalPaperBroker
 from backend.broker.base import BrokerTick
 from backend.database.models import OrderSide, TradeStatus
 from backend.risk.state_machine import TradeStateMachine, ActiveSlotTrade
+from backend.config import settings
 
 
 @pytest.mark.asyncio
