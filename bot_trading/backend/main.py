@@ -167,14 +167,7 @@ async def lifespan(app: FastAPI):
     # 1. Crear tablas en SQLite WAL con sync_engine seguro
     from backend.database.session import sync_engine
     Base.metadata.create_all(bind=sync_engine)
-    logger.info("Base de datos SQLite WAL inicializada correctamente.")
-
-    # 1.1 Si la base de datos está vacía, sembrar historial desde dump.sql
-    try:
-        from scripts.seed_messages import seed_database
-        seed_database()
-    except Exception as e:
-        logger.warning(f"Aviso al sembrar dump.sql inicial: {e}")
+    logger.info("Base de datos SQLite WAL inicializada limpiamente.")
 
     # 2. Inicializar Cola Asíncrona desacoplada
     signal_queue = asyncio.Queue()

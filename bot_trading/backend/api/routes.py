@@ -363,15 +363,6 @@ async def get_consolidated_trade_cards(
         result = await db.execute(stmt)
         messages = result.scalars().all()
 
-        if not messages:
-            try:
-                from scripts.seed_messages import seed_database
-                seed_database()
-                result = await db.execute(stmt)
-                messages = result.scalars().all()
-            except Exception as e:
-                logger.warning(f"Aviso al auto-sembrar base de datos: {e}")
-
         # Obtener los trades ejecutados reales del motor de trading
         trade_stmt = select(Trade).order_by(desc(Trade.id)).limit(100)
         trade_res = await db.execute(trade_stmt)
