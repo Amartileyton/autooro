@@ -86,12 +86,21 @@ def parse_signal(
     raw_text: str,
     message_id: Optional[int] = None,
     channel_id: Optional[int] = None,
+    channel_name: Optional[str] = None,
     reply_to_msg_id: Optional[int] = None
 ) -> Optional[Union[TradingSignalEvent, ModifierSignalEvent]]:
     """
-    Parser ultrarrápido y determinista para señales de trading y modificadores.
-    Retorna TradingSignalEvent, ModifierSignalEvent o None si es spam o informativo.
+    Parser multicanal determinista para señales de trading y modificadores.
+    Enruta automáticamente según el canal o formato detectado.
     """
+    from backend.ingesta.parsers.router import parse_signal_by_channel
+    return parse_signal_by_channel(
+        raw_text=raw_text,
+        message_id=message_id,
+        channel_id=channel_id,
+        channel_name=channel_name,
+        reply_to_msg_id=reply_to_msg_id
+    )
     if not raw_text or len(raw_text.strip()) < 8:
         return None
 

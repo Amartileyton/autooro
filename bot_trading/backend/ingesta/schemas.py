@@ -35,6 +35,8 @@ class TradingSignalEvent(BaseModel):
     raw_text: str = Field(description="Texto original del mensaje de Telegram")
     message_id: Optional[int] = Field(default=None, description="ID del mensaje en Telegram")
     channel_id: Optional[int] = Field(default=None, description="ID del canal de Telegram")
+    channel_name: Optional[str] = Field(default="Chartoro FX", description="Nombre del canal emisor")
+    execution_mode: str = Field(default="AUDIT", description="Modo operativo: AUDIT o PRODUCTION")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("asset")
@@ -54,5 +56,7 @@ class ModifierSignalEvent(BaseModel):
     raw_text: str = Field(description="Texto original del mensaje")
     message_id: Optional[int] = Field(default=None)
     channel_id: Optional[int] = Field(default=None)
+    channel_name: Optional[str] = Field(default="Chartoro FX")
+    execution_mode: str = Field(default="AUDIT")
     reply_to_msg_id: Optional[int] = Field(default=None, description="ID del mensaje padre al que responde")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

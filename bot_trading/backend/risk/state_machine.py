@@ -21,6 +21,9 @@ class ActiveSlotTrade(BaseModel):
     ticket_id: str
     db_trade_id: int
     raw_signal_id: Optional[int] = None
+    channel_id: Optional[int] = None
+    channel_name: Optional[str] = "Chartoro FX"
+    execution_mode: str = "AUDIT"
     symbol: str = "XAUUSD"
     side: OrderSide
     status: TradeStatus
@@ -84,7 +87,10 @@ class TradeStateMachine:
         entry_price: Decimal,
         sl: Decimal,
         tp_levels: List[Decimal],
-        raw_signal_id: Optional[int] = None
+        raw_signal_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        channel_name: Optional[str] = "Chartoro FX",
+        execution_mode: str = "AUDIT"
     ) -> Optional[ActiveSlotTrade]:
         """
         Ejecuta la orden en el broker, persiste en SQLite y activa el Slot en la máquina de estados.
@@ -128,7 +134,10 @@ class TradeStateMachine:
                         lot_size=lot_size,
                         pnl=Decimal("0.00"),
                         open_time=datetime.now(timezone.utc),
-                        raw_signal_id=raw_signal_id
+                        raw_signal_id=raw_signal_id,
+                        channel_id=channel_id,
+                        channel_name=channel_name or "Chartoro FX",
+                        execution_mode=execution_mode
                     )
                     session.add(db_trade)
                     await session.commit()
@@ -143,6 +152,9 @@ class TradeStateMachine:
                 ticket_id=ticket_id,
                 db_trade_id=db_trade_id,
                 raw_signal_id=raw_signal_id,
+                channel_id=channel_id,
+                channel_name=channel_name or "Chartoro FX",
+                execution_mode=execution_mode,
                 symbol="XAUUSD",
                 side=side,
                 status=TradeStatus.OPEN,

@@ -8,6 +8,7 @@ import { MobileOperatorDashboard } from './MobileOperatorDashboard';
 import type { MarketAsset } from './MarketTicker';
 import { ControlDropdown } from './ControlDropdown';
 import { AuditLogsModal } from './AuditLogsModal';
+import { ChannelAuditModal } from './ChannelAuditModal';
 import { SystemHealthModal } from './SystemHealthModal';
 import { LoginScreen } from './LoginScreen';
 
@@ -91,6 +92,8 @@ export const DashboardApp: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+  const [isChannelAuditModalOpen, setIsChannelAuditModalOpen] = useState<boolean>(false);
+  const [selectedChannelFilter, setSelectedChannelFilter] = useState<string>('ALL');
   const [isHealthModalOpen, setIsHealthModalOpen] = useState<boolean>(false);
   const [isControlDropdownOpen, setIsControlDropdownOpen] = useState<boolean>(false);
   const [latencyMs, setLatencyMs] = useState<number>(12);
@@ -517,13 +520,19 @@ export const DashboardApp: React.FC = () => {
           onPanicClose={handlePanicClose}
           onInjectTestSignal={handleInjectTestSignal}
           onOpenAudit={handleOpenAuditModal}
+          onOpenChannelAudit={() => setIsChannelAuditModalOpen(true)}
         />
 
         {/* Cuerpo Principal con 3 Columnas Proporcionales */}
         <div className="flex flex-1 w-full overflow-hidden min-h-0">
-          {/* Columna 1 (Izquierda): Registro de Señales en Formato Tarjeta */}
+          {/* Columna 1 (Izquierda): Registro de Señales en Formato Tarjeta con Filtro de Canal */}
           <aside className="w-[310px] xl:w-[340px] p-2 flex flex-col h-full shrink-0 border-r border-outline-variant/60 bg-background overflow-hidden min-h-0">
-            <SignalFeed trades={trades} />
+            <SignalFeed
+              trades={trades}
+              selectedChannel={selectedChannelFilter}
+              onSelectChannel={(ch) => setSelectedChannelFilter(ch)}
+              onOpenAuditModal={() => setIsChannelAuditModalOpen(true)}
+            />
           </aside>
 
           {/* Columna 2 (Centro): Matriz de Posiciones con Tarjetas Enriquecidas */}
@@ -600,12 +609,20 @@ export const DashboardApp: React.FC = () => {
           </div>
         </footer>
 
-        {/* Modales de Auditoría y Diagnóstico */}
+        {/* Modales de Auditoría, Canales y Diagnóstico */}
         <AuditLogsModal
           isOpen={isAuditModalOpen}
           onClose={() => setIsAuditModalOpen(false)}
           auditLogs={auditLogs}
           tradeHistory={tradeHistory}
+        />
+
+        <ChannelAuditModal
+          isOpen={isChannelAuditModalOpen}
+          onClose={() => setIsChannelAuditModalOpen(false)}
+          apiBaseUrl={getApiBaseUrl()}
+          authToken={authToken}
+          onSelectChannelFilter={(channelName) => setSelectedChannelFilter(channelName)}
         />
 
         <SystemHealthModal
@@ -621,3 +638,4 @@ export const DashboardApp: React.FC = () => {
     </>
   );
 };
+

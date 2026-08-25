@@ -42,6 +42,18 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
             cursor.execute("ALTER TABLE trades ADD COLUMN peak_price NUMERIC(18, 4);")
         except Exception:
             pass
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN channel_id INTEGER;")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN channel_name VARCHAR(120) DEFAULT 'Chartoro FX';")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN execution_mode VARCHAR(30) DEFAULT 'AUDIT';")
+        except Exception:
+            pass
 
         cursor.close()
         logger.info("SQLite Pragmas (WAL, NORMAL, busy_timeout=5000) configurados correctamente.")

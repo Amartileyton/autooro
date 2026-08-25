@@ -62,31 +62,74 @@ class TelegramIngestionClient:
         self._is_running = True
         logger.info("Telethon MTProto: Sesión AUTORIZADA correctamente y conectada.")
 
-        # Registrar handler de eventos
-        target = settings.TARGET_CHANNEL_ID if settings.TARGET_CHANNEL_ID != 0 else None
-        
-        @self.client.on(events.NewMessage(chats=target))
+        # Resolver e identificar todos los canales configurados
+        self.known_channels = {}
+        target_ids = []
+
+        try:
+            dialogs = await self.client.get_dialogs(limit=100)
+            dialogs_map = {d.id: d for d in dialogs}
+            
+            for ch_cfg in getattr(settings, 'CHANNELS_CONFIG', []):
+                cfg_id = ch_cfg.get("id", 0)
+                cfg_name = ch_cfg.get("name", "")
+                resolved_id = None
+
+                # 1. Si ya tiene ID válido
+                if cfg_id and cfg_id != 0:
+                    resolved_id = cfg_id
+                else:
+                    # 2. Buscar por nombre en los diálogos
+                    for d_id, d in dialogs_map.items():
+                        title = getattr(d, 'title', '') or getattr(d, 'name', '')
+                        if cfg_name.upper() in title.upper() or ("GREEN" in cfg_name.upper() and "GREEN" in title.upper()):
+                            resolved_id = d_id
+                            ch_cfg["id"] = resolved_id
+                            logger.info(f"Canal '{cfg_name}' resuelto dinámicamente con ID {resolved_id}")
+                            break
+
+                if resolved_id:
+                    self.known_channels[resolved_id] = ch_cfg
+                    target_ids.append(resolved_id)
+        except Exception as resolve_err:
+            logger.warning(f"Aviso al resolver canales de Telegram: {resolve_err}")
+
+        if not target_ids and settings.TARGET_CHANNEL_ID:
+            target_ids = [settings.TARGET_CHANNEL_ID]
+            self.known_channels[settings.TARGET_CHANNEL_ID] = {
+                "id": settings.TARGET_CHANNEL_ID,
+                "name": "Chartoro FX",
+                "parser": "chartoro",
+                "mode": "AUDIT"
+            }
+
+        logger.info(f"Telethon escuchando canales activos: {list(self.known_channels.keys())}")
+
+        # Handler de mensajes entrantes multicanal
+        @self.client.on(events.NewMessage)
         async def on_new_message(event):
             await self._handle_incoming_message(event)
 
-        logger.info("Telethon MTProto escuchando eventos NewMessage en vivo.")
+        logger.info("Telethon MTProto escuchando eventos NewMessage multicanal en vivo.")
 
-        # Sincronización inicial de arranque: sincronizar últimos 50 mensajes para capturar señales recientes
-        if target:
-            asyncio.create_task(self._sync_recent_channel_history(target))
+        # Sincronización inicial de arranque de los canales activos
+        for tid in target_ids:
+            meta = self.known_channels.get(tid, {})
+            ch_name = meta.get("name", "Chartoro FX")
+            asyncio.create_task(self._sync_recent_channel_history(tid, ch_name))
 
-    async def _sync_recent_channel_history(self, target):
+    async def _sync_recent_channel_history(self, target_id: int, channel_name: str = "Chartoro FX"):
         """Descarga e indexa los mensajes recientes del canal para asegurar que las tarjetas estén al día."""
         try:
-            entity = await self.client.get_entity(target)
-            channel_title = getattr(entity, 'title', 'Chartoro FX')
+            entity = await self.client.get_entity(target_id)
+            channel_title = getattr(entity, 'title', channel_name)
             recent_msgs = await self.client.get_messages(entity, limit=50)
-            logger.info(f"Sincronizando {len(recent_msgs)} mensajes recientes de '{channel_title}'...")
+            logger.info(f"Sincronizando {len(recent_msgs)} mensajes recientes de '{channel_title}' ({target_id})...")
             for msg in reversed(recent_msgs):
                 await self._sync_history_message(msg, channel_title)
-            logger.info("Sincronización de historial reciente completada con éxito.")
+            logger.info(f"Sincronización de '{channel_title}' completada con éxito.")
         except Exception as sync_err:
-            logger.warning(f"Aviso al sincronizar historial reciente de Telegram: {sync_err}")
+            logger.warning(f"Aviso al sincronizar historial de canal {target_id}: {sync_err}")
 
     async def _sync_history_message(self, msg, channel_name: str = "Chartoro FX"):
         """Inserta mensajes recientes en base de datos si no existían previamente."""
@@ -107,7 +150,7 @@ class TelegramIngestionClient:
                 res = await session.execute(stmt)
                 existing = res.scalars().first()
                 if not existing:
-                    parsed_event = parse_signal(text, msg_id, channel_id)
+                    parsed_event = parse_signal(text, msg_id, channel_id, channel_name=channel_name)
                     is_sig = bool(parsed_event)
                     p_used = (parsed_event.parser_type.value if hasattr(parsed_event, 'parser_type') else "REGEX") if is_sig else "NONE"
                     
@@ -134,21 +177,32 @@ class TelegramIngestionClient:
             logger.info("Telethon desconectado limpiamente.")
 
     async def _handle_incoming_message(self, event):
-        """Procesa cada mensaje entrante aplicando filtros, auditoría y parsing."""
+        """Procesa cada mensaje entrante aplicando filtros, auditoría y parsing multicanal."""
         if not settings.INGESTION_ENABLED:
+            return
+
+        channel_id = event.chat_id
+        
+        # Filtrar si el mensaje no proviene de un canal registrado
+        if self.known_channels and channel_id not in self.known_channels:
             return
 
         text = event.raw_text or ""
         msg_id = event.id
-        channel_id = event.chat_id
         timestamp = event.date or datetime.now(timezone.utc)
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
 
-        logger.info(f"Mensaje recibido [{msg_id}] en canal {channel_id}: '{text[:60]}...'")
+        ch_meta = self.known_channels.get(channel_id, {})
+        channel_name = ch_meta.get("name")
+        if not channel_name:
+            chat = await event.get_chat()
+            channel_name = getattr(chat, 'title', 'Canal Telegram')
 
-        # 1. Intento de Parsing Primario con Regex Determinista (< 1ms)
-        parsed_event = parse_signal(text, msg_id, channel_id)
+        logger.info(f"Mensaje recibido [{msg_id}] en '{channel_name}' ({channel_id}): '{text[:60]}...'")
+
+        # 1. Parsing Modular según Canal
+        parsed_event = parse_signal(text, msg_id, channel_id, channel_name=channel_name)
 
         # 2. Si falla y la IA está habilitada, intento de Parsing Fallback con LLM
         if not parsed_event and settings.AI_FALLBACK_ENABLED:
@@ -164,7 +218,7 @@ class TelegramIngestionClient:
                 raw_msg = RawTelegramMessage(
                     message_id=msg_id,
                     channel_id=channel_id,
-                    channel_name="Chartoro FX Señales Gratis",
+                    channel_name=channel_name,
                     raw_text=text,
                     parsed_success=is_sig,
                     parser_used=p_used,
@@ -179,10 +233,9 @@ class TelegramIngestionClient:
         # 4. Encolar señal si es una orden ejecutable
         if parsed_event:
             logger.info(
-                f"SEÑAL DETECTADA [{p_used}]: "
+                f"SEÑAL DETECTADA [{p_used}] de '{channel_name}': "
                 f"{type(parsed_event).__name__} en canal {channel_id}"
             )
-            # Encolar en la cola asíncrona para consumo desacoplado
             await self.signal_queue.put(parsed_event)
 
         # 5. Notificar WebSocket en tiempo real para refrescar tarjetas del dashboard
@@ -191,8 +244,11 @@ class TelegramIngestionClient:
             await manager.broadcast({
                 "type": "SIGNAL_PARSED",
                 "message_id": msg_id,
+                "channel_name": channel_name,
+                "channel_id": channel_id,
                 "is_signal": is_sig,
                 "event": parsed_event.model_dump() if hasattr(parsed_event, "model_dump") else str(parsed_event) if parsed_event else None
             })
         except Exception as ws_err:
             logger.debug(f"Aviso al notificar señal por WS: {ws_err}")
+

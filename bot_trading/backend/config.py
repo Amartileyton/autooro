@@ -46,8 +46,29 @@ class Settings(BaseSettings):
     TG_API_HASH: str = Field(default="", description="API Hash obtenido en my.telegram.org")
     TG_PHONE: str = Field(default="", description="Número de teléfono de la cuenta Telegram")
     TG_SESSION_NAME: str = Field(default="data/bot_session", description="Nombre del archivo .session de Telethon")
-    TARGET_CHANNEL_ID: int = Field(default=0, description="ID numérico del canal de Telegram a escuchar")
+    TARGET_CHANNEL_ID: int = Field(default=-1002763662248, description="ID numérico principal/fallback")
     INGESTION_ENABLED: bool = Field(default=True, description="Flag maestro para habilitar/pausar ingesta")
+    CHANNELS_CONFIG: List[dict] = Field(
+        default=[
+            {
+                "id": -1002763662248,
+                "name": "Chartoro FX",
+                "link": "",
+                "parser": "chartoro",
+                "mode": "AUDIT",
+                "enabled": True
+            },
+            {
+                "id": 0,
+                "name": "XAU(USD) GREEN PIPS",
+                "link": "https://t.me/AccessChannelLink",
+                "parser": "green_pips",
+                "mode": "AUDIT",
+                "enabled": True
+            }
+        ],
+        description="Lista de canales de Telegram configurados con su modo operativo (AUDIT/PRODUCTION)"
+    )
 
     # Telegram Bot Administrativo (Aiogram)
     TELEGRAM_BOT_TOKEN: str = Field(default="", description="Token del bot privado creado con @BotFather")

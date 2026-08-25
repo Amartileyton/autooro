@@ -82,6 +82,9 @@ class Trade(Base):
     )
     close_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_signal_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    channel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    channel_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, default="Chartoro FX", index=True)
+    execution_mode: Mapped[str] = mapped_column(String(30), default="AUDIT", index=True)  # AUDIT / PRODUCTION
 
 
 class SystemAuditLog(Base):

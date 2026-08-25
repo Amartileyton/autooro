@@ -186,11 +186,12 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
 
             raw_upper = raw_text.upper()
             channel = getattr(m, 'channel_name', None) or "Chartoro FX"
+            channel_id = getattr(m, 'channel_id', 0) or 0
             msg_dt = get_msg_datetime(m)
             time_str = msg_dt.isoformat()
             msg_id = getattr(m, 'message_id', 0) or getattr(m, 'id', 0) or 0
             
-            parsed = parse_signal(raw_text, message_id=msg_id, channel_id=getattr(m, 'channel_id', 0) or 0)
+            parsed = parse_signal(raw_text, message_id=msg_id, channel_id=channel_id, channel_name=channel)
 
             # 1. ¿Es una orden nueva?
             if isinstance(parsed, TradingSignalEvent):
@@ -204,10 +205,10 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 tp2 = safe_num(parsed.tp_levels[1]) if len(parsed.tp_levels) > 1 else None
                 tp3 = safe_num(parsed.tp_levels[2]) if len(parsed.tp_levels) > 2 else None
 
-                # Buscar si ya existe un trade abierto en la misma dirección y precio similar en los últimos 30 min
+                # Buscar si ya existe un trade abierto en el MISMO canal en la misma dirección y precio similar
                 existing_trade = None
                 for t in reversed(trades):
-                    if t.status == "OPEN" and t.side == side and abs(t.entry_price - entry) <= 3.0:
+                    if t.status == "OPEN" and t.channel_name == channel and t.side == side and abs(t.entry_price - entry) <= 3.0:
                         existing_trade = t
                         break
 
@@ -234,7 +235,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 target_sl = safe_num(parsed.target_price)
                 if target_sl is not None:
                     for t in reversed(trades):
-                        if t.status == "OPEN":
+                        if t.status == "OPEN" and t.channel_name == channel:
                             t.modify_sl(target_sl, time_str)
                             break
 
@@ -242,7 +243,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             else:
                 if "TP" in raw_upper and ("HIT" in raw_upper or "PIPS" in raw_upper or "GANANCIA" in raw_upper or "PAGO INMEDIATO" in raw_upper):
                     for t in reversed(trades):
-                        if t.status == "OPEN":
+                        if t.status == "OPEN" and t.channel_name == channel:
                             if "TP3" in raw_upper and t.tp3:
                                 exit_px = t.tp3
                             elif "TP2" in raw_upper and t.tp2:
@@ -257,17 +258,18 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
 
                 elif "SL HIT" in raw_upper or "PÉRDIDA" in raw_upper or "STOPPED OUT" in raw_upper:
                     for t in reversed(trades):
-                        if t.status == "OPEN":
+                        if t.status == "OPEN" and t.channel_name == channel:
                             exit_px = t.sl_price if t.sl_price else (t.entry_price + (-8.0 if t.side == "BUY" else 8.0))
                             t.close_trade("LOSS", exit_px, "PERDIDA", time_str)
                             break
 
                 elif "CERRAR" in raw_upper or "CLOSE" in raw_upper:
                     for t in reversed(trades):
-                        if t.status == "OPEN":
+                        if t.status == "OPEN" and t.channel_name == channel:
                             exit_px = t.entry_price
                             t.close_trade("WIN" if t.side == "BUY" else "LOSS", exit_px, "CERRADA", time_str)
                             break
+
 
         except Exception:
             continue

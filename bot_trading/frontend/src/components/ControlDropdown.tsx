@@ -11,6 +11,7 @@ interface ControlDropdownProps {
   onPanicClose: () => void;
   onInjectTestSignal: () => void;
   onOpenAudit?: () => void;
+  onOpenChannelAudit?: () => void;
 }
 
 // KILL SWITCH.svg dinámico estilo interruptor mecánico deslizante con soporte ON y OFF
@@ -77,7 +78,9 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
   onPanicClose,
   onInjectTestSignal,
   onOpenAudit,
+  onOpenChannelAudit,
 }) => {
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isBotFullyActive = ingestionEnabled && autoExecutionEnabled;
 
@@ -217,6 +220,19 @@ export const ControlDropdown: React.FC<ControlDropdownProps> = ({
           <span className="material-symbols-outlined text-[15px] text-slate-400">send</span>
           Inyectar Señal de Test (BUY XAUUSD)
         </button>
+
+        {onOpenChannelAudit && (
+          <button
+            onClick={() => {
+              onOpenChannelAudit();
+              onClose();
+            }}
+            className="w-full flex items-center justify-center gap-2 py-1.5 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-[11px] font-mono font-bold rounded text-amber-300 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[15px] text-amber-400">analytics</span>
+            Auditoría de Canales (Gains & Performance)
+          </button>
+        )}
 
         {onOpenAudit && (
           <button

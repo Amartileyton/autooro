@@ -126,7 +126,10 @@ async def signal_consumer_worker(
                 entry_price=event.entry_price,
                 sl=sl,
                 tp_levels=event.tp_levels,
-                raw_signal_id=event.message_id
+                raw_signal_id=event.message_id,
+                channel_id=event.channel_id,
+                channel_name=getattr(event, 'channel_name', 'Chartoro FX'),
+                execution_mode=getattr(event, 'execution_mode', 'AUDIT')
             )
 
             # 6. Notificar inmediatamente a clientes WebSocket

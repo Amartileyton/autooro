@@ -31,6 +31,7 @@ class TestSignalRequest(BaseModel):
     tp1: Optional[Decimal] = None
     tp2: Optional[Decimal] = None
     tp3: Optional[Decimal] = None
+    channel_name: Optional[str] = "Chartoro FX"
 
 
 @router.get("/state")
@@ -112,15 +113,118 @@ async def get_system_state():
     }
 
 
+@router.get("/channels")
+async def get_channels_performance(db: AsyncSession = Depends(get_db)):
+    """
+    Retorna el estado de todos los canales configurados y sus métricas de rendimiento (Gains, Win Rate, Trades).
+    Permite auditar qué canal está listo para producción y cuál permanece en prueba (AUDIT).
+    """
+    configured_channels = getattr(settings, 'CHANNELS_CONFIG', []) or []
+    
+    # Consultar estadísticas de la base de datos
+    results = []
+    
+    for ch in configured_channels:
+        ch_name = ch.get("name", "Canal")
+        ch_id = ch.get("id", 0)
+        ch_mode = ch.get("mode", "AUDIT")
+        parser_name = ch.get("parser", "chartoro")
+        enabled = ch.get("enabled", True)
+
+        # Mensajes recibidos
+        stmt_msg = select(RawTelegramMessage).where(
+            (RawTelegramMessage.channel_name.ilike(f"%{ch_name}%")) | 
+            (RawTelegramMessage.channel_id == ch_id if ch_id else False)
+        )
+        res_msg = await db.execute(stmt_msg)
+        msgs = res_msg.scalars().all()
+        total_msgs = len(msgs)
+        signals_count = len([m for m in msgs if m.parsed_success])
+
+        # Trades ejecutados / cerrados
+        stmt_trades = select(Trade).where(
+            (Trade.channel_name.ilike(f"%{ch_name}%")) | 
+            (Trade.channel_id == ch_id if ch_id else False)
+        )
+        res_trades = await db.execute(stmt_trades)
+        trades = res_trades.scalars().all()
+
+        closed_trades = [t for t in trades if t.status not in [TradeStatus.OPEN, TradeStatus.TP1_HIT, TradeStatus.TP2_HIT, TradeStatus.PENDING]]
+        total_closed = len(closed_trades)
+        winning_trades = len([t for t in closed_trades if (t.pnl or 0) > Decimal("0.00")])
+        losing_trades = len([t for t in closed_trades if (t.pnl or 0) < Decimal("0.00")])
+        
+        total_pnl = sum((t.pnl or Decimal("0.00")) for t in closed_trades)
+        win_rate = (winning_trades / total_closed * 100.0) if total_closed > 0 else 0.0
+
+        # Profit Factor
+        gross_profit = sum(t.pnl for t in closed_trades if t.pnl > 0)
+        gross_loss = abs(sum(t.pnl for t in closed_trades if t.pnl < 0))
+        profit_factor = round(float(gross_profit / gross_loss), 2) if gross_loss > 0 else (float(gross_profit) if gross_profit > 0 else 1.0)
+
+        results.append({
+            "id": ch_id,
+            "name": ch_name,
+            "link": ch.get("link", ""),
+            "parser": parser_name,
+            "mode": ch_mode,
+            "enabled": enabled,
+            "total_messages": total_msgs,
+            "total_signals": signals_count,
+            "total_trades": total_closed,
+            "active_trades": len(trades) - total_closed,
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
+            "win_rate_pct": round(win_rate, 2),
+            "total_gains_usd": round(float(total_pnl), 2),
+            "profit_factor": profit_factor
+        })
+
+    return {
+        "status": "success",
+        "channels_count": len(results),
+        "channels": results
+    }
+
+
+@router.post("/channels/{channel_name}/toggle-mode", dependencies=[Depends(verify_auth_or_key)])
+async def toggle_channel_mode(channel_name: str):
+    """Alterna el modo de un canal entre AUDIT (prueba virtual) y PRODUCTION (ejecución live)."""
+    configured = getattr(settings, 'CHANNELS_CONFIG', []) or []
+    target_ch = None
+    for ch in configured:
+        if ch.get("name", "").upper() == channel_name.upper() or channel_name.upper() in ch.get("name", "").upper():
+            target_ch = ch
+            break
+
+    if not target_ch:
+        raise HTTPException(status_code=404, detail=f"Canal '{channel_name}' no encontrado en la configuración")
+
+    current_mode = target_ch.get("mode", "AUDIT")
+    new_mode = "PRODUCTION" if current_mode == "AUDIT" else "AUDIT"
+    target_ch["mode"] = new_mode
+
+    return {
+        "status": "success",
+        "channel_name": target_ch.get("name"),
+        "previous_mode": current_mode,
+        "new_mode": new_mode,
+        "message": f"Canal '{target_ch.get('name')}' ahora opera en modo {new_mode}"
+    }
+
+
 @router.get("/history")
-async def get_trade_history(limit: int = 50, db: AsyncSession = Depends(get_db)):
-    """Retorna el historial de operaciones cerradas y métricas globales."""
-    stmt = (
-        select(Trade)
-        .where(Trade.status.not_in([TradeStatus.OPEN, TradeStatus.TP1_HIT, TradeStatus.TP2_HIT, TradeStatus.PENDING]))
-        .order_by(desc(Trade.close_time))
-        .limit(limit)
-    )
+async def get_trade_history(
+    limit: int = 50,
+    channel: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Retorna el historial de operaciones cerradas y métricas globales con filtro opcional de canal."""
+    stmt = select(Trade).where(Trade.status.not_in([TradeStatus.OPEN, TradeStatus.TP1_HIT, TradeStatus.TP2_HIT, TradeStatus.PENDING]))
+    if channel and channel.strip() and channel.upper() != "ALL":
+        stmt = stmt.where(Trade.channel_name.ilike(f"%{channel.strip()}%"))
+
+    stmt = stmt.order_by(desc(Trade.close_time)).limit(limit)
     result = await db.execute(stmt)
     trades = result.scalars().all()
 
@@ -139,6 +243,9 @@ async def get_trade_history(limit: int = 50, db: AsyncSession = Depends(get_db))
                 "id": t.id,
                 "ticket_id": t.ticket_id,
                 "slot_id": t.slot_id,
+                "channel_id": t.channel_id,
+                "channel_name": t.channel_name or "Chartoro FX",
+                "execution_mode": t.execution_mode or "AUDIT",
                 "symbol": t.symbol,
                 "side": t.side.value,
                 "lot_size": float(t.lot_size),
@@ -156,21 +263,29 @@ async def get_trade_history(limit: int = 50, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/messages")
-async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
-    """Retorna los últimos mensajes de Telegram recibidos, con canal, detalles estructurados y resultado (WIN/LOSS/ACTIVE)."""
+async def get_raw_messages(
+    limit: int = 50,
+    channel: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Retorna los últimos mensajes de Telegram recibidos con filtro de canal opcional."""
     from backend.ingesta.parser import parse_signal
-    stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(limit)
+    stmt = select(RawTelegramMessage)
+    if channel and channel.strip() and channel.upper() != "ALL":
+        stmt = stmt.where(RawTelegramMessage.channel_name.ilike(f"%{channel.strip()}%"))
+
+    stmt = stmt.order_by(desc(RawTelegramMessage.received_at)).limit(limit)
     result = await db.execute(stmt)
     messages = result.scalars().all()
 
-    # Obtener todos los textos de mensajes para correlacionar resultados (TP HIT / SL HIT)
     all_texts_joined = " ".join([m.raw_text.upper() for m in messages])
 
     formatted = []
     for m in messages:
         signal_details = None
         outcome = None
-        parsed = parse_signal(m.raw_text, message_id=m.message_id or 0, channel_id=m.channel_id or 0)
+        ch_name = getattr(m, 'channel_name', None) or "Chartoro FX"
+        parsed = parse_signal(m.raw_text, message_id=m.message_id or 0, channel_id=m.channel_id or 0, channel_name=ch_name)
         
         if isinstance(parsed, TradingSignalEvent):
             signal_details = {
@@ -182,7 +297,6 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
                 "tp2": float(parsed.tp_levels[1]) if len(parsed.tp_levels) > 1 else None,
                 "tp3": float(parsed.tp_levels[2]) if len(parsed.tp_levels) > 2 else None,
             }
-            # Determinar resultado
             msg_text_upper = m.raw_text.upper()
             if m.message_id == 7890 or "4463" in msg_text_upper or (m.message_id == 7906 or "4532" in msg_text_upper) or "TP HIT" in msg_text_upper:
                 outcome = "WIN"
@@ -199,7 +313,6 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
             }
             outcome = "MODIFIED"
         else:
-            # Detectar si el mensaje es un reporte de resultado de una señal previa (TP / SL HIT)
             msg_text_upper = m.raw_text.upper()
             if "TP" in msg_text_upper and ("HIT" in msg_text_upper or "PIPS" in msg_text_upper or "GANANCIA" in msg_text_upper):
                 outcome = "WIN"
@@ -218,7 +331,7 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
             "id": m.id,
             "message_id": m.message_id,
             "channel_id": m.channel_id,
-            "channel_name": getattr(m, 'channel_name', None) or "Chartoro FX",
+            "channel_name": ch_name,
             "raw_text": m.raw_text,
             "parsed_success": m.parsed_success or (signal_details is not None),
             "parser_used": m.parser_used,
@@ -232,17 +345,21 @@ async def get_raw_messages(limit: int = 50, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/signals/trades")
-async def get_consolidated_trade_cards(limit: int = 10, db: AsyncSession = Depends(get_db)):
+async def get_consolidated_trade_cards(
+    limit: int = 10,
+    channel: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """
-    Retorna el estado de los trades consolidados en tarjetas de ciclo de vida:
-    - Entrada viva
-    - Actualización progresiva de SL y TPs
-    - Modificaciones intermedias de SL
-    - Cierre en Verde (Win) o Rojo (Loss)
+    Retorna el estado de los trades consolidados en tarjetas de ciclo de vida, con filtro opcional por canal.
     """
     from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
     try:
-        stmt = select(RawTelegramMessage).order_by(desc(RawTelegramMessage.received_at)).limit(500)
+        stmt = select(RawTelegramMessage)
+        if channel and channel.strip() and channel.upper() != "ALL":
+            stmt = stmt.where(RawTelegramMessage.channel_name.ilike(f"%{channel.strip()}%"))
+
+        stmt = stmt.order_by(desc(RawTelegramMessage.received_at)).limit(500)
         result = await db.execute(stmt)
         messages = result.scalars().all()
 
@@ -261,10 +378,14 @@ async def get_consolidated_trade_cards(limit: int = 10, db: AsyncSession = Depen
         executed_trades = trade_res.scalars().all()
 
         trade_cards = consolidate_telegram_trade_lifecycle(messages, executed_trades=executed_trades)
+        if channel and channel.strip() and channel.upper() != "ALL":
+            trade_cards = [c for c in trade_cards if channel.lower() in str(c.get("channel_name", "")).lower()]
+
         return trade_cards[:limit]
     except Exception as e:
         logger.error(f"Error al consolidar tarjetas de trade: {e}", exc_info=True)
         return []
+
 
 
 @router.get("/audit")
@@ -404,6 +525,8 @@ async def inject_test_signal(req: TestSignalRequest):
         f"⛔️ Stop Loss (SL): {sl_px:.2f}"
     )
 
+    target_ch_name = req.channel_name or "Chartoro FX"
+    
     # 1. Guardar en auditoría de Telegram para que aparezca en el historial de tarjetas
     msg_id = int(time.time()) % 1000000
     try:
@@ -412,8 +535,8 @@ async def inject_test_signal(req: TestSignalRequest):
         async with AsyncSessionLocal() as session:
             db_msg = RawTelegramMessage(
                 message_id=msg_id,
-                channel_id=-1002763662248,
-                channel_name="Chartoro FX Señales Gratis",
+                channel_id=-1002763662248 if "Chartoro" in target_ch_name else 0,
+                channel_name=target_ch_name,
                 raw_text=raw_text,
                 parsed_success=True,
                 parser_used="TEST_INJECTION",
@@ -434,7 +557,9 @@ async def inject_test_signal(req: TestSignalRequest):
         requires_dynamic_sl=False,
         raw_text=raw_text,
         message_id=msg_id,
-        channel_id=-1002763662248
+        channel_id=-1002763662248 if "Chartoro" in target_ch_name else 0,
+        channel_name=target_ch_name,
+        execution_mode="AUDIT"
     )
 
     await queue.put(event)
@@ -442,9 +567,14 @@ async def inject_test_signal(req: TestSignalRequest):
     # 3. Notificar al frontend para refrescar tarjetas e historial en tiempo real
     try:
         from backend.api.ws import manager
-        await manager.broadcast({"type": "SIGNAL_PARSED", "message_id": msg_id})
+        await manager.broadcast({
+            "type": "SIGNAL_PARSED",
+            "message_id": msg_id,
+            "channel_name": target_ch_name
+        })
     except Exception:
         pass
+
 
     return {
         "status": "success",

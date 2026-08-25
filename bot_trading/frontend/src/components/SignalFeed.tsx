@@ -25,6 +25,9 @@ export interface TradeLifecycleCardItem {
 
 interface SignalFeedProps {
   trades: TradeLifecycleCardItem[];
+  selectedChannel?: string;
+  onSelectChannel?: (channel: string) => void;
+  onOpenAuditModal?: () => void;
 }
 
 // Helpers defensivos ultra-seguros contra valores nulos o tipos inesperados
@@ -68,21 +71,83 @@ const formatFullDateTime = (isoString?: string, fallback?: string): string => {
   }
 };
 
-export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
+export const SignalFeed: React.FC<SignalFeedProps> = ({
+  trades,
+  selectedChannel = 'ALL',
+  onSelectChannel,
+  onOpenAuditModal,
+}) => {
+  const [localChannelFilter, setLocalChannelFilter] = React.useState<string>(selectedChannel);
+
+  const activeFilter = onSelectChannel ? selectedChannel : localChannelFilter;
+  const setFilter = onSelectChannel || setLocalChannelFilter;
+
   const safeTradesList = Array.isArray(trades) ? trades : [];
-  const displayTrades = safeTradesList.slice(0, 10);
+  const filteredTrades = activeFilter === 'ALL'
+    ? safeTradesList
+    : safeTradesList.filter(t => (t.channel_name || '').toUpperCase().includes(activeFilter.toUpperCase()));
+
+  const displayTrades = filteredTrades.slice(0, 10);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-[#12141c] border border-outline-variant rounded-md min-h-0 select-none">
-      {/* Header del Feed en Gris Institucional Fijo */}
-      <div className="bg-surface-container px-3 py-2 border-b border-outline-variant flex justify-between items-center shrink-0">
-        <h2 className="text-label-sm text-white font-bold uppercase tracking-widest flex items-center gap-1.5 font-mono">
-          <span className="material-symbols-outlined text-[16px] text-slate-400">history_edu</span>
-          Registro de Señales
-        </h2>
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-white font-bold">
-          {displayTrades.length} SEÑALES
-        </span>
+      {/* Header del Feed con Selector de Canales */}
+      <div className="bg-surface-container px-3 py-2 border-b border-outline-variant flex flex-col gap-2 shrink-0">
+        <div className="flex justify-between items-center">
+          <h2 className="text-label-sm text-white font-bold uppercase tracking-widest flex items-center gap-1.5 font-mono">
+            <span className="material-symbols-outlined text-[16px] text-slate-400">history_edu</span>
+            Registro de Señales
+          </h2>
+          <div className="flex items-center gap-1.5">
+            {onOpenAuditModal && (
+              <button
+                onClick={onOpenAuditModal}
+                className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1 transition-colors"
+                title="Auditoría de ganancias por canal"
+              >
+                <span className="material-symbols-outlined text-[12px]">analytics</span>
+                Gains
+              </button>
+            )}
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-white font-bold">
+              {displayTrades.length} SEÑALES
+            </span>
+          </div>
+        </div>
+
+        {/* Pestañas / Filtros de Canales */}
+        <div className="flex items-center gap-1 bg-[#0b0e14] p-1 rounded border border-outline-variant/50 text-[11px] font-mono">
+          <button
+            onClick={() => setFilter('ALL')}
+            className={`flex-1 py-1 rounded text-center font-semibold transition-all ${
+              activeFilter === 'ALL'
+                ? 'bg-surface-container-highest text-white border border-outline-variant/60 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setFilter('Chartoro')}
+            className={`flex-1 py-1 rounded text-center font-semibold transition-all ${
+              activeFilter.includes('Chartoro')
+                ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Chartoro FX
+          </button>
+          <button
+            onClick={() => setFilter('GREEN')}
+            className={`flex-1 py-1 rounded text-center font-semibold transition-all ${
+              activeFilter.includes('GREEN')
+                ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            GREEN PIPS
+          </button>
+        </div>
       </div>
 
       {/* Lista de Tarjetas de Trade Vivas y Vencidas */}
@@ -90,7 +155,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
         {displayTrades.length === 0 ? (
           <div className="text-outline text-label-sm text-center py-10">
             <span className="material-symbols-outlined text-[28px] opacity-40 mb-1">satellite_alt</span>
-            <p>Esperando señales de Telegram...</p>
+            <p>No hay señales para el canal seleccionado...</p>
           </div>
         ) : (
           displayTrades.map((t, idx) => {
@@ -114,6 +179,8 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
             const isTp2Triggered = isWin && !isTp3Triggered && exitPriceNum > 0 && tp2Num > 0 && Math.abs(exitPriceNum - tp2Num) < 1.5;
             const isTp1Triggered = isWin && !isTp3Triggered && !isTp2Triggered;
             const isSlTriggered = isLoss;
+
+            const isGreenPipsCard = (t.channel_name || '').toUpperCase().includes('GREEN');
 
             // Estilos de tarjeta general
             let borderColor = 'border-outline-variant/50';
@@ -148,12 +215,24 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({ trades }) => {
                   }`}
                 />
 
-                {/* Fila 1: Origen + Estado */}
+                {/* Fila 1: Origen + Modo Auditoría + Estado */}
                 <div className="flex justify-between items-center pl-1.5 gap-2">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface-container-highest text-slate-300 border border-outline-variant/60 flex items-center gap-1 font-semibold">
-                    <span className="material-symbols-outlined text-[11px] text-slate-400">send</span>
-                    {t.channel_name || 'Chartoro FX'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 font-semibold ${
+                        isGreenPipsCard
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                          : 'bg-blue-500/15 text-blue-300 border-blue-500/40'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[11px]">cell_tower</span>
+                      {t.channel_name || 'Chartoro FX'}
+                    </span>
+
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">
+                      AUDIT
+                    </span>
+                  </div>
 
                   <div className="flex items-center gap-1.5">
                     {pnlNum !== null && (
