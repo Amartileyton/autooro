@@ -71,6 +71,61 @@ class TelegramIngestionClient:
 
         logger.info("Telethon MTProto escuchando eventos NewMessage en vivo.")
 
+        # Sincronización inicial de arranque: sincronizar últimos 50 mensajes para capturar señales recientes
+        if target:
+            asyncio.create_task(self._sync_recent_channel_history(target))
+
+    async def _sync_recent_channel_history(self, target):
+        """Descarga e indexa los mensajes recientes del canal para asegurar que las tarjetas estén al día."""
+        try:
+            entity = await self.client.get_entity(target)
+            channel_title = getattr(entity, 'title', 'Chartoro FX')
+            recent_msgs = await self.client.get_messages(entity, limit=50)
+            logger.info(f"Sincronizando {len(recent_msgs)} mensajes recientes de '{channel_title}'...")
+            for msg in reversed(recent_msgs):
+                await self._sync_history_message(msg, channel_title)
+            logger.info("Sincronización de historial reciente completada con éxito.")
+        except Exception as sync_err:
+            logger.warning(f"Aviso al sincronizar historial reciente de Telegram: {sync_err}")
+
+    async def _sync_history_message(self, msg, channel_name: str = "Chartoro FX"):
+        """Inserta mensajes recientes en base de datos si no existían previamente."""
+        text = msg.raw_text or ""
+        msg_id = msg.id
+        if not text.strip():
+            return
+        
+        channel_id = getattr(msg, 'chat_id', None) or settings.TARGET_CHANNEL_ID
+        timestamp = msg.date or datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+        try:
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as session:
+                stmt = select(RawTelegramMessage).where(RawTelegramMessage.message_id == msg_id)
+                res = await session.execute(stmt)
+                existing = res.scalars().first()
+                if not existing:
+                    parsed_event = parse_signal(text, msg_id, channel_id)
+                    is_sig = bool(parsed_event)
+                    p_used = (parsed_event.parser_type.value if hasattr(parsed_event, 'parser_type') else "REGEX") if is_sig else "NONE"
+                    
+                    raw_msg = RawTelegramMessage(
+                        message_id=msg_id,
+                        channel_id=channel_id,
+                        channel_name=channel_name,
+                        raw_text=text,
+                        parsed_success=is_sig,
+                        parser_used=p_used,
+                        error_reason=None,
+                        received_at=timestamp
+                    )
+                    session.add(raw_msg)
+                    await session.commit()
+        except Exception as e:
+            logger.debug(f"Aviso al sincronizar mensaje {msg_id}: {e}")
+
     async def stop(self):
         """Detiene el cliente de Telethon de forma limpia."""
         self._is_running = False
