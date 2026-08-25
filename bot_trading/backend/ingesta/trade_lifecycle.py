@@ -161,12 +161,12 @@ def get_msg_datetime(msg: Any) -> datetime:
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
-def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]:
+def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Optional[list] = None) -> List[Dict[str, Any]]:
     """
     Agrupa cronológicamente los mensajes crudos de Telegram en TARJETAS DE CICLO DE VIDA DE TRADES:
     - Entrada con dinero asignado (250$ / 0.09 lots a 1:100), precio de entrada y fecha/hora completa.
     - Actualización progresiva de niveles.
-    - Cierre con precio exacto de salida y PnL resultante.
+    - Cierre con precio exacto de salida y PnL resultante cruzado con la tabla 'trades' del motor.
     """
     if not messages:
         return []
@@ -238,7 +238,7 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
                             t.modify_sl(target_sl, time_str)
                             break
 
-            # 3. ¿Es un reporte de cierre (TP HIT, SL HIT, CERRAR SETUP)?
+            # 3. ¿Es un reporte de cierre de Telegram (TP HIT, SL HIT, CERRAR SETUP)?
             else:
                 if "TP" in raw_upper and ("HIT" in raw_upper or "PIPS" in raw_upper or "GANANCIA" in raw_upper or "PAGO INMEDIATO" in raw_upper):
                     for t in reversed(trades):
@@ -271,5 +271,43 @@ def consolidate_telegram_trade_lifecycle(messages: list) -> List[Dict[str, Any]]
 
         except Exception:
             continue
+
+    # 4. Cruzar con la tabla 'trades' de base de datos para sincronizar cierres reales del motor
+    if executed_trades:
+        for db_t in executed_trades:
+            raw_id = getattr(db_t, 'raw_signal_id', None)
+            st = getattr(db_t, 'status', None)
+            st_str = st.value if hasattr(st, 'value') else str(st)
+            
+            matched = None
+            for card in trades:
+                if raw_id and (f"-{raw_id}-" in card.trade_id or card.trade_id.startswith(f"trade-{raw_id}")):
+                    matched = card
+                    break
+                elif abs(card.entry_price - float(db_t.entry_price or 0)) < 0.5:
+                    matched = card
+                    break
+
+            if matched:
+                matched.lot_size = safe_num(db_t.lot_size, matched.lot_size) or matched.lot_size
+                matched.margin_usd = round(matched.lot_size * matched.entry_price * 100.0 / 100.0, 2)
+                
+                # Si el trade fue cerrado por el motor (SL, TP, etc.)
+                if st_str.startswith("CLOSED"):
+                    pnl_val = float((db_t.pnl or 0) + (db_t.realized_cash_pnl or 0))
+                    matched.pnl_usd = round(pnl_val, 2)
+                    matched.status = "WIN" if pnl_val >= 0 else "LOSS"
+                    matched.outcome_text = "GANADA" if pnl_val >= 0 else "PERDIDA"
+                    
+                    if "SL" in str(db_t.close_reason) or st_str == "CLOSED_SL":
+                        matched.exit_price = safe_num(db_t.current_sl, matched.sl_price) or matched.sl_price
+                    elif "TP" in str(db_t.close_reason) or st_str == "CLOSED_TP":
+                        matched.exit_price = safe_num(db_t.peak_price or db_t.tp1, matched.tp1) or matched.tp1
+                    elif getattr(db_t, 'close_price', None):
+                        matched.exit_price = float(db_t.close_price)
+                    
+                    if db_t.close_time:
+                        matched.closed_at = db_t.close_time.isoformat() if hasattr(db_t.close_time, 'isoformat') else str(db_t.close_time)
+                        matched.formatted_closed_at = format_full_datetime(db_t.close_time)
 
     return [t.to_dict() for t in reversed(trades)]

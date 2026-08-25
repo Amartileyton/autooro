@@ -192,6 +192,22 @@ async def lifespan(app: FastAPI):
     app_state["risk_engine"] = risk_engine
     app_state["state_machine"] = state_machine
 
+    # 4.1 Registrar callbacks de alertas para WebSocket y Notificador
+    async def on_state_machine_alert(event_type: str, data: dict):
+        try:
+            from backend.api.ws import manager
+            await manager.broadcast({
+                "type": "TRADE_EVENT",
+                "event": event_type,
+                "data": data
+            })
+            from backend.telegram_admin.notifier import dispatch_telegram_alert
+            await dispatch_telegram_alert(event_type, data)
+        except Exception as alert_err:
+            logger.debug(f"Aviso en on_state_machine_alert: {alert_err}")
+
+    state_machine.register_alert_callback(on_state_machine_alert)
+
     # 5. Ejecutar Protocolo de Reconciliación Post-Reinicio
     await run_startup_reconciliation(broker=broker, state_machine=state_machine)
 

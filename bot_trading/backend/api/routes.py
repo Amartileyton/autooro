@@ -255,7 +255,12 @@ async def get_consolidated_trade_cards(limit: int = 10, db: AsyncSession = Depen
             except Exception as e:
                 logger.warning(f"Aviso al auto-sembrar base de datos: {e}")
 
-        trade_cards = consolidate_telegram_trade_lifecycle(messages)
+        # Obtener los trades ejecutados reales del motor de trading
+        trade_stmt = select(Trade).order_by(desc(Trade.id)).limit(100)
+        trade_res = await db.execute(trade_stmt)
+        executed_trades = trade_res.scalars().all()
+
+        trade_cards = consolidate_telegram_trade_lifecycle(messages, executed_trades=executed_trades)
         return trade_cards[:limit]
     except Exception as e:
         logger.error(f"Error al consolidar tarjetas de trade: {e}", exc_info=True)
