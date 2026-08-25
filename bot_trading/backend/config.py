@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     # Capa de Broker
     BROKER_TYPE: str = Field(default="paper", description="'paper' para simulación local, 'ctrader' para live")
-    INITIAL_PAPER_BALANCE: Decimal = Field(default=Decimal("10000.00"), description="Balance inicial para Paper Broker")
+    INITIAL_PAPER_BALANCE: Decimal = Field(default=Decimal("1000.00"), description="Balance inicial para Paper Broker")
     PAPER_SPREAD_MIN_CENTS: Decimal = Field(default=Decimal("0.10"), description="Spread mínimo simulado en USD")
     PAPER_SPREAD_MAX_CENTS: Decimal = Field(default=Decimal("0.25"), description="Spread máximo simulado en USD")
     INITIAL_XAUUSD_PRICE: Decimal = Field(default=Decimal("4604.83"), description="Precio inicial de mercado de XAUUSD")
