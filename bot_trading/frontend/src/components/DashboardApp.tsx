@@ -161,11 +161,12 @@ export const DashboardApp: React.FC = () => {
       const stateRes = await fetch(`${baseUrl}/api/v1/state`, {
         headers: getAuthHeaders(),
       });
+      if (stateRes.ok) {
         const stateData = await stateRes.json();
         setXauusdPrice(stateData.xauusd_spot?.ask || 4587.50);
         const hasLiveBal = Boolean(stateData.has_live_balance || stateData.has_ctrader_token || stateData.broker_type === 'paper' || (stateData.account?.balance !== null && stateData.account?.balance !== undefined));
         setHasLiveBalance(hasLiveBal);
-        setBalance(stateData.account?.balance !== undefined ? stateData.account?.balance : 1000.00);
+        setBalance(stateData.account?.balance !== undefined && stateData.account?.balance !== null ? stateData.account?.balance : 1000.00);
         setIngestionEnabled(stateData.ingestion_enabled);
         setAutoExecutionEnabled(stateData.auto_execution_enabled);
         setBotActive(stateData.ingestion_enabled);
