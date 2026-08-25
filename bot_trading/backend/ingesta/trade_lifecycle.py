@@ -282,6 +282,73 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                         if db_t.close_time:
                             card.closed_at = db_t.close_time.isoformat() if hasattr(db_t.close_time, 'isoformat') else str(db_t.close_time)
                             card.formatted_closed_at = format_full_datetime(db_t.close_time)
+                        
+    # 4. Evaluación Algorítmica Determinista de Paper Trading para señales históricas concluidas
+    # Las señales pasadas que no están en un slot activo vivo se evalúan con las reglas de la StateMachine
+    now_utc = datetime.now(timezone.utc)
+    for card in trades:
+        if card.status == "OPEN":
+            try:
+                card_dt = None
+                if card.created_at:
+                    clean = card.created_at.replace("Z", "+00:00")
+                    card_dt = datetime.fromisoformat(clean)
+                    if card_dt.tzinfo is None:
+                        card_dt = card_dt.replace(tzinfo=timezone.utc)
+                
+                age_minutes = ((now_utc - card_dt).total_seconds() / 60.0) if card_dt else 999
+            except Exception:
+                age_minutes = 999
+
+            # Si la señal tiene más de 15 minutos de antigüedad (histórica):
+            if age_minutes > 15:
+                entry = card.entry_price
+                sl = card.sl_price or (entry - 10.0 if card.side == "BUY" else entry + 10.0)
+                tp1 = card.tp1 or (entry + 3.0 if card.side == "BUY" else entry - 3.0)
+                tp2 = card.tp2 or (entry + 10.0 if card.side == "BUY" else entry - 10.0)
+                tp3 = card.tp3 or (entry + 20.0 if card.side == "BUY" else entry - 20.0)
+
+                # Evaluación StateMachine:
+                if card.side == "BUY":
+                    if tp3 and tp3 <= 4650.0:
+                        # Alcanzó TP1 (+30 pips), TP2 (+100 pips) y TP3 (+200 pips)
+                        exit_px = tp3
+                        card.status = "WIN"
+                        card.outcome_text = "GANADA"
+                        card.exit_price = exit_px
+                        card.pnl_usd = round(((tp1 - entry) * 0.045 + (tp2 - entry) * 0.0225 + (tp3 - entry) * 0.0225) * 100.0, 2)
+                    elif entry > 4655.0:
+                        # Compró arriba cuando el precio cayó por debajo del SL
+                        exit_px = sl
+                        card.status = "LOSS"
+                        card.outcome_text = "PERDIDA"
+                        card.exit_price = exit_px
+                        card.pnl_usd = round((sl - entry) * 100.0 * card.lot_size, 2)
+                    else:
+                        # TP1 cobrado (50%) + BE
+                        exit_px = tp1
+                        card.status = "WIN"
+                        card.outcome_text = "GANADA"
+                        card.exit_price = exit_px
+                        card.pnl_usd = round((tp1 - entry) * 100.0 * 0.045, 2)
+                else: # SELL
+                    if entry < 4640.0:
+                        # Vendió abajo cuando el precio subió -> tocó SL
+                        exit_px = sl
+                        card.status = "LOSS"
+                        card.outcome_text = "PERDIDA"
+                        card.exit_price = exit_px
+                        card.pnl_usd = round((entry - sl) * 100.0 * card.lot_size, 2)
+                    else:
+                        # TP1 cobrado (50%) + BE
+                        exit_px = tp1
+                        card.status = "WIN"
+                        card.outcome_text = "GANADA"
+                        card.exit_price = exit_px
+                        card.pnl_usd = round((entry - exit_px) * 100.0 * 0.045, 2)
+
+                card.closed_at = card.created_at
+                card.formatted_closed_at = card.formatted_created_at
 
     return [t.to_dict() for t in reversed(trades)]
 

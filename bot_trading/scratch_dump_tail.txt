@@ -1,0 +1,60 @@
+791,7864,-1002763662248,'Chartoro FX Senales Gratis','🔤🔤🔤   🔤🔤🔤🔤🔤🔤🔤 1️⃣',0,'NONE',NULL,'2026-08-19 04:45:05.000000'
+---
+794,7868,-1002763662248,'Chartoro FX Senales Gratis','TEAM PROFIT',0,'NONE',NULL,'2026-08-19 11:33:01.000000'
+---
+797,7871,-1002763662248,'Chartoro FX Senales Gratis','❓ **Ya tienes un mentor de trading?**',0,'NONE',NULL,'2026-08-19 17:10:30.000000'
+---
+799,7873,-1002763662248,'Chartoro FX Senales Gratis','Muchas gracias ❤️',0,'NONE',NULL,'2026-08-19 21:01:02.000000'
+---
+804,7878,-1002763662248,'Chartoro FX Senales Gratis','Move SL to 4501',1,'REGEX',NULL,'2026-08-20 03:05:59.000000'
+---
+805,7879,-1002763662248,'Chartoro FX Senales Gratis','**TP1 CARGANDO… VAMOS! ****🚀**',0,'NONE',NULL,'2026-08-20 03:12:02.000000'
+---
+809,7884,-1002763662248,'Chartoro FX Senales Gratis','Move SL to 4488',1,'REGEX',NULL,'2026-08-20 04:29:30.000000'
+---
+812,7887,-1002763662248,'Chartoro FX Senales Gratis','[**HAZ CLIC AQUÍ PARA UNIRTE AL MÁS REAL DE LOS GRUPOS VIP**](https://t.me/m/q3-XLmhBNmY0)  💎',0,'NONE',NULL,'2026-08-20 06:34:11.000000'
+---
+813,7888,-1002763662248,'Chartoro FX Senales Gratis','**BUENOS DIAS CHARTORO TRADERS** 👑',0,'NONE',NULL,'2026-08-20 10:17:01.000000'
+---
+814,7889,-1002763662248,'Chartoro FX Senales Gratis','❓__Te gustaría tener acceso a estrategias de trading exclusivas?__',0,'NONE',NULL,'2026-08-20 12:02:02.000000'
+---
+820,7895,-1002763662248,'Chartoro FX Senales Gratis','[**HAZ CLIC AQUÍ PARA OPERAR CONMIGO**](https://t.me/m/q3-XLmhBNmY0) 📈📈📈',0,'NONE',NULL,'2026-08-20 16:01:01.000000'
+---
+822,7898,-1002763662248,'Chartoro FX Senales Gratis','**Por qué conformarte con una señal al día cuando puedes recibir 4-8 SEÑALES DIARIAS EN EL VIP** ⁉️⁉️⁉️',0,'NONE',NULL,'2026-08-21 00:01:38.000000'
+---
+828,7904,-1002763662248,'Chartoro FX Senales Gratis','Profit profe muchas gracias',0,'NONE',NULL,'2026-08-21 03:01:02.000000'
+---
+831,7908,-1002763662248,'Chartoro FX Senales Gratis','**EL PRECIO EMPIEZA A IMPULSAR ****👀**',0,'NONE',NULL,'2026-08-21 03:40:50.000000'
+---
+833,7910,-1002763662248,'Chartoro FX Senales Gratis','👀👀👀',0,'NONE',NULL,'2026-08-21 05:02:13.000000'
+---
+836,7913,-1002763662248,'Chartoro FX Senales Gratis','🔤🔤🔤   🔤🔤🔤🔤🔤🔤',0,'NONE',NULL,'2026-08-21 14:15:02.000000'
+---
+842,7921,-1002763662248,'Chartoro FX Senales Gratis','❓ __Cuál ha sido tu mayor ganancia hasta ahora?__',0,'NONE',NULL,'2026-08-21 21:06:12.000000'
+---
+844,7924,-1002763662248,'Chartoro FX Senales Gratis','**2 NUEVOS MIEMBROS VIP ACABAN DE ELEGIR GANAR INGRESOS ADICIONALES MEDIANTE EL TRADING. VAMOS!** 🤑🤑🤑',0,'NONE',NULL,'2026-08-22 06:14:01.000000'
+---
+845,7926,-1002763662248,'Chartoro FX Senales Gratis','**CÓMO VA TU FIN DE SEMANA?**',0,'NONE',NULL,'2026-08-22 11:02:01.000000'
+---
+849,7930,-1002763662248,'Chartoro FX Senales Gratis','Así nos fue esta semana 🫡🫡🫡🫡',0,'NONE',NULL,'2026-08-22 21:45:04.000000'
+---
+851,7932,-1002763662248,'Chartoro FX Senales Gratis','**QUIÉN AQUÍ AMA OPERAR ORO? ** **✨**',0,'NONE',NULL,'2026-08-23 01:10:02.000000'
+---
+852,7933,-1002763662248,'Chartoro FX Senales Gratis','👑 👑 👑',0,'NONE',NULL,'2026-08-23 03:11:01.000000'
+---
+854,7935,-1002763662248,'Chartoro FX Senales Gratis','[**⚠️**](https://t.me/m/q3-XLmhBNmY0) [**HAZ CLIC AQUÍ PARA RECIBIR DE 4 A 8 SEÑALES DIARIAS**](https://t.me/m/q3-XLmhBNmY0) [**⚠️**](https://t.me/m/q3-XLmhBNmY0)',0,'NONE',NULL,'2026-08-23 08:27:00.000000'
+---
+856,7937,-1002763662248,'Chartoro FX Senales Gratis','❓ __Cuánto tiempo dedicas al trading cada semana?__',0,'NONE',NULL,'2026-08-23 12:01:02.000000'
+---
+858,7939,-1002763662248,'Chartoro FX Senales Gratis','**ESTÁS LISTO PARA VER LOS RESULTADOS DE LA SEMANA PASADA? **🔥📈',0,'NONE',NULL,'2026-08-23 16:14:23.000000'
+---
+860,7942,-1002763662248,'Chartoro FX Senales Gratis','[**HAZ CLIC AQUÍ PARA GANAR COMO ELLOS**](https://t.me/m/q3-XLmhBNmY0)  🤑🤑🤑',0,'NONE',NULL,'2026-08-23 19:45:07.000000'
+---
+867,7950,-1002763662248,'Chartoro FX Senales Gratis','💵 [**HAZ CLIC AQUÍ PARA GANAR DINERO**](https://t.me/m/q3-XLmhBNmY0) 💵',0,'NONE',NULL,'2026-08-24 03:49:02.000000'
+---
+868,7951,-1002763662248,'Chartoro FX Senales Gratis','Así nos fue esta semana 🫡🫡🫡🫡',0,'NONE',NULL,'2026-08-24 06:38:17.000000'
+---
+869,7953,-1002763662248,'Chartoro FX Senales Gratis','**HAS VISTO CUÁNTO PODRÍAS HABER GANADO LA SEMANA PASADA?**',0,'NONE',NULL,'2026-08-24 12:04:34.000000'
+---
+870,7954,-1002763662248,'Chartoro FX Senales Gratis','⚠️ __SEÑAL ENVIADA EN EL VIP__ ⚠️',0,'NONE',NULL,'2026-08-24 12:51:14.000000'
+---
