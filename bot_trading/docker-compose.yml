@@ -13,7 +13,6 @@ services:
     volumes:
       # Persistencia de base de datos SQLite WAL, sesión de Telethon y código en vivo
       - ./data:/app/data
-      - ./trading_bot.db:/app/trading_bot.db
       - ./bot_session.session:/app/bot_session.session
       - ./dump.sql:/app/dump.sql
       - ./backend:/app/backend
