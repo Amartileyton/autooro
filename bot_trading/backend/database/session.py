@@ -6,9 +6,26 @@ from backend.config import settings
 
 logger = logging.getLogger("trading_bot.database")
 
+import os
+import shutil
+
+# Asegurar directorio de datos persistente
+os.makedirs("data", exist_ok=True)
+
+# Migración transparente de base de datos previa si no existe en data/
+if os.path.exists("trading_bot.db") and not os.path.exists("data/trading_bot.db"):
+    try:
+        shutil.copy2("trading_bot.db", "data/trading_bot.db")
+        logger.info("Base de datos previa migrada a data/trading_bot.db para persistencia total.")
+    except Exception as e:
+        logger.warning(f"Aviso al migrar trading_bot.db a data/: {e}")
+
+# Determinar URL sincrónica y asincrónica
+sync_db_url = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "sqlite:///")
+
 # Crear el sync engine para migraciones e inicialización sin dependencia de greenlet
 sync_engine = create_engine(
-    "sqlite:///trading_bot.db",
+    sync_db_url,
     echo=False
 )
 
@@ -32,6 +49,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA synchronous=NORMAL;")
         cursor.execute("PRAGMA busy_timeout=5000;")
         cursor.execute("PRAGMA foreign_keys=ON;")
+        cursor.execute("PRAGMA wal_autocheckpoint=100;")
 
         # Auto-migración segura de columnas añadidas en trades si la tabla ya existía
         try:

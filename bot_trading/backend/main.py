@@ -272,6 +272,16 @@ async def lifespan(app: FastAPI):
     await telegram_client.stop()
     await telegram_bot.stop()
     await broker.disconnect()
+    
+    # Consolidar SQLite WAL al disco antes de cerrar
+    try:
+        from backend.database.session import sync_engine
+        with sync_engine.connect() as conn:
+            conn.exec_driver_sql("PRAGMA wal_checkpoint(FULL);")
+            logger.info("SQLite WAL Checkpoint consolidado exitosamente en disco.")
+    except Exception as cp_err:
+        logger.warning(f"Aviso en SQLite checkpoint al apagar: {cp_err}")
+
     await engine.dispose()
     logger.info("Motor de Trading apagado correctamente.")
 

@@ -230,18 +230,38 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                     )
                     trades.append(new_card)
 
-            # 2. ¿Es un modificador (Move SL / Set BE)?
+            # 2. ¿Es un modificador (Move SL / Set BE / Close Order)?
             elif isinstance(parsed, ModifierSignalEvent):
-                target_sl = safe_num(parsed.target_price)
-                if target_sl is not None:
-                    for t in reversed(trades):
-                        if t.status == "OPEN" and t.channel_name == channel:
-                            t.modify_sl(target_sl, time_str)
-                            break
+                for t in reversed(trades):
+                    if t.status == "OPEN" and t.channel_name == channel:
+                        if parsed.signal_type == SignalType.CLOSE_ORDER:
+                            exit_px = t.tp1 or t.entry_price
+                            t.close_trade("WIN", exit_px, "CERRADA", time_str)
+                        elif parsed.signal_type == SignalType.MOVE_BE:
+                            t.modify_sl(t.entry_price, time_str)
+                        elif parsed.target_price:
+                            target_sl = safe_num(parsed.target_price)
+                            if target_sl:
+                                t.modify_sl(target_sl, time_str)
+                        break
 
-            # 3. ¿Es un reporte de cierre de Telegram (TP HIT, SL HIT, CERRAR SETUP)?
+            # 3. ¿Es un reporte de cierre de Telegram (TP HIT, SL HIT, CERRAR SETUP, BOOK PROFIT)?
             else:
-                if "TP" in raw_upper and ("HIT" in raw_upper or "PIPS" in raw_upper or "GANANCIA" in raw_upper or "PAGO INMEDIATO" in raw_upper):
+                is_tp_hit = bool(
+                    ("TP" in raw_upper or "TARGET" in raw_upper or "PIPS" in raw_upper or "PROFIT" in raw_upper or "GANANCIA" in raw_upper or "🎯" in raw_text or "✅" in raw_text) and
+                    ("HIT" in raw_upper or "DONE" in raw_upper or "REACHED" in raw_upper or "ALCANZADO" in raw_upper or "SMASHED" in raw_upper or "PIPS" in raw_upper or "SECURED" in raw_upper or "BOOK" in raw_upper or "PAGO" in raw_upper or "RUNNING" in raw_upper or "🔥" in raw_text)
+                )
+
+                is_sl_hit = bool(
+                    ("SL" in raw_upper or "STOP" in raw_upper or "LOSS" in raw_upper or "PÉRDIDA" in raw_upper or "PERDIDA" in raw_upper or "🛑" in raw_text or "❌" in raw_text) and
+                    ("HIT" in raw_upper or "STOPPED" in raw_upper or "OUT" in raw_upper or "TOCADO" in raw_upper or "SALTÓ" in raw_upper or "SALTO" in raw_upper)
+                )
+
+                is_close_order = bool(
+                    "CERRAR" in raw_upper or "CLOSE" in raw_upper or "EXIT" in raw_upper or "SALIR" in raw_upper or "CANCEL" in raw_upper
+                )
+
+                if is_tp_hit:
                     for t in reversed(trades):
                         if t.status == "OPEN" and t.channel_name == channel:
                             if "TP3" in raw_upper and t.tp3:
@@ -256,14 +276,14 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                             t.close_trade("WIN", exit_px, "GANADA", time_str)
                             break
 
-                elif "SL HIT" in raw_upper or "PÉRDIDA" in raw_upper or "STOPPED OUT" in raw_upper:
+                elif is_sl_hit:
                     for t in reversed(trades):
                         if t.status == "OPEN" and t.channel_name == channel:
                             exit_px = t.sl_price if t.sl_price else (t.entry_price + (-8.0 if t.side == "BUY" else 8.0))
                             t.close_trade("LOSS", exit_px, "PERDIDA", time_str)
                             break
 
-                elif "CERRAR" in raw_upper or "CLOSE" in raw_upper:
+                elif is_close_order:
                     for t in reversed(trades):
                         if t.status == "OPEN" and t.channel_name == channel:
                             exit_px = t.entry_price
