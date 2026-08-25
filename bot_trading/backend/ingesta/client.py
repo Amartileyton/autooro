@@ -110,26 +110,8 @@ class TelegramIngestionClient:
         async def on_new_message(event):
             await self._handle_incoming_message(event)
 
-        logger.info("Telethon MTProto escuchando eventos NewMessage multicanal en vivo.")
-
-        # Sincronización inicial de arranque de los canales activos
-        for tid in target_ids:
-            meta = self.known_channels.get(tid, {})
-            ch_name = meta.get("name", "Chartoro FX")
-            asyncio.create_task(self._sync_recent_channel_history(tid, ch_name))
-
-    async def _sync_recent_channel_history(self, target_id: int, channel_name: str = "Chartoro FX"):
-        """Descarga e indexa los mensajes recientes del canal para asegurar que las tarjetas estén al día."""
-        try:
-            entity = await self.client.get_entity(target_id)
-            channel_title = getattr(entity, 'title', channel_name)
-            recent_msgs = await self.client.get_messages(entity, limit=50)
-            logger.info(f"Sincronizando {len(recent_msgs)} mensajes recientes de '{channel_title}' ({target_id})...")
-            for msg in reversed(recent_msgs):
-                await self._sync_history_message(msg, channel_title)
-            logger.info(f"Sincronización de '{channel_title}' completada con éxito.")
-        except Exception as sync_err:
-            logger.warning(f"Aviso al sincronizar historial de canal {target_id}: {sync_err}")
+        # Escucha en vivo en tiempo real (sin descargar mensajes pasados para arranque limpio a cero)
+        logger.info("Telethon MTProto listo para recibir mensajes en tiempo real (arranque limpio desde cero).")
 
     async def _sync_history_message(self, msg, channel_name: str = "Chartoro FX"):
         """Inserta mensajes recientes en base de datos si no existían previamente."""
