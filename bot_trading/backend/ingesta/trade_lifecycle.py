@@ -282,37 +282,32 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             close_reason_str = str(getattr(db_t, 'close_reason', '') or '').upper()
             is_closed = "CLOSED" in st_str or db_t.close_time is not None or "SL_HIT" in close_reason_str or "TP" in close_reason_str
             
-            matched = None
             for card in trades:
-                if raw_id_str and raw_id_str in card.trade_id:
-                    matched = card
-                    break
-                elif abs(card.entry_price - float(db_t.entry_price or 0)) < 0.5:
-                    matched = card
-                    break
+                entry_diff = abs(card.entry_price - float(db_t.entry_price or 0))
+                matched_signal = bool(raw_id_str and raw_id_str in card.trade_id)
+                matched_price = entry_diff < 1.0
 
-            if matched:
-                matched.lot_size = safe_num(db_t.lot_size, matched.lot_size) or matched.lot_size
-                matched.margin_usd = round(matched.lot_size * matched.entry_price * 100.0 / 100.0, 2)
-                
-                # Si el trade fue cerrado por el motor (SL, TP, etc.)
-                if is_closed:
-                    pnl_val = float((db_t.pnl or 0) + (db_t.realized_cash_pnl or 0))
-                    matched.pnl_usd = round(pnl_val, 2)
-                    matched.status = "WIN" if pnl_val >= 0 else "LOSS"
-                    matched.outcome_text = "GANADA" if pnl_val >= 0 else "PERDIDA"
+                if matched_signal or matched_price:
+                    card.lot_size = safe_num(db_t.lot_size, card.lot_size) or card.lot_size
+                    card.margin_usd = round(card.lot_size * card.entry_price * 100.0 / 100.0, 2)
                     
-                    if "SL" in close_reason_str or "SL" in st_str:
-                        matched.exit_price = safe_num(db_t.current_sl, matched.sl_price) or matched.sl_price
-                    elif "TP" in close_reason_str or "TP" in st_str:
-                        matched.exit_price = safe_num(db_t.peak_price or db_t.tp1, matched.tp1) or matched.tp1
-                    elif getattr(db_t, 'close_price', None):
-                        matched.exit_price = float(db_t.close_price)
-                    else:
-                        matched.exit_price = safe_num(db_t.current_sl, matched.sl_price) or matched.sl_price
-                    
-                    if db_t.close_time:
-                        matched.closed_at = db_t.close_time.isoformat() if hasattr(db_t.close_time, 'isoformat') else str(db_t.close_time)
-                        matched.formatted_closed_at = format_full_datetime(db_t.close_time)
+                    if is_closed:
+                        pnl_val = float((db_t.pnl or 0) + (db_t.realized_cash_pnl or 0))
+                        card.pnl_usd = round(pnl_val, 2)
+                        card.status = "WIN" if pnl_val >= 0 else "LOSS"
+                        card.outcome_text = "GANADA" if pnl_val >= 0 else "PERDIDA"
+                        
+                        if "SL" in close_reason_str or "SL" in st_str:
+                            card.exit_price = safe_num(db_t.current_sl, card.sl_price) or card.sl_price
+                        elif "TP" in close_reason_str or "TP" in st_str:
+                            card.exit_price = safe_num(db_t.peak_price or db_t.tp1, card.tp1) or card.tp1
+                        elif getattr(db_t, 'close_price', None):
+                            card.exit_price = float(db_t.close_price)
+                        else:
+                            card.exit_price = safe_num(db_t.current_sl, card.sl_price) or card.sl_price
+                        
+                        if db_t.close_time:
+                            card.closed_at = db_t.close_time.isoformat() if hasattr(db_t.close_time, 'isoformat') else str(db_t.close_time)
+                            card.formatted_closed_at = format_full_datetime(db_t.close_time)
 
     return [t.to_dict() for t in reversed(trades)]
