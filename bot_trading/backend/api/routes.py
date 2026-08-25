@@ -77,12 +77,14 @@ async def get_system_state():
                 "status": "AVAILABLE"
             })
 
+    is_paper = settings.BROKER_TYPE.lower() == "paper"
     has_token = bool(
         settings.CTRADER_ACCESS_TOKEN 
         and settings.CTRADER_ACCESS_TOKEN.strip() 
         and settings.CTRADER_ACCESS_TOKEN.lower() != "none" 
-        and settings.BROKER_TYPE == "CTRADER"
+        and settings.BROKER_TYPE.lower() == "ctrader"
     )
+    has_live_balance = is_paper or has_token
 
     return {
         "status": "NOMINAL",
@@ -90,17 +92,18 @@ async def get_system_state():
         "auto_execution_enabled": settings.AUTO_EXECUTION_ENABLED,
         "broker_type": settings.BROKER_TYPE,
         "has_ctrader_token": has_token,
+        "has_live_balance": has_live_balance,
         "xauusd_spot": {
             "bid": float(tick.bid),
             "ask": float(tick.ask),
             "timestamp": tick.timestamp
         },
         "account": {
-            "balance": float(acc.balance) if has_token else None,
-            "equity": float(acc.equity) if has_token else None,
-            "margin_used": float(acc.margin_used) if has_token else None,
-            "free_margin": float(acc.free_margin) if has_token else None,
-            "margin_level_pct": float(acc.margin_level_pct) if has_token else None,
+            "balance": float(acc.balance) if has_live_balance else None,
+            "equity": float(acc.equity) if has_live_balance else None,
+            "margin_used": float(acc.margin_used) if has_live_balance else None,
+            "free_margin": float(acc.free_margin) if has_live_balance else None,
+            "margin_level_pct": float(acc.margin_level_pct) if has_live_balance else None,
             "currency": acc.currency
         },
         "slots": slots_data,

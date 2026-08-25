@@ -161,12 +161,11 @@ export const DashboardApp: React.FC = () => {
       const stateRes = await fetch(`${baseUrl}/api/v1/state`, {
         headers: getAuthHeaders(),
       });
-      if (stateRes.ok) {
         const stateData = await stateRes.json();
         setXauusdPrice(stateData.xauusd_spot?.ask || 4587.50);
-        const hasToken = Boolean(stateData.has_ctrader_token);
-        setHasLiveBalance(hasToken);
-        setBalance(hasToken ? stateData.account?.balance : null);
+        const hasLiveBal = Boolean(stateData.has_live_balance || stateData.has_ctrader_token || stateData.broker_type === 'paper' || (stateData.account?.balance !== null && stateData.account?.balance !== undefined));
+        setHasLiveBalance(hasLiveBal);
+        setBalance(stateData.account?.balance !== undefined ? stateData.account?.balance : 1000.00);
         setIngestionEnabled(stateData.ingestion_enabled);
         setAutoExecutionEnabled(stateData.auto_execution_enabled);
         setBotActive(stateData.ingestion_enabled);
@@ -242,13 +241,14 @@ export const DashboardApp: React.FC = () => {
               setXauusdPrice(payload.xauusd_spot.ask);
             }
 
-            if (payload.has_ctrader_token !== undefined) {
-              setHasLiveBalance(Boolean(payload.has_ctrader_token));
+            if (payload.has_ctrader_token !== undefined || payload.has_live_balance !== undefined) {
+              setHasLiveBalance(Boolean(payload.has_ctrader_token || payload.has_live_balance));
             }
 
             if (payload.account) {
               if (payload.account.balance !== undefined && payload.account.balance !== null) {
                 setBalance(payload.account.balance);
+                setHasLiveBalance(true);
               }
             }
 

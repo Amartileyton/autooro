@@ -69,28 +69,31 @@ async def websocket_live_stream(websocket: WebSocket, token: Optional[str] = Non
     try:
         # Enviar snapshot inicial inmediatamente
         from backend.config import settings
+        is_paper = settings.BROKER_TYPE.lower() == "paper"
         has_token = bool(
             settings.CTRADER_ACCESS_TOKEN 
             and settings.CTRADER_ACCESS_TOKEN.strip() 
             and settings.CTRADER_ACCESS_TOKEN.lower() != "none" 
-            and settings.BROKER_TYPE == "CTRADER"
+            and settings.BROKER_TYPE.lower() == "ctrader"
         )
+        has_live_balance = is_paper or has_token
         acc = await broker.get_account_info()
         tick = await broker.get_current_tick("XAUUSD")
         
         init_payload = {
             "type": "INITIAL_SNAPSHOT",
             "has_ctrader_token": has_token,
+            "has_live_balance": has_live_balance,
             "xauusd_spot": {
                 "bid": float(tick.bid),
                 "ask": float(tick.ask),
                 "timestamp": tick.timestamp
             },
             "account": {
-                "balance": float(acc.balance) if has_token else None,
-                "equity": float(acc.equity) if has_token else None,
-                "margin_used": float(acc.margin_used) if has_token else None,
-                "free_margin": float(acc.free_margin) if has_token else None
+                "balance": float(acc.balance) if has_live_balance else None,
+                "equity": float(acc.equity) if has_live_balance else None,
+                "margin_used": float(acc.margin_used) if has_live_balance else None,
+                "free_margin": float(acc.free_margin) if has_live_balance else None
             },
             "slots": [
                 {

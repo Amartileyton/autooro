@@ -92,23 +92,23 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots = [], curr
 
           const isExpanded = Boolean(expandedSlots[slot.slot_id]);
 
-          // Determinación Dinámica de Take Profits / Stop Loss alcanzados en base al precio spot actual
+          // Determinación Dinámica de Take Profits / Stop Loss alcanzados en base al precio spot actual y la máquina de estados
           const isTp1Hit = Boolean(
             (isBuy && slot.tp1 && livePrice >= slot.tp1) ||
             (!isBuy && slot.tp1 && livePrice <= slot.tp1) ||
-            slot.status === 'TP1_HIT' || slot.status === 'TP2_HIT' || slot.status === 'CLOSED_TP'
+            slot.status === 'TP1_HIT' || slot.status === 'TP2_HIT' || slot.status === 'TP3_TRAILING' || slot.is_infinite_trailing || slot.status === 'CLOSED_TP'
           );
 
           const isTp2Hit = Boolean(
             (isBuy && slot.tp2 && livePrice >= slot.tp2) ||
             (!isBuy && slot.tp2 && livePrice <= slot.tp2) ||
-            slot.status === 'TP2_HIT' || slot.status === 'CLOSED_TP'
+            slot.status === 'TP2_HIT' || slot.status === 'TP3_TRAILING' || slot.is_infinite_trailing || slot.status === 'CLOSED_TP'
           );
 
           const isTp3Hit = Boolean(
             (isBuy && slot.tp3 && livePrice >= slot.tp3) ||
             (!isBuy && slot.tp3 && livePrice <= slot.tp3) ||
-            slot.status === 'CLOSED_TP'
+            slot.status === 'TP3_TRAILING' || slot.is_infinite_trailing || slot.status === 'CLOSED_TP'
           );
 
           const isSlHit = Boolean(

@@ -83,7 +83,7 @@ async def test_tiered_buy_full_lifecycle():
     assert 1 not in sm.active_slots
     # Balance del broker debe haber incrementado considerablemente
     acc = await broker.get_account_info()
-    assert acc.balance > Decimal("10000.00")
+    assert acc.balance > settings.INITIAL_PAPER_BALANCE
 
 
 @pytest.mark.asyncio
@@ -149,4 +149,4 @@ async def test_tiered_sell_full_lifecycle():
 
     assert 2 not in sm.active_slots
     acc = await broker.get_account_info()
-    assert acc.balance > Decimal("10000.00")
+    assert acc.balance > settings.INITIAL_PAPER_BALANCE

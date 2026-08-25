@@ -46,9 +46,9 @@ export const PositionCard: React.FC<{
   const isProfit = pnl >= 0;
   const pnlSign = isProfit ? '+' : '';
 
-  const isTp1Hit = slot.status === 'TP1_HIT' || slot.status === 'TP2_HIT' || slot.status === 'CLOSED_TP';
-  const isTp2Hit = slot.status === 'TP2_HIT' || slot.status === 'CLOSED_TP';
-  const isTp3Hit = slot.status === 'CLOSED_TP';
+  const isTp1Hit = slot.status === 'TP1_HIT' || slot.status === 'TP2_HIT' || (slot.status as string) === 'TP3_TRAILING' || slot.status === 'CLOSED_TP';
+  const isTp2Hit = slot.status === 'TP2_HIT' || (slot.status as string) === 'TP3_TRAILING' || slot.status === 'CLOSED_TP';
+  const isTp3Hit = (slot.status as string) === 'TP3_TRAILING' || slot.status === 'CLOSED_TP';
 
   return (
     <div className="bg-[#0b0c10] border border-slate-800 rounded-md p-3.5 relative overflow-hidden transition-all space-y-2.5 text-white shadow-sm">
