@@ -276,12 +276,15 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
     if executed_trades:
         for db_t in executed_trades:
             raw_id = getattr(db_t, 'raw_signal_id', None)
+            raw_id_str = str(raw_id) if raw_id else ""
             st = getattr(db_t, 'status', None)
-            st_str = st.value if hasattr(st, 'value') else str(st)
+            st_str = (st.value if hasattr(st, 'value') else str(st or "")).upper()
+            close_reason_str = str(getattr(db_t, 'close_reason', '') or '').upper()
+            is_closed = "CLOSED" in st_str or db_t.close_time is not None or "SL_HIT" in close_reason_str or "TP" in close_reason_str
             
             matched = None
             for card in trades:
-                if raw_id and (f"-{raw_id}-" in card.trade_id or card.trade_id.startswith(f"trade-{raw_id}")):
+                if raw_id_str and raw_id_str in card.trade_id:
                     matched = card
                     break
                 elif abs(card.entry_price - float(db_t.entry_price or 0)) < 0.5:
@@ -293,18 +296,20 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 matched.margin_usd = round(matched.lot_size * matched.entry_price * 100.0 / 100.0, 2)
                 
                 # Si el trade fue cerrado por el motor (SL, TP, etc.)
-                if st_str.startswith("CLOSED"):
+                if is_closed:
                     pnl_val = float((db_t.pnl or 0) + (db_t.realized_cash_pnl or 0))
                     matched.pnl_usd = round(pnl_val, 2)
                     matched.status = "WIN" if pnl_val >= 0 else "LOSS"
                     matched.outcome_text = "GANADA" if pnl_val >= 0 else "PERDIDA"
                     
-                    if "SL" in str(db_t.close_reason) or st_str == "CLOSED_SL":
+                    if "SL" in close_reason_str or "SL" in st_str:
                         matched.exit_price = safe_num(db_t.current_sl, matched.sl_price) or matched.sl_price
-                    elif "TP" in str(db_t.close_reason) or st_str == "CLOSED_TP":
+                    elif "TP" in close_reason_str or "TP" in st_str:
                         matched.exit_price = safe_num(db_t.peak_price or db_t.tp1, matched.tp1) or matched.tp1
                     elif getattr(db_t, 'close_price', None):
                         matched.exit_price = float(db_t.close_price)
+                    else:
+                        matched.exit_price = safe_num(db_t.current_sl, matched.sl_price) or matched.sl_price
                     
                     if db_t.close_time:
                         matched.closed_at = db_t.close_time.isoformat() if hasattr(db_t.close_time, 'isoformat') else str(db_t.close_time)
