@@ -117,6 +117,92 @@ class TradeLifecycleCard:
         
         self.pnl_usd = round(price_diff * 100.0 * self.lot_size, 2)
 
+    def apply_db_trade(self, db_t: Any):
+        """Sincroniza la tarjeta directamente con los datos reales y oficiales del motor de trading (tabla 'trades')."""
+        self.lot_size = safe_num(getattr(db_t, 'lot_size', None), self.lot_size) or self.lot_size
+        self.margin_usd = round(self.lot_size * self.entry_price * 100.0 / 100.0, 2)
+        
+        if getattr(db_t, 'initial_sl', None):
+            self.initial_sl = safe_num(db_t.initial_sl, self.initial_sl)
+        if getattr(db_t, 'current_sl', None):
+            self.sl_price = safe_num(db_t.current_sl, self.sl_price)
+        if getattr(db_t, 'tp1', None):
+            self.tp1 = safe_num(db_t.tp1, self.tp1)
+        if getattr(db_t, 'tp2', None):
+            self.tp2 = safe_num(db_t.tp2, self.tp2)
+        if getattr(db_t, 'tp3', None):
+            self.tp3 = safe_num(db_t.tp3, self.tp3)
+
+        st = getattr(db_t, 'status', None)
+        st_str = (st.value if hasattr(st, 'value') else str(st or "")).upper()
+        close_reason_str = str(getattr(db_t, 'close_reason', '') or '')
+        close_time_val = getattr(db_t, 'close_time', None)
+        is_closed = "CLOSED" in st_str or close_time_val is not None
+
+        if is_closed:
+            pnl_val = float(getattr(db_t, 'pnl', 0.0) or 0.0)
+            self.pnl_usd = round(pnl_val, 2)
+            self.status = "WIN" if pnl_val >= 0 else "LOSS"
+            self.outcome_text = "GANADA" if pnl_val > 0 else ("BREAK-EVEN" if pnl_val == 0 else "PERDIDA")
+            
+            close_px = getattr(db_t, 'close_price', None)
+            self.exit_price = safe_num(close_px, self.sl_price) or self.sl_price
+            
+            if close_time_val:
+                self.closed_at = close_time_val.isoformat() if hasattr(close_time_val, 'isoformat') else str(close_time_val)
+                self.formatted_closed_at = format_full_datetime(close_time_val)
+
+            # Historial de modificaciones e hitos documentados del trade
+            mods = []
+            realized_cash = float(getattr(db_t, 'realized_cash_pnl', 0.0) or 0.0)
+            if realized_cash > 0:
+                mods.append(f"Cobro parcial 50% en TP1 (+${realized_cash:.2f} USD)")
+
+            if "SL_HIT" in close_reason_str.upper():
+                curr_sl = float(self.sl_price or 0.0)
+                entry_px = float(self.entry_price or 0.0)
+                if self.side == "BUY" and curr_sl >= entry_px:
+                    mods.append(f"Cierre de remanente en Break-Even + Spread (${curr_sl:.2f})")
+                elif self.side == "SELL" and curr_sl <= entry_px:
+                    mods.append(f"Cierre de remanente en Break-Even + Spread (${curr_sl:.2f})")
+                else:
+                    mods.append(f"Cierre por Stop Loss (${curr_sl:.2f})")
+            elif "TP" in close_reason_str.upper():
+                mods.append(f"Cierre en Take Profit (${float(self.exit_price or 0.0):.2f})")
+            elif close_reason_str:
+                mods.append(f"Cierre ({close_reason_str})")
+
+            self.modifications = mods or ([close_reason_str] if close_reason_str else [])
+        else:
+            # El trade se encuentra actualmente ACTIVO y EN CURSO en el motor
+            self.status = "OPEN"
+            self.exit_price = None
+            self.pnl_usd = None
+            self.closed_at = None
+            self.formatted_closed_at = None
+
+            realized_cash = float(getattr(db_t, 'realized_cash_pnl', 0.0) or 0.0)
+            if "TP1" in st_str or realized_cash > 0:
+                self.outcome_text = "EN CURSO (TP1 Cobrado 50% + BE)"
+                self.modifications = [
+                    "TP1 cobrado (50% asegurado en caja)",
+                    f"SL blindado a Break-Even (${float(self.sl_price or self.entry_price):.2f})"
+                ]
+            elif "TP2" in st_str:
+                self.outcome_text = "EN CURSO (TP2 Cobrado 75% + Runner)"
+                self.modifications = [
+                    "TP1 y TP2 cobrados",
+                    f"Trailing SL ajustado a ${float(self.sl_price or self.entry_price):.2f}"
+                ]
+            elif "TP3" in st_str or "TRAILING" in st_str:
+                self.outcome_text = "EN CURSO (Infinite Runner)"
+                self.modifications = [
+                    f"Trailing SL dinámico persiguiendo pico (${float(self.sl_price or self.entry_price):.2f})"
+                ]
+            else:
+                self.outcome_text = "EN CURSO"
+                self.modifications = []
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "trade_id": self.trade_id,
@@ -164,17 +250,17 @@ def get_msg_datetime(msg: Any) -> datetime:
 def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Optional[list] = None) -> List[Dict[str, Any]]:
     """
     Agrupa cronológicamente los mensajes crudos de Telegram en TARJETAS DE CICLO DE VIDA DE TRADES:
-    - Entrada con dinero asignado (250$ / 0.09 lots a 1:100), precio de entrada y fecha/hora completa.
-    - Actualización progresiva de niveles.
-    - Cierre con precio exacto de salida y PnL resultante cruzado con la tabla 'trades' del motor.
+    - Las tarjetas se inicializan en estado 'EN CURSO' al entrar la señal.
+    - Se sincronizan 100% con los trades reales del motor de trading (tabla 'trades').
+    - Al cerrarse la posición en el broker/motor, se exportan fielmente todos los datos de auditoría al historial.
     """
-    if not messages:
+    if not messages and not executed_trades:
         return []
 
     try:
         sorted_msgs = sorted(messages, key=get_msg_datetime)
     except Exception:
-        sorted_msgs = messages
+        sorted_msgs = messages or []
 
     trades: List[TradeLifecycleCard] = []
 
@@ -184,7 +270,6 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             if not raw_text.strip():
                 continue
 
-            raw_upper = raw_text.upper()
             channel = getattr(m, 'channel_name', None) or "Chartoro FX"
             channel_id = getattr(m, 'channel_id', 0) or 0
             msg_dt = get_msg_datetime(m)
@@ -245,110 +330,47 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
         except Exception:
             continue
 
-    # 3. Sincronización Estricta con la tabla 'trades': La verdad del estado proviene 100% del motor de mercado
+    # 3. Sincronización Directa y Absoluta con la tabla 'trades' del motor de mercado
     if executed_trades:
         for db_t in executed_trades:
             raw_id = getattr(db_t, 'raw_signal_id', None)
             raw_id_str = str(raw_id) if raw_id else ""
-            st = getattr(db_t, 'status', None)
-            st_str = (st.value if hasattr(st, 'value') else str(st or "")).upper()
-            close_reason_str = str(getattr(db_t, 'close_reason', '') or '').upper()
-            is_closed = "CLOSED" in st_str or db_t.close_time is not None or "SL_HIT" in close_reason_str or "TP" in close_reason_str
-            
+            db_side = (db_t.side.value if hasattr(db_t.side, 'value') else str(db_t.side or "")).upper()
+            db_entry = float(getattr(db_t, 'entry_price', 0.0) or 0.0)
+
+            # Buscar la tarjeta correspondiente
+            matched_card = None
             for card in trades:
-                entry_diff = abs(card.entry_price - float(db_t.entry_price or 0))
-                matched_signal = bool(raw_id_str and raw_id_str in card.trade_id)
-                matched_price = entry_diff < 1.0
-
-                if matched_signal or matched_price:
-                    card.lot_size = safe_num(db_t.lot_size, card.lot_size) or card.lot_size
-                    card.margin_usd = round(card.lot_size * card.entry_price * 100.0 / 100.0, 2)
-                    
-                    if is_closed:
-                        pnl_val = float((db_t.pnl or 0) + (db_t.realized_cash_pnl or 0))
-                        card.pnl_usd = round(pnl_val, 2)
-                        card.status = "WIN" if pnl_val >= 0 else "LOSS"
-                        card.outcome_text = "GANADA" if pnl_val >= 0 else "PERDIDA"
-                        
-                        if "SL" in close_reason_str or "SL" in st_str:
-                            card.exit_price = safe_num(db_t.current_sl, card.sl_price) or card.sl_price
-                        elif "TP" in close_reason_str or "TP" in st_str:
-                            card.exit_price = safe_num(db_t.peak_price or db_t.tp1, card.tp1) or card.tp1
-                        elif getattr(db_t, 'close_price', None):
-                            card.exit_price = float(db_t.close_price)
-                        else:
-                            card.exit_price = safe_num(db_t.current_sl, card.sl_price) or card.sl_price
-                        
-                        if db_t.close_time:
-                            card.closed_at = db_t.close_time.isoformat() if hasattr(db_t.close_time, 'isoformat') else str(db_t.close_time)
-                            card.formatted_closed_at = format_full_datetime(db_t.close_time)
-                        
-    # 4. Evaluación Algorítmica Determinista de Paper Trading para señales históricas concluidas
-    # Las señales pasadas que no están en un slot activo vivo se evalúan con las reglas de la StateMachine
-    now_utc = datetime.now(timezone.utc)
-    for card in trades:
-        if card.status == "OPEN":
-            try:
-                card_dt = None
-                if card.created_at:
-                    clean = card.created_at.replace("Z", "+00:00")
-                    card_dt = datetime.fromisoformat(clean)
-                    if card_dt.tzinfo is None:
-                        card_dt = card_dt.replace(tzinfo=timezone.utc)
+                if raw_id_str and raw_id_str in card.trade_id:
+                    matched_card = card
+                    break
                 
-                age_minutes = ((now_utc - card_dt).total_seconds() / 60.0) if card_dt else 999
-            except Exception:
-                age_minutes = 999
+                # Coincidencia por dirección y precio cercano (dentro de 2.0 USD)
+                if abs(card.entry_price - db_entry) <= 2.0 and card.side.upper() == db_side:
+                    matched_card = card
+                    break
 
-            # Si la señal tiene más de 15 minutos de antigüedad (histórica):
-            if age_minutes > 15:
-                entry = card.entry_price
-                sl = card.sl_price or (entry - 10.0 if card.side == "BUY" else entry + 10.0)
-                tp1 = card.tp1 or (entry + 3.0 if card.side == "BUY" else entry - 3.0)
-                tp2 = card.tp2 or (entry + 10.0 if card.side == "BUY" else entry - 10.0)
-                tp3 = card.tp3 or (entry + 20.0 if card.side == "BUY" else entry - 20.0)
-
-                # Evaluación StateMachine:
-                if card.side == "BUY":
-                    if entry >= 4620.0 and entry <= 4670.0:
-                        # Caída al Stop Loss inicial (-100 pips)
-                        exit_px = sl
-                        card.status = "LOSS"
-                        card.outcome_text = "PERDIDA"
-                        card.exit_price = exit_px
-                        card.pnl_usd = round((sl - entry) * 100.0 * card.lot_size, 2)
-                    elif tp3 and tp3 <= 4500.0:
-                        # Alcanzó TPs
-                        exit_px = tp3
-                        card.status = "WIN"
-                        card.outcome_text = "GANADA"
-                        card.exit_price = exit_px
-                        card.pnl_usd = round(((tp1 - entry) * 0.045 + (tp2 - entry) * 0.0225 + (tp3 - entry) * 0.0225) * 100.0, 2)
-                    else:
-                        # Salida en Stop Loss
-                        exit_px = sl
-                        card.status = "LOSS"
-                        card.outcome_text = "PERDIDA"
-                        card.exit_price = exit_px
-                        card.pnl_usd = round((sl - entry) * 100.0 * card.lot_size, 2)
-                else: # SELL
-                    if entry <= 4640.0:
-                        # Subida al Stop Loss inicial (-80 pips)
-                        exit_px = sl
-                        card.status = "LOSS"
-                        card.outcome_text = "PERDIDA"
-                        card.exit_price = exit_px
-                        card.pnl_usd = round((entry - sl) * 100.0 * card.lot_size, 2)
-                    else:
-                        # TP1 cobrado (50%) + BE
-                        exit_px = tp1
-                        card.status = "WIN"
-                        card.outcome_text = "GANADA"
-                        card.exit_price = exit_px
-                        card.pnl_usd = round((entry - exit_px) * 100.0 * 0.045, 2)
-
-                card.closed_at = card.created_at
-                card.formatted_closed_at = card.formatted_created_at
+            if matched_card:
+                matched_card.apply_db_trade(db_t)
+            else:
+                # Si el trade en DB no tenía tarjeta asociada en raw_messages, crearla directamente
+                open_time_val = getattr(db_t, 'open_time', None)
+                open_time_str = open_time_val.isoformat() if hasattr(open_time_val, 'isoformat') else str(open_time_val or "")
+                new_card = TradeLifecycleCard(
+                    trade_id=f"trade-{db_t.raw_signal_id or db_t.ticket_id}-{int(db_entry)}",
+                    channel_name=getattr(db_t, 'channel_name', None) or "Chartoro FX",
+                    side=db_side,
+                    entry_price=db_entry,
+                    sl_price=safe_num(getattr(db_t, 'current_sl', None)),
+                    tp1=safe_num(getattr(db_t, 'tp1', None)),
+                    tp2=safe_num(getattr(db_t, 'tp2', None)),
+                    tp3=safe_num(getattr(db_t, 'tp3', None)),
+                    created_at=open_time_str,
+                    margin_usd=round(float(getattr(db_t, 'lot_size', 0.03)) * db_entry * 100.0 / 100.0, 2),
+                    lot_size=float(getattr(db_t, 'lot_size', 0.03))
+                )
+                new_card.apply_db_trade(db_t)
+                trades.append(new_card)
 
     return [t.to_dict() for t in reversed(trades)]
 
