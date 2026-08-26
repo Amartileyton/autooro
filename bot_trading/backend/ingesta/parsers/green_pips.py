@@ -14,23 +14,37 @@ RE_GP_ASSET = re.compile(r'(?:#|\b)(XAUUSD|XAU/USD|GOLD|ORO|XAU)\b', re.IGNORECA
 RE_GP_BUY = re.compile(r'(?:#|\b)(BUY|BUY\s+NOW|COMPRA|LONG)\b', re.IGNORECASE)
 RE_GP_SELL = re.compile(r'(?:#|\b)(SELL|SELL\s+NOW|VENTA|SHORT)\b', re.IGNORECASE)
 
-# Rango de entrada: ej. "GOLD BUY 2650-2652" o "BUY XAUUSD @ 2650 - 2653" o "2650.5 - 2652.0"
+# Rango de entrada: ej. "GOLD BUY 2650-2652" o "BUY XAUUSD @ 2650 - 2653" o "Entry : 4658 / 4660"
 RE_ENTRY_RANGE = re.compile(
-    r'(?:BUY|SELL|ENTRY|@|ZONE)?\s*([0-9]{4}(?:[.,][0-9]+)?)\s*(?:-|–|—|TO|\s+A\s+)\s*([0-9]{4}(?:[.,][0-9]+)?)',
+    r'(?:BUY|SELL|ENTRY|ENTRADA|PRECIO|PRICE|ZONE|ZONA|@)?\s*[:=@\s]*([0-9]{4}(?:[.,][0-9]+)?)\s*(?:/|-|–|—|TO|\s+A\s+|\s+HASTA\s+|~|->)\s*([0-9]{4}(?:[.,][0-9]+)?)',
     re.IGNORECASE
 )
 
 # Precios individuales
 RE_PRICE_PATTERN = r'(?:[0-9]{1,2}[.,][0-9]{3}(?:[.,][0-9]+)?|[0-9]{4}(?:[.,][0-9]+)?)'
-RE_GP_ENTRY_SINGLE = re.compile(rf'(?:ENTRY|ENTRY\s*POINT|PRICE|@|NOW|PRECIO)[*_~:\s]*[:@\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_GP_SL = re.compile(rf'(?:SL|STOP\s*LOSS|STOP)[*_~:\s]*[:@\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_GP_TP_NUMBERED = re.compile(rf'(?:TP|TARGET)\s*([1-5])[\s*:]*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_GP_TP_OPEN = re.compile(r'TP\s*:\s*OPEN', re.IGNORECASE)
+RE_GP_ENTRY_SINGLE = re.compile(rf'(?:ENTRY|ENTRY\s*POINT|PRICE|@|NOW|PRECIO|ENTRADA)[*_~:\s]*[:=@\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
+
+# Sop Loss / Stop Loss / Stp Loss / SL / S/L / Stop
+RE_GP_SL = re.compile(
+    rf'(?:STOP\s*LOSS|SOP\s*LOSS|STP\s*LOSS|STOP|SOP|STP|S[./\s]*L)[*_~:\s]*[:=@\s\-]*[*_~:\s]*({RE_PRICE_PATTERN})',
+    re.IGNORECASE
+)
+
+# Take Profit numerado: TP 1, Take Profit 1, Target 1, T1, Objetivo 1, etc.
+RE_GP_TP_NUMBERED = re.compile(
+    rf'(?:TAKE\s*PROFIT|TP|TARGET|OBJETIVO|T)[*_~:\s]*([1-5])[*_~:\s]*[:=@\s\-]*[*_~:\s]*({RE_PRICE_PATTERN})',
+    re.IGNORECASE
+)
+RE_GP_TP_GENERIC = re.compile(
+    rf'(?:TAKE\s*PROFITS?|TPS?|TARGETS?|OBJETIVOS?)[*_~:\s]*[:=@\s]*({RE_PRICE_PATTERN}(?:\s*[/,\-\n\s]+\s*{RE_PRICE_PATTERN})*)',
+    re.IGNORECASE
+)
+RE_GP_TP_OPEN = re.compile(r'(?:TP|TAKE\s*PROFIT|TARGET)\s*:\s*OPEN', re.IGNORECASE)
 
 # Modificadores de Green Pips (Break Even, Close Half, SL modification)
-RE_GP_MOVE_BE = re.compile(r'\b(SET\s*BE|MOVE\s*SL\s*TO\s*BE|BREAK[-\s]?EVEN|SL\s*TO\s*ENTRY|SL\s*->\s*BE)\b', re.IGNORECASE)
-RE_GP_MOVE_SL = re.compile(rf'(?:MOVE\s*SL\s*TO|SET\s*SL\s*TO|SL\s*TO|SL\s*->)\s*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_GP_CLOSE_PARTIAL = re.compile(r'\b(CLOSE\s*HALF|CLOSE\s*50%|CERRAR\s*MITAD|CERRAR\s*PARCIAL|BOOK\s*PROFIT)\b', re.IGNORECASE)
+RE_GP_MOVE_BE = re.compile(r'\b(SET\s*BE|MOVE\s*SL\s*TO\s*BE|BREAK[-\s]?EVEN|SL\s*TO\s*ENTRY|SL\s*->\s*BE|MOVE\s*SL\s*TO\s*BREAKEVEN)\b', re.IGNORECASE)
+RE_GP_MOVE_SL = re.compile(rf'(?:MOVE\s*SL\s*TO|SET\s*SL\s*TO|SL\s*TO|SL\s*->|MOVER\s*SL\s*A)\s*({RE_PRICE_PATTERN})', re.IGNORECASE)
+RE_GP_CLOSE_PARTIAL = re.compile(r'\b(CLOSE\s*HALF|CLOSE\s*50%|CERRAR\s*MITAD|CERRAR\s*PARCIAL|BOOK\s*PROFIT|SECURE\s*GAINS)\b', re.IGNORECASE)
 RE_GP_CLOSE_FULL = re.compile(r'\b(CLOSE\s*NOW|CLOSE\s*ALL|CLOSE\s*TRADE|CERRAR\s*TODO|EXIT\s*NOW)\b', re.IGNORECASE)
 
 # Ruido/Marketing a ignorar
@@ -86,26 +100,29 @@ class GreenPipsParser(BaseSignalParser):
             side = OrderSide.BUY if pos_b < pos_s else OrderSide.SELL
 
         # 4. Extraer Precio de Entrada (Soporte para Rango o Precio Único)
-        entry_price = self._extract_entry(cleaned, side)
+        entry_price, entry_min, entry_max = self._extract_entry(cleaned, side)
         if not entry_price:
             return None
 
-        # 5. Extraer Stop Loss
+        # 5. Extraer Stop Loss (Soporte laxo para Sop Loss, Stp, Stop, SL)
         sl_price, requires_dynamic_sl = self._extract_sl(cleaned)
 
         # 6. Extraer Take Profits
-        tp_levels = self._extract_tps(cleaned, entry_price, side)
+        tp_levels = self._extract_tps(cleaned, entry_price, side, entry_min, entry_max)
         if not tp_levels:
             # Si no hay TPs explícitos, calcular TP1 = +3.0 USD por defecto
-            default_tp1 = (entry_price + Decimal("3.00")) if side == OrderSide.BUY else (entry_price - Decimal("3.00"))
+            ref_entry = entry_max if (side == OrderSide.BUY and entry_max) else (entry_min if entry_min else entry_price)
+            default_tp1 = (ref_entry + Decimal("3.00")) if side == OrderSide.BUY else (ref_entry - Decimal("3.00"))
             tp_levels = [default_tp1]
 
-        # 7. Validar coherencia matemática
+        # 7. Validar coherencia matemática básica
         if not requires_dynamic_sl and sl_price is not None:
-            if side == OrderSide.BUY and (sl_price >= entry_price or tp_levels[0] <= entry_price):
+            ref_entry_low = entry_min if entry_min else entry_price
+            ref_entry_high = entry_max if entry_max else entry_price
+            if side == OrderSide.BUY and (sl_price >= ref_entry_low or tp_levels[0] <= ref_entry_low):
                 logger.warning(f"GreenPips: Señal BUY inconsistente (Entry:{entry_price}, SL:{sl_price}, TP1:{tp_levels[0]})")
                 return None
-            elif side == OrderSide.SELL and (sl_price <= entry_price or tp_levels[0] >= entry_price):
+            elif side == OrderSide.SELL and (sl_price <= ref_entry_high or tp_levels[0] >= ref_entry_high):
                 logger.warning(f"GreenPips: Señal SELL inconsistente (Entry:{entry_price}, SL:{sl_price}, TP1:{tp_levels[0]})")
                 return None
 
@@ -113,6 +130,8 @@ class GreenPipsParser(BaseSignalParser):
             asset="XAUUSD",
             side=side,
             entry_price=entry_price,
+            entry_min=entry_min,
+            entry_max=entry_max,
             sl_price=sl_price,
             tp_levels=tp_levels,
             requires_dynamic_sl=requires_dynamic_sl,
@@ -181,23 +200,28 @@ class GreenPipsParser(BaseSignalParser):
 
         return None
 
-    def _extract_entry(self, text: str, side: OrderSide) -> Optional[Decimal]:
-        # 1. Comprobar si es un rango tipo 2650-2652 (usamos el promedio o límite conservador)
+    def _extract_entry(self, text: str, side: OrderSide) -> Tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal]]:
+        """
+        Extrae el precio de entrada y los límites inferior y superior del rango si aplica.
+        Retorna (entry_price, entry_min, entry_max).
+        """
+        # 1. Comprobar si es un rango tipo "4658 / 4660" o "2650-2652"
         range_match = RE_ENTRY_RANGE.search(text)
         if range_match:
             p1 = sanitize_price_str(range_match.group(1))
             p2 = sanitize_price_str(range_match.group(2))
             if p1 and p2 and p1 >= Decimal("1500") and p2 >= Decimal("1500"):
-                # Promedio del rango de entrada
-                avg = (p1 + p2) / Decimal("2.0")
-                return avg.quantize(Decimal("0.01"))
+                entry_min = min(p1, p2)
+                entry_max = max(p1, p2)
+                avg = ((entry_min + entry_max) / Decimal("2.0")).quantize(Decimal("0.01"))
+                return avg, entry_min, entry_max
 
         # 2. Entrada explícita
         single_match = RE_GP_ENTRY_SINGLE.search(text)
         if single_match:
             px = sanitize_price_str(single_match.group(1))
             if px and px >= Decimal("1500"):
-                return px
+                return px, None, None
 
         # 3. Buscar cualquier número de 4 dígitos en la línea de BUY/SELL
         for line in text.split('\n'):
@@ -206,16 +230,16 @@ class GreenPipsParser(BaseSignalParser):
                 for n in nums:
                     px = sanitize_price_str(n)
                     if px and px >= Decimal("1500"):
-                        return px
+                        return px, None, None
 
         # 4. Fallback: primer número de 4 dígitos encontrado
         all_nums = re.findall(r'\b[0-9]{4}(?:[.,][0-9]+)?\b', text)
         for n in all_nums:
             px = sanitize_price_str(n)
             if px and px >= Decimal("1500"):
-                return px
+                return px, None, None
 
-        return None
+        return None, None, None
 
     def _extract_sl(self, text: str) -> Tuple[Optional[Decimal], bool]:
         match = RE_GP_SL.search(text)
@@ -225,10 +249,25 @@ class GreenPipsParser(BaseSignalParser):
                 return sl, False
         return None, True
 
-    def _extract_tps(self, text: str, entry: Decimal, side: OrderSide) -> List[Decimal]:
+    def _extract_tps(
+        self,
+        text: str,
+        entry: Decimal,
+        side: OrderSide,
+        entry_min: Optional[Decimal] = None,
+        entry_max: Optional[Decimal] = None
+    ) -> List[Decimal]:
+        """
+        Extrae lista ordenada de Take Profits de forma flexible:
+        - TP 1, Take Profit 1, Target 1, etc.
+        - Bloques genéricos tipo 'Take Profits: 4663 / 4666 / 4670'
+        - Fallback filtrando líneas de entrada y Stop Loss para evitar colisiones.
+        """
         tps_dict = {}
+        # 1. Búsqueda de TP numerados
         for m in RE_GP_TP_NUMBERED.finditer(text):
-            idx = int(m.group(1))
+            idx_str = m.group(1)
+            idx = int(idx_str) if idx_str else (len(tps_dict) + 1)
             val = sanitize_price_str(m.group(2))
             if val and val >= Decimal("1500"):
                 tps_dict[idx] = val
@@ -236,13 +275,42 @@ class GreenPipsParser(BaseSignalParser):
         if tps_dict:
             return [tps_dict[k] for k in sorted(tps_dict.keys())]
 
-        # Buscar números posteriores a Entry
-        all_nums = [sanitize_price_str(n) for n in re.findall(r'\b[0-9]{4}(?:[.,][0-9]+)?\b', text)]
-        valid_nums = [n for n in all_nums if n and n >= Decimal("1500") and n != entry]
+        # 2. Bloque genérico Take Profits: 4663 / 4666 / 4670
+        gen_match = RE_GP_TP_GENERIC.search(text)
+        if gen_match:
+            raw_tps = re.findall(r'\b[0-9]{4}(?:[.,][0-9]+)?\b', gen_match.group(1))
+            extracted = []
+            for n in raw_tps:
+                val = sanitize_price_str(n)
+                if val and val >= Decimal("1500") and val != entry:
+                    if entry_min and entry_max and (entry_min <= val <= entry_max):
+                        continue
+                    extracted.append(val)
+            if extracted:
+                return extracted
+
+        # 3. Fallback: extraer números ignorando líneas de Entry, SL, etc.
+        ignored_lines_pattern = re.compile(
+            r'\b(BUY|SELL|ENTRY|ENTRADA|SL|SOP|STOP|LOSS|STP|RANGE|ZONA|ZONE)\b',
+            re.IGNORECASE
+        )
+        remaining_nums = []
+        for line in text.split('\n'):
+            if ignored_lines_pattern.search(line):
+                continue
+            for n in re.findall(r'\b[0-9]{4}(?:[.,][0-9]+)?\b', line):
+                val = sanitize_price_str(n)
+                if val and val >= Decimal("1500"):
+                    if entry_min and entry_max and (entry_min <= val <= entry_max):
+                        continue
+                    if val != entry:
+                        remaining_nums.append(val)
 
         if side == OrderSide.BUY:
-            tps = [n for n in valid_nums if n > entry]
+            cmp_price = entry_max if entry_max else entry
+            tps = [n for n in remaining_nums if n > cmp_price]
         else:
-            tps = [n for n in valid_nums if n < entry]
+            cmp_price = entry_min if entry_min else entry
+            tps = [n for n in remaining_nums if n < cmp_price]
 
-        return tps[:3] if tps else []
+        return tps[:5] if tps else []

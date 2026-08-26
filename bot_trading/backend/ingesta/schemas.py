@@ -27,7 +27,9 @@ class TradingSignalEvent(BaseModel):
     """Esquema normalizado para una nueva señal de entrada."""
     asset: str = Field(default="XAUUSD", description="Activo financiero normalizado")
     side: OrderSide = Field(description="Dirección de la orden: BUY o SELL")
-    entry_price: Decimal = Field(description="Precio de entrada")
+    entry_price: Decimal = Field(description="Precio de entrada (o valor medio del rango)")
+    entry_min: Optional[Decimal] = Field(default=None, description="Límite inferior del rango de entrada si aplica")
+    entry_max: Optional[Decimal] = Field(default=None, description="Límite superior del rango de entrada si aplica")
     sl_price: Optional[Decimal] = Field(default=None, description="Stop Loss explícito si fue provisto")
     tp_levels: List[Decimal] = Field(min_length=1, max_length=5, description="Lista ordenada de Take Profits [TP1, TP2, TP3...]")
     requires_dynamic_sl: bool = Field(default=False, description="True si falta SL y debe calcularse dinámicamente")

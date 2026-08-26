@@ -42,9 +42,9 @@ RE_CLOSE = re.compile(
 
 # Patrones para Extracción de Precios (inmunes a markdown ** y _)
 RE_ENTRY_EXPLICIT = re.compile(rf'(?:ENTRY\s*POINT|ENTRY\s*PRICE|ENTRADA|PRECIO|ENTRY|OPEN|@|NOW)[*_~:\s]*[:@\s]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_SL_EXPLICIT = re.compile(rf'(?:STOP\s*LOSS\s*(?:\(SL\))?|SL)[*_~:\s]*[:@\s]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_TP_NUMBERED = re.compile(rf'TP\s*([1-5])[*_~:\s]*[:@\s]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
-RE_TP_GENERIC = re.compile(rf'(?:TP|TAKE\s*PROFIT|TARGETS?)[*_~:\s]*[:@\s]*({RE_PRICE_PATTERN}(?:\s*[,/\-\n\s]+\s*{RE_PRICE_PATTERN})*)', re.IGNORECASE)
+RE_SL_EXPLICIT = re.compile(rf'(?:STOP\s*LOSS\s*(?:\(SL\))?|SOP\s*LOSS|STP\s*LOSS|STOP|SOP|STP|S[./\s]*L)[*_~:\s]*[:=@\s\-]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
+RE_TP_NUMBERED = re.compile(rf'(?:TAKE\s*PROFIT|TP|TARGET|OBJETIVO|T)[*_~:\s]*([1-5])[*_~:\s]*[:=@\s\-]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
+RE_TP_GENERIC = re.compile(rf'(?:TAKE\s*PROFITS?|TPS?|TARGETS?|OBJETIVOS?)[*_~:\s]*[:=@\s]*({RE_PRICE_PATTERN}(?:\s*[,/\-\n\s]+\s*{RE_PRICE_PATTERN})*)', re.IGNORECASE)
 RE_TP_PIPS = re.compile(r'(?:TP[1-5]?|SET\s+TP[1-5]?)[*_~:\s]*[:@\s]*\+?(\d+)\s*PIPS?', re.IGNORECASE)
 RE_ALL_NUMBERS = re.compile(r'\b[0-9]{1,2}[.,][0-9]{3}(?:[.,][0-9]+)?\b|\b[0-9]{4}(?:[.,][0-9]+)?\b')
 

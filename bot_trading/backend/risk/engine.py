@@ -37,15 +37,33 @@ class RiskEngine:
         else:
             return entry_price + self.dynamic_sl_delta
 
-    async def check_slippage(self, signal_entry: Decimal, side: OrderSide) -> Tuple[bool, Decimal, Decimal]:
+    async def check_slippage(
+        self,
+        signal_entry: Decimal,
+        side: OrderSide,
+        entry_min: Optional[Decimal] = None,
+        entry_max: Optional[Decimal] = None
+    ) -> Tuple[bool, Decimal, Decimal]:
         """
-        Comprueba el tick actual contra el precio de entrada de la señal.
+        Comprueba el tick actual contra el precio de entrada de la señal o rango seguro.
+        Si hay un rango seguro [entry_min, entry_max] y el precio actual está dentro, diff = 0.
         Retorna (is_valid, market_price, diff).
         """
         tick = await self.broker.get_current_tick("XAUUSD")
         market_price = tick.ask if side == OrderSide.BUY else tick.bid
-        diff = abs(market_price - signal_entry)
 
+        if entry_min is not None and entry_max is not None:
+            # Caso 1: Dentro del rango seguro de entrada
+            if entry_min <= market_price <= entry_max:
+                return True, market_price, Decimal("0.00")
+            elif market_price < entry_min:
+                diff = entry_min - market_price
+                return diff <= self.slippage_tolerance, market_price, diff
+            else:
+                diff = market_price - entry_max
+                return diff <= self.slippage_tolerance, market_price, diff
+
+        diff = abs(market_price - signal_entry)
         is_valid = diff <= self.slippage_tolerance
         return is_valid, market_price, diff
 

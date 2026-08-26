@@ -94,11 +94,15 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # 3. Comprobar Slippage Zero-Tolerance
-            is_slippage_ok, market_price, diff = await risk_engine.check_slippage(event.entry_price, event.side)
+            # 3. Comprobar Slippage Zero-Tolerance o Rango Seguro de Entrada
+            entry_min = getattr(event, 'entry_min', None)
+            entry_max = getattr(event, 'entry_max', None)
+            is_slippage_ok, market_price, diff = await risk_engine.check_slippage(
+                event.entry_price, event.side, entry_min=entry_min, entry_max=entry_max
+            )
             if not is_slippage_ok:
                 logger.warning(
-                    f"Señal RECHAZADA por Slippage: Entrada={event.entry_price}, "
+                    f"Señal RECHAZADA por Slippage: Entrada={event.entry_price} (Rango: {entry_min}-{entry_max}), "
                     f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
                 )
                 await state_machine.emit_alert("SIGNAL_REJECTED", {
@@ -109,21 +113,24 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # 3. Calcular Stop Loss (explícito o dinámico)
+            # 4. Calcular Stop Loss (explícito o dinámico)
             sl = event.sl_price
             if event.requires_dynamic_sl or sl is None:
                 sl = risk_engine.calculate_dynamic_sl(event.side, event.entry_price)
 
-            # 4. Calcular Lot Sizing exacto (25% del Margen Libre)
+            # 5. Calcular Lot Sizing exacto (25% del Margen Libre)
             account_info = await broker.get_account_info()
-            lot_size = await risk_engine.calculate_lot_size(event.entry_price, account_info)
+            lot_size = await risk_engine.calculate_lot_size(market_price if (entry_min and entry_max and entry_min <= market_price <= entry_max) else event.entry_price, account_info)
 
-            # 5. Abrir Trade y activar en State Machine
+            # Precio real de entrada (si el mercado está dentro del rango seguro, entra a precio de mercado)
+            actual_entry = market_price if (entry_min and entry_max and entry_min <= market_price <= entry_max) else event.entry_price
+
+            # 6. Abrir Trade y activar en State Machine
             trade = await state_machine.open_new_trade(
                 slot_id=slot_id,
                 side=event.side,
                 lot_size=lot_size,
-                entry_price=event.entry_price,
+                entry_price=actual_entry,
                 sl=sl,
                 tp_levels=event.tp_levels,
                 raw_signal_id=event.message_id,

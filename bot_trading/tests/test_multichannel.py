@@ -53,6 +53,79 @@ def test_green_pips_modifiers():
     assert event_half.close_percentage == Decimal("50.0")
 
 
+def test_green_pips_slash_range_sop_loss_and_take_profit():
+    """Valida la extracción exacta de señales con Sop Loss, rango con / y Take Profit 1..3."""
+    text = """Pair (Gold vs USD)
+
+ 
+Direction: BUY 
+Entry : 4658 / 4660
+
+✔️Take Profit 1 4663
+✔️Take Profit 2 4666
+✔️Take Profit 3 4670
+
+😢Sop Loss 4652
+
+
+🫣🔤Risk Management Is Important"""
+    event = parse_signal_by_channel(text, message_id=305, channel_name="XAU(USD) GREEN PIPS")
+    assert isinstance(event, TradingSignalEvent)
+    assert event.side == OrderSide.BUY
+    assert event.entry_price == Decimal("4659.00")
+    assert event.entry_min == Decimal("4658.00")
+    assert event.entry_max == Decimal("4660.00")
+    assert event.sl_price == Decimal("4652.00")
+    assert event.requires_dynamic_sl is False
+    assert event.tp_levels == [Decimal("4663.00"), Decimal("4666.00"), Decimal("4670.00")]
+    assert event.channel_name == "XAU(USD) GREEN PIPS"
+
+
+@pytest.mark.asyncio
+async def test_safe_entry_range_slippage_check():
+    from backend.broker.paper import LocalPaperBroker
+    from backend.risk.engine import RiskEngine
+
+    broker = LocalPaperBroker()
+    broker._current_ask = Decimal("4659.00")  # Dentro de 4658 - 4660
+    broker._current_bid = Decimal("4659.00")
+    risk = RiskEngine(broker=broker)
+
+    # 1. Precio dentro del rango seguro [4658, 4660] -> diff = 0.00
+    is_ok, mkt_px, diff = await risk.check_slippage(
+        signal_entry=Decimal("4659.00"),
+        side=OrderSide.BUY,
+        entry_min=Decimal("4658.00"),
+        entry_max=Decimal("4660.00")
+    )
+    assert is_ok is True
+    assert diff == Decimal("0.00")
+
+    # 2. Precio ligeramente fuera por encima (4661.00 -> diff = 1.00 <= 2.00)
+    broker._current_ask = Decimal("4661.00")
+    broker._current_bid = Decimal("4661.00")
+    is_ok, mkt_px, diff = await risk.check_slippage(
+        signal_entry=Decimal("4659.00"),
+        side=OrderSide.BUY,
+        entry_min=Decimal("4658.00"),
+        entry_max=Decimal("4660.00")
+    )
+    assert is_ok is True
+    assert diff <= Decimal("2.00")
+
+    # 3. Precio muy lejos (4665.00 -> diff = 5.00 > 2.00)
+    broker._current_ask = Decimal("4665.00")
+    broker._current_bid = Decimal("4665.00")
+    is_ok, mkt_px, diff = await risk.check_slippage(
+        signal_entry=Decimal("4659.00"),
+        side=OrderSide.BUY,
+        entry_min=Decimal("4658.00"),
+        entry_max=Decimal("4660.00")
+    )
+    assert is_ok is False
+    assert diff > Decimal("2.00")
+
+
 @pytest.mark.asyncio
 async def test_channels_performance_endpoint():
     from backend.database.session import AsyncSessionLocal
