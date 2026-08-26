@@ -63,6 +63,7 @@ class TelegramIngestionClient:
         logger.info("Telethon MTProto: Sesión AUTORIZADA correctamente y conectada.")
 
         # Resolver e identificar todos los canales configurados
+        import unicodedata
         self.known_channels = {}
         target_ids = []
 
@@ -79,10 +80,15 @@ class TelegramIngestionClient:
                 if cfg_id and cfg_id != 0:
                     resolved_id = cfg_id
                 else:
-                    # 2. Buscar por nombre en los diálogos
+                    # 2. Buscar por nombre en los diálogos (con normalización unicode)
+                    cfg_name_norm = unicodedata.normalize('NFKD', cfg_name).upper()
                     for d_id, d in dialogs_map.items():
                         title = getattr(d, 'title', '') or getattr(d, 'name', '')
-                        if cfg_name.upper() in title.upper() or ("GREEN" in cfg_name.upper() and "GREEN" in title.upper()):
+                        title_norm = unicodedata.normalize('NFKD', title).upper()
+                        username = getattr(d.entity, 'username', '') if hasattr(d, 'entity') and hasattr(d.entity, 'username') else ''
+                        if (cfg_name_norm in title_norm or 
+                            ("GREEN" in cfg_name_norm and "GREEN" in title_norm) or
+                            (username and username.lower() == "accesschannellink")):
                             resolved_id = d_id
                             ch_cfg["id"] = resolved_id
                             logger.info(f"Canal '{cfg_name}' resuelto dinámicamente con ID {resolved_id}")

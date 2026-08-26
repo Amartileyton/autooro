@@ -53,15 +53,15 @@ class Settings(BaseSettings):
             {
                 "id": -1002763662248,
                 "name": "Chartoro FX",
-                "link": "",
+                "link": "https://t.me/chartoro",
                 "parser": "chartoro",
                 "mode": "AUDIT",
                 "enabled": True
             },
             {
-                "id": 0,
+                "id": -1003674180002,
                 "name": "XAU(USD) GREEN PIPS",
-                "link": "https://t.me/AccessChannelLink",
+                "link": "https://t.me/accesschannellink",
                 "parser": "green_pips",
                 "mode": "AUDIT",
                 "enabled": True

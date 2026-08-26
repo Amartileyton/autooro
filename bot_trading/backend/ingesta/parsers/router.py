@@ -13,6 +13,8 @@ _PARSERS: Dict[str, BaseSignalParser] = {
     "green_pips": GreenPipsParser(),
 }
 
+import unicodedata
+
 def get_channel_metadata(channel_id: Optional[int] = None, channel_name: Optional[str] = None) -> dict:
     """Obtiene la configuración de canal registrada en settings.CHANNELS_CONFIG."""
     channels = getattr(settings, 'CHANNELS_CONFIG', []) or []
@@ -23,19 +25,36 @@ def get_channel_metadata(channel_id: Optional[int] = None, channel_name: Optiona
             if c.get("id") and int(c.get("id")) == int(channel_id):
                 return c
 
-    # Búsqueda por coincidencia de nombre
+    # Búsqueda por coincidencia de nombre (normalizando fuentes unicode/negritas como 𝐗𝐀𝐔(𝐔𝐒𝐃) 𝐆𝐑𝐄𝐄𝐍 𝐏𝐈𝐏𝐒)
     if channel_name:
-        name_upper = channel_name.upper()
+        name_norm = unicodedata.normalize('NFKD', str(channel_name)).upper()
         for c in channels:
-            cname = c.get("name", "").upper()
-            if cname in name_upper or name_upper in cname or ("GREEN" in name_upper and "GREEN" in cname):
+            cname_norm = unicodedata.normalize('NFKD', str(c.get("name", ""))).upper()
+            if cname_norm in name_norm or name_norm in cname_norm or ("GREEN" in name_norm and "GREEN" in cname_norm):
                 return c
 
-    # Fallback predeterminado: Chartoro FX en AUDIT
+    # Fallback predeterminado según nombre o ID
+    is_green = False
+    if channel_id and int(channel_id) == -1003674180002:
+        is_green = True
+    elif channel_name:
+        norm = unicodedata.normalize('NFKD', str(channel_name)).upper()
+        if "GREEN" in norm or "ACCESS" in norm:
+            is_green = True
+
+    if is_green:
+        return {
+            "id": channel_id or -1003674180002,
+            "name": channel_name or "XAU(USD) GREEN PIPS",
+            "parser": "green_pips",
+            "mode": "AUDIT",
+            "enabled": True
+        }
+
     return {
         "id": channel_id or -1002763662248,
         "name": channel_name or "Chartoro FX",
-        "parser": "green_pips" if (channel_name and "GREEN" in channel_name.upper()) else "chartoro",
+        "parser": "chartoro",
         "mode": "AUDIT",
         "enabled": True
     }
