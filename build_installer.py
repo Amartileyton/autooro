@@ -31,8 +31,8 @@ echo "{b64_data}" | base64 -d | tar -xzf -
 cd bot_trading
 
 echo "🐳 2/2 Reconstruyendo y levantando contenedores Docker..."
-sudo docker-compose down --remove-orphans || true
-sudo docker-compose up -d --build
+sudo docker compose down --remove-orphans || true
+sudo docker compose up -d --build
 
 echo ""
 echo "=================================================="

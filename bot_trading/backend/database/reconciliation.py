@@ -41,6 +41,10 @@ async def run_startup_reconciliation(
         )
         open_trades: List[Trade] = list(session.scalars(stmt).all())
 
+        # 0. Sincronizar balance acumulado persistente del broker
+        if hasattr(broker, "sync_balance_from_db"):
+            broker.sync_balance_from_db()
+
         if not open_trades:
             logger.info("Reconciliación completa: No existen órdenes abiertas en base de datos.")
             return

@@ -25,6 +25,9 @@ class LocalPaperBroker(BaseBrokerAdapter):
         self.leverage: Decimal = settings.LEVERAGE
         self.contract_size: Decimal = settings.CONTRACT_SIZE
         
+        # Sincronizar balance persistente con el PnL acumulado de trades cerrados en base de datos
+        self.sync_balance_from_db()
+        
         # Precio actual de simulación (sincronizado con mercado real de Oro)
         self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE
         if self._current_mid_price < Decimal("4000.00"):
@@ -42,8 +45,33 @@ class LocalPaperBroker(BaseBrokerAdapter):
         self._tick_task: Optional[asyncio.Task] = None
         self._is_running = False
 
+    def sync_balance_from_db(self):
+        """Sincroniza el balance con el capital inicial más la suma de PnL de todos los trades cerrados en SQLite."""
+        try:
+            from backend.database.session import sync_engine
+            from backend.database.models import Trade, TradeStatus
+            from sqlalchemy.orm import Session
+            from sqlalchemy import select
+
+            with Session(sync_engine) as session:
+                stmt = select(Trade.pnl).where(
+                    Trade.status.not_in([
+                        TradeStatus.OPEN,
+                        TradeStatus.TP1_HIT,
+                        TradeStatus.TP2_HIT,
+                        TradeStatus.PENDING
+                    ])
+                )
+                closed_pnls = session.scalars(stmt).all()
+                total_realized = sum((pnl for pnl in closed_pnls if pnl is not None), Decimal("0.00"))
+                self.balance = (settings.INITIAL_PAPER_BALANCE + total_realized).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                logger.info(f"[PAPER BROKER] Balance persistente sincronizado: PnL acumulado = ${total_realized:+.2f} USD -> Balance Total: ${self.balance:.2f} USD")
+        except Exception as e:
+            logger.debug(f"[PAPER BROKER] Nota al sincronizar balance desde DB: {e}")
+
     async def connect(self) -> bool:
-        """Inicia el generador de ticks en segundo plano."""
+        """Inicia el generador de ticks en segundo plano y actualiza el balance."""
+        self.sync_balance_from_db()
         if not self._is_running:
             self._is_running = True
             self._tick_task = asyncio.create_task(self._tick_generator_loop())
