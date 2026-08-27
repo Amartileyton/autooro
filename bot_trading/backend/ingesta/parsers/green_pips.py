@@ -43,7 +43,11 @@ RE_GP_TP_OPEN = re.compile(r'(?:TP|TAKE\s*PROFIT|TARGET)\s*:\s*OPEN', re.IGNOREC
 
 # Modificadores de Green Pips (Break Even, Close Half, SL modification)
 RE_GP_MOVE_BE = re.compile(r'\b(SET\s*BE|MOVE\s*SL\s*TO\s*BE|BREAK[-\s]?EVEN|SL\s*TO\s*ENTRY|SL\s*->\s*BE|MOVE\s*SL\s*TO\s*BREAKEVEN)\b', re.IGNORECASE)
-RE_GP_MOVE_SL = re.compile(rf'(?:MOVE\s*SL\s*TO|SET\s*SL\s*TO|SL\s*TO|SL\s*->|MOVER\s*SL\s*A)\s*({RE_PRICE_PATTERN})', re.IGNORECASE)
+RE_GP_MOVE_SL = re.compile(
+    rf'(?:MOVE|SET|SHIFT|UPDATE|MOVER|AJUSTAR)\s*(?:YOUR\s+|TU\s+)?(?:STOP\s*LOSS|SOP\s*LOSS|STP\s*LOSS|SL)\s*(?:TO|A|AT|->|:|\s)\s*({RE_PRICE_PATTERN})'
+    rf'|(?:SL|SOP|STOP)\s*(?:TO|A|AT|->)\s*({RE_PRICE_PATTERN})',
+    re.IGNORECASE
+)
 RE_GP_CLOSE_PARTIAL = re.compile(r'\b(CLOSE\s*HALF|CLOSE\s*50%|CERRAR\s*MITAD|CERRAR\s*PARCIAL|BOOK\s*PROFIT|SECURE\s*GAINS)\b', re.IGNORECASE)
 RE_GP_CLOSE_FULL = re.compile(r'\b(CLOSE\s*NOW|CLOSE\s*ALL|CLOSE\s*TRADE|CERRAR\s*TODO|EXIT\s*NOW)\b', re.IGNORECASE)
 
@@ -147,7 +151,8 @@ class GreenPipsParser(BaseSignalParser):
         # Move SL to specific price
         match_sl = RE_GP_MOVE_SL.search(text)
         if match_sl:
-            px = sanitize_price_str(match_sl.group(1))
+            raw_px = match_sl.group(1) or match_sl.group(2)
+            px = sanitize_price_str(raw_px)
             if px and px >= Decimal("1500"):
                 return ModifierSignalEvent(
                     signal_type=SignalType.MOVE_SL,

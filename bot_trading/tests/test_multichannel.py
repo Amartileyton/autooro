@@ -167,3 +167,59 @@ Entry : 4618 / 4615
     assert cards[0]["outcome_text"] == "FUERA PRECIO"
     assert cards[0]["entry_price"] == 4616.50
 
+
+def test_move_your_sl_modifier_parsing():
+    from backend.ingesta.parsers.green_pips import GreenPipsParser
+    from backend.ingesta.parsers.chartoro import ChartoroParser
+    from backend.ingesta.schemas import SignalType
+
+    gp_parser = GreenPipsParser()
+    chartoro_parser = ChartoroParser()
+
+    # Green Pips: "MOVE YOUR SL 4603"
+    event_gp = gp_parser.parse("MOVE YOUR SL 4603", message_id=2633)
+    assert event_gp is not None
+    assert event_gp.signal_type == SignalType.MOVE_SL
+    assert event_gp.target_price == Decimal("4603.00")
+
+    # Green Pips: "MOVE SL 4603"
+    event_gp2 = gp_parser.parse("MOVE SL 4603", message_id=2634)
+    assert event_gp2 is not None
+    assert event_gp2.signal_type == SignalType.MOVE_SL
+    assert event_gp2.target_price == Decimal("4603.00")
+
+    # Chartoro: "MOVE YOUR SL 4610"
+    event_ch = chartoro_parser.parse("MOVE YOUR SL 4610", message_id=8016)
+    assert event_ch is not None
+    assert event_ch.signal_type == SignalType.MOVE_SL
+    assert event_ch.target_price == Decimal("4610.00")
+
+
+def test_risk_engine_sl_circuit_breaker():
+    from backend.broker.paper import LocalPaperBroker
+    from backend.risk.engine import RiskEngine
+    from backend.ingesta.schemas import OrderSide
+
+    broker = LocalPaperBroker()
+    risk = RiskEngine(broker=broker)
+
+    # 1. SL desorbitado de $108.50 en BUY (ej. señal real: Entry 4616.50, SL 4508)
+    entry_buy = Decimal("4616.50")
+    exorbitant_sl_buy = Decimal("4508.00")
+    sanitized_buy = risk.sanitize_sl(OrderSide.BUY, entry_buy, exorbitant_sl_buy)
+    # Debe topar a máx $15 USD: 4616.50 - 15.00 = 4601.50
+    assert sanitized_buy == Decimal("4601.50")
+
+    # 2. SL normal de $8.50 en BUY (Entry 4616.50, SL 4608.00)
+    normal_sl_buy = Decimal("4608.00")
+    sanitized_normal = risk.sanitize_sl(OrderSide.BUY, entry_buy, normal_sl_buy)
+    assert sanitized_normal == Decimal("4608.00")
+
+    # 3. SL desorbitado en SELL (Entry 4600.00, SL 4750.00)
+    entry_sell = Decimal("4600.00")
+    exorbitant_sl_sell = Decimal("4750.00")
+    sanitized_sell = risk.sanitize_sl(OrderSide.SELL, entry_sell, exorbitant_sl_sell)
+    # Debe topar a máx $15 USD: 4600.00 + 15.00 = 4615.00
+    assert sanitized_sell == Decimal("4615.00")
+
+

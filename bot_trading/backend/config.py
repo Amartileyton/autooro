@@ -86,6 +86,10 @@ class Settings(BaseSettings):
         default=Decimal("8.50"),
         description="Delta en USD para SL dinámico si la señal no especifica SL"
     )
+    MAX_ALLOWED_SL_DELTA_USD: Decimal = Field(
+        default=Decimal("15.00"),
+        description="Distancia máxima de riesgo permitida para Stop Loss en USD (Circuit Breaker)"
+    )
     AUTO_EXECUTION_ENABLED: bool = Field(default=True, description="Flag maestro para habilitar/pausar auto-ejecución")
 
     # Capa de Broker

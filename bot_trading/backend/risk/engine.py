@@ -29,6 +29,7 @@ class RiskEngine:
         self.lot_step = settings.LOT_STEP
         self.slippage_tolerance = settings.SLIPPAGE_TOLERANCE_USD
         self.dynamic_sl_delta = settings.DEFAULT_DYNAMIC_SL_DELTA_USD
+        self.max_allowed_sl_delta = getattr(settings, 'MAX_ALLOWED_SL_DELTA_USD', Decimal("15.00"))
 
     def calculate_dynamic_sl(self, side: OrderSide, entry_price: Decimal) -> Decimal:
         """Calcula el SL dinámico si la señal no especificó uno explícito."""
@@ -36,6 +37,46 @@ class RiskEngine:
             return entry_price - self.dynamic_sl_delta
         else:
             return entry_price + self.dynamic_sl_delta
+
+    def sanitize_sl(self, side: OrderSide, entry_price: Decimal, sl_price: Optional[Decimal]) -> Decimal:
+        """
+        Valida y acota el Stop Loss de una señal:
+        - Si no tiene SL o es None: usa calculate_dynamic_sl (ej. 8.50 USD).
+        - Si el SL explícito supera MAX_ALLOWED_SL_DELTA_USD (ej. 15.00 USD), lo recorta automáticamente al límite de seguridad máximo.
+        - Garantiza coherencia matemática (para BUY, SL < Entry; para SELL, SL > Entry).
+        """
+        if sl_price is None:
+            return self.calculate_dynamic_sl(side, entry_price)
+
+        if side == OrderSide.BUY:
+            if sl_price >= entry_price:
+                logger.warning(f"SL incoherente para BUY ({sl_price} >= {entry_price}). Aplicando SL dinámico.")
+                return self.calculate_dynamic_sl(side, entry_price)
+            
+            delta = entry_price - sl_price
+            if delta > self.max_allowed_sl_delta:
+                capped_sl = (entry_price - self.max_allowed_sl_delta).quantize(Decimal("0.01"))
+                logger.warning(
+                    f"⚠️ [CIRCUIT BREAKER] SL explícito desorbitado (${delta:.2f} USD vs max ${self.max_allowed_sl_delta:.2f} USD). "
+                    f"Ajustado automáticamente de {sl_price} a {capped_sl}"
+                )
+                return capped_sl
+            return sl_price
+
+        else:  # SELL
+            if sl_price <= entry_price:
+                logger.warning(f"SL incoherente para SELL ({sl_price} <= {entry_price}). Aplicando SL dinámico.")
+                return self.calculate_dynamic_sl(side, entry_price)
+            
+            delta = sl_price - entry_price
+            if delta > self.max_allowed_sl_delta:
+                capped_sl = (entry_price + self.max_allowed_sl_delta).quantize(Decimal("0.01"))
+                logger.warning(
+                    f"⚠️ [CIRCUIT BREAKER] SL explícito desorbitado (${delta:.2f} USD vs max ${self.max_allowed_sl_delta:.2f} USD). "
+                    f"Ajustado automáticamente de {sl_price} a {capped_sl}"
+                )
+                return capped_sl
+            return sl_price
 
     async def check_slippage(
         self,

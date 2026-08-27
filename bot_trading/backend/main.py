@@ -131,17 +131,15 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # 4. Calcular Stop Loss (explícito o dinámico)
-            sl = event.sl_price
-            if event.requires_dynamic_sl or sl is None:
-                sl = risk_engine.calculate_dynamic_sl(event.side, event.entry_price)
+            # Precio real de entrada (si el mercado está dentro del rango seguro, entra a precio de mercado)
+            actual_entry = market_price if (entry_min and entry_max and entry_min <= market_price <= entry_max) else event.entry_price
+
+            # 4. Calcular Stop Loss (explícito sanitizado con Circuit Breaker máx $15 USD o dinámico)
+            sl = risk_engine.sanitize_sl(event.side, actual_entry, event.sl_price)
 
             # 5. Calcular Lot Sizing exacto (25% del Margen Libre)
             account_info = await broker.get_account_info()
-            lot_size = await risk_engine.calculate_lot_size(market_price if (entry_min and entry_max and entry_min <= market_price <= entry_max) else event.entry_price, account_info)
-
-            # Precio real de entrada (si el mercado está dentro del rango seguro, entra a precio de mercado)
-            actual_entry = market_price if (entry_min and entry_max and entry_min <= market_price <= entry_max) else event.entry_price
+            lot_size = await risk_engine.calculate_lot_size(actual_entry, account_info)
 
             # 6. Abrir Trade y activar en State Machine
             trade = await state_machine.open_new_trade(

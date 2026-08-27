@@ -316,6 +316,8 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                         <strong className={`font-bold ${isWin ? 'text-emerald-400' : 'text-crimson-red'}`}>
                           ${safePrice(t.exit_price)}
                         </strong>
+                      ) : isRejected ? (
+                        <span className="text-slate-400 font-mono text-[10px] font-semibold">FUERA PRECIO</span>
                       ) : (
                         <span className="text-primary font-mono text-[10px] italic">En Curso...</span>
                       )}
@@ -393,13 +395,18 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                   </div>
                 </div>
 
-                {/* Modificaciones posteriores si existen */}
-                {t.modifications && t.modifications.length > 0 && (
+                {/* Modificaciones posteriores o motivo de descarte */}
+                {isRejected ? (
+                  <div className="pl-1.5 text-[9px] font-mono text-slate-400 bg-slate-500/10 p-1 rounded border border-slate-500/20 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[12px]">block</span>
+                    Sin ejecución: precio fuera de horquilla al recibir la señal
+                  </div>
+                ) : t.modifications && t.modifications.length > 0 ? (
                   <div className="pl-1.5 text-[9px] font-mono text-amber-300 bg-amber-500/10 p-1 rounded border border-amber-500/20 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[12px]">update</span>
                     {t.modifications[t.modifications.length - 1]}
                   </div>
-                )}
+                ) : null}
               </div>
             );
           })

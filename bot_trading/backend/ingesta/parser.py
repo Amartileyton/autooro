@@ -29,7 +29,11 @@ RE_IGNORE_INFORMATIONAL = re.compile(
 RE_PRICE_PATTERN = r'(?:[0-9]{1,2}[.,][0-9]{3}(?:[.,][0-9]+)?|[0-9]{4}(?:[.,][0-9]+)?)'
 
 # Patrones para Modificadores
-RE_MOVE_SL = re.compile(rf'(?:MOVE\s+SL\s+TO|MOVER\s+SL\s+A|SL\s+TO|SL\s*->)\s*({RE_PRICE_PATTERN})', re.IGNORECASE)
+RE_MOVE_SL = re.compile(
+    rf'(?:MOVE|SET|SHIFT|UPDATE|MOVER|AJUSTAR)\s*(?:YOUR\s+|TU\s+)?(?:STOP\s*LOSS|SOP\s*LOSS|STP\s*LOSS|SL)\s*(?:TO|A|AT|->|:|\s)\s*({RE_PRICE_PATTERN})'
+    rf'|(?:SL|SOP|STOP)\s*(?:TO|A|AT|->)\s*({RE_PRICE_PATTERN})',
+    re.IGNORECASE
+)
 RE_MOVE_BE = re.compile(r'\b(SET\s+BE|MOVE\s+SL\s+TO\s+BREAK[-\s]?EVEN|MOVER\s+A\s+BE|BREAK[-\s]?EVEN|BE)\b', re.IGNORECASE)
 RE_CLOSE = re.compile(
     r'(?:CLOSE\s+NOW|CLOSE\s+ORDER|CLOSE\s+SETUP|CLOSE\s+TRADE|'
@@ -204,7 +208,8 @@ def _check_modifiers(
     # Move SL to [price]
     match_sl = RE_MOVE_SL.search(text)
     if match_sl:
-        target_price = sanitize_price_str(match_sl.group(1))
+        raw_px = match_sl.group(1) or match_sl.group(2)
+        target_price = sanitize_price_str(raw_px)
         if target_price:
             return ModifierSignalEvent(
                 signal_type=SignalType.MOVE_SL,
