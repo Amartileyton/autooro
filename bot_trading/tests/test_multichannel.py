@@ -139,3 +139,31 @@ async def test_channels_performance_endpoint():
         channel_names = [c["name"] for c in result["channels"]]
         assert "Chartoro FX" in channel_names
         assert any("GREEN" in name for name in channel_names)
+
+
+def test_unexecuted_signal_lifecycle_card_marked_fuera_precio():
+    from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+
+    # Mensaje de señal no ejecutado
+    msg = MagicMock()
+    msg.id = 101
+    msg.message_id = 2632
+    msg.channel_name = "XAU(USD) GREEN PIPS"
+    msg.channel_id = -1003674180002
+    msg.raw_text = """Pair (Gold vs USD)
+Direction: BUY 
+Entry : 4618 / 4615
+✔️Take Profit 1 4623
+😢Sop Loss 4508"""
+    msg.received_at = datetime(2026, 8, 27, 5, 23, 51, tzinfo=timezone.utc)
+    msg.error_reason = "FUERA PRECIO"
+
+    # Sin trades ejecutados
+    cards = consolidate_telegram_trade_lifecycle([msg], executed_trades=[])
+    assert len(cards) == 1
+    assert cards[0]["status"] == "REJECTED"
+    assert cards[0]["outcome_text"] == "FUERA PRECIO"
+    assert cards[0]["entry_price"] == 4616.50
+

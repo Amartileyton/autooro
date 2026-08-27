@@ -331,6 +331,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             continue
 
     # 3. Sincronización Directa y Absoluta con la tabla 'trades' del motor de mercado
+    matched_card_ids = set()
     if executed_trades:
         for db_t in executed_trades:
             raw_id = getattr(db_t, 'raw_signal_id', None)
@@ -352,6 +353,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
 
             if matched_card:
                 matched_card.apply_db_trade(db_t)
+                matched_card_ids.add(id(matched_card))
             else:
                 # Si el trade en DB no tenía tarjeta asociada en raw_messages, crearla directamente
                 open_time_val = getattr(db_t, 'open_time', None)
@@ -370,7 +372,14 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                     lot_size=float(getattr(db_t, 'lot_size', 0.03))
                 )
                 new_card.apply_db_trade(db_t)
+                matched_card_ids.add(id(new_card))
                 trades.append(new_card)
+
+    # 4. Cualquier tarjeta de señal que no se haya ejecutado en el broker/DB se marca como descartada "FUERA PRECIO"
+    for card in trades:
+        if id(card) not in matched_card_ids:
+            card.status = "REJECTED"
+            card.outcome_text = "FUERA PRECIO"
 
     return [t.to_dict() for t in reversed(trades)]
 

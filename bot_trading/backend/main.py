@@ -105,10 +105,28 @@ async def signal_consumer_worker(
                     f"Señal RECHAZADA por Slippage: Entrada={event.entry_price} (Rango: {entry_min}-{entry_max}), "
                     f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
                 )
+                if event.message_id:
+                    try:
+                        from backend.database.session import AsyncSessionLocal
+                        from backend.database.models import RawTelegramMessage
+                        from sqlalchemy import update
+                        async with AsyncSessionLocal() as session:
+                            stmt = (
+                                update(RawTelegramMessage)
+                                .where(RawTelegramMessage.message_id == event.message_id)
+                                .values(error_reason="FUERA PRECIO")
+                            )
+                            await session.execute(stmt)
+                            await session.commit()
+                    except Exception as db_err:
+                        logger.debug(f"Aviso al actualizar error_reason en DB: {db_err}")
+
                 await state_machine.emit_alert("SIGNAL_REJECTED", {
-                    "reason": "REJECTED_PRICE_MISMATCH",
+                    "reason": "FUERA PRECIO",
                     "diff": float(diff),
-                    "market_price": float(market_price)
+                    "market_price": float(market_price),
+                    "message_id": event.message_id,
+                    "entry_price": float(event.entry_price)
                 })
                 queue.task_done()
                 continue

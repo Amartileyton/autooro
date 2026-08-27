@@ -14,7 +14,7 @@ export interface TradeLifecycleCardItem {
   tp1?: number | null;
   tp2?: number | null;
   tp3?: number | null;
-  status: 'OPEN' | 'WIN' | 'LOSS';
+  status: 'OPEN' | 'WIN' | 'LOSS' | 'REJECTED';
   outcome_text: string;
   created_at: string;
   formatted_created_at?: string;
@@ -179,6 +179,8 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
             const isTp2Triggered = isWin && !isTp3Triggered && exitPriceNum > 0 && tp2Num > 0 && Math.abs(exitPriceNum - tp2Num) < 1.5;
             const isTp1Triggered = isWin && !isTp3Triggered && !isTp2Triggered;
             const isSlTriggered = isLoss;
+            const isRejected = status === 'REJECTED' || (t.outcome_text && t.outcome_text.toUpperCase().includes('FUERA'));
+            const isOpen = status === 'OPEN' && !isRejected;
 
             const isGreenPipsCard = (t.channel_name || '').toUpperCase().includes('GREEN');
 
@@ -195,6 +197,10 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
               borderColor = 'border-crimson-red/80 shadow-[0_0_10px_rgba(239,68,68,0.18)]';
               bgColor = 'bg-[#221215]';
               statusBadge = 'bg-crimson-red/20 text-crimson-red border-crimson-red/50';
+            } else if (isRejected) {
+              borderColor = 'border-slate-700/60';
+              bgColor = 'bg-[#15171e]';
+              statusBadge = 'bg-slate-500/15 text-slate-400 border-slate-500/40';
             } else if (isOpen) {
               borderColor = 'border-primary/80 shadow-[0_0_10px_rgba(59,130,246,0.18)] animate-pulse';
               bgColor = 'bg-[#121c29]';
@@ -211,7 +217,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                 {/* Borde lateral indicador de estado */}
                 <div
                   className={`absolute top-0 left-0 w-1.5 h-full ${
-                    isWin ? 'bg-emerald-green' : isLoss ? 'bg-crimson-red' : 'bg-primary'
+                    isWin ? 'bg-emerald-green' : isLoss ? 'bg-crimson-red' : isRejected ? 'bg-slate-500' : 'bg-primary'
                   }`}
                 />
 
@@ -262,6 +268,11 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                       >
                         <path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm3.71,12.29a1,1,0,0,1,0,1.42,1,1,0,0,1-1.42,0L12,13.42,9.71,15.71a1,1,0,0,1-1.42,0,1,1,0,0,1,0-1.42L10.58,12,8.29,9.71A1,1,0,0,1,9.71,8.29L12,10.58l2.29-2.29a1,1,0,0,1,1.42,1.42L13.42,12Z" />
                       </svg>
+                    ) : isRejected ? (
+                      <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold border flex items-center gap-1 bg-slate-500/15 text-slate-400 border-slate-500/40">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                        FUERA PRECIO
+                      </span>
                     ) : (
                       <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold border flex items-center gap-1 ${statusBadge}`}>
                         <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
