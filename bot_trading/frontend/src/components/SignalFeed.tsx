@@ -164,7 +164,6 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
             const status = t.status || 'OPEN';
             const isWin = status === 'WIN';
             const isLoss = status === 'LOSS';
-            const isOpen = status === 'OPEN';
 
             const pnlNum = t.pnl_usd !== null && t.pnl_usd !== undefined ? safeNum(t.pnl_usd) : null;
             const isModified = Boolean((t.modifications && t.modifications.length > 0) || (t.initial_sl && t.sl_price && t.initial_sl !== t.sl_price));
