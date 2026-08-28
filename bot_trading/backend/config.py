@@ -90,6 +90,14 @@ class Settings(BaseSettings):
         default=Decimal("15.00"),
         description="Distancia máxima de riesgo permitida para Stop Loss en USD (Circuit Breaker)"
     )
+    PULLBACK_WATCHER_ENABLED: bool = Field(
+        default=True,
+        description="Habilita la vigilancia de retroceso para señales fuera de precio inicial"
+    )
+    PULLBACK_TIMEOUT_MINUTES: int = Field(
+        default=15,
+        description="Tiempo límite en minutos para esperar que el precio retroceda a la zona segura"
+    )
     AUTO_EXECUTION_ENABLED: bool = Field(default=True, description="Flag maestro para habilitar/pausar auto-ejecución")
 
     # Capa de Broker

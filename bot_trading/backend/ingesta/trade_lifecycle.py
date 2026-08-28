@@ -77,13 +77,14 @@ class TradeLifecycleCard:
         self.tp1 = safe_num(tp1)
         self.tp2 = safe_num(tp2)
         self.tp3 = safe_num(tp3)
-        self.status = "OPEN"  # "OPEN", "WIN", "LOSS"
+        self.status = "OPEN"  # "OPEN", "WIN", "LOSS", "PENDING_PULLBACK", "REJECTED"
         self.outcome_text = "EN CURSO"
         self.created_at = str(created_at or "")
         self.formatted_created_at = format_full_datetime(created_at)
         self.closed_at: Optional[str] = None
         self.formatted_closed_at: Optional[str] = None
         self.modifications: List[str] = []
+        self.error_reason: Optional[str] = None
 
     def update_levels(self, sl_price: Optional[float] = None, tp1: Optional[float] = None, tp2: Optional[float] = None, tp3: Optional[float] = None):
         if sl_price is not None and self.sl_price is None:
@@ -225,6 +226,7 @@ class TradeLifecycleCard:
             "closed_at": self.closed_at,
             "formatted_closed_at": self.formatted_closed_at,
             "modifications": self.modifications or [],
+            "error_reason": self.error_reason,
         }
 
 
@@ -313,6 +315,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                         margin_usd=250.00,
                         lot_size=0.09
                     )
+                    new_card.error_reason = getattr(m, 'error_reason', None)
                     trades.append(new_card)
 
             # 2. ¿Es un modificador explícito de niveles (Move SL / Set BE)?
@@ -375,11 +378,16 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 matched_card_ids.add(id(new_card))
                 trades.append(new_card)
 
-    # 4. Cualquier tarjeta de señal que no se haya ejecutado en el broker/DB se marca como descartada "FUERA PRECIO"
+    # 4. Señales no ejecutadas: clasificar si están en espera de retroceso (Pullback) o rechazadas
     for card in trades:
         if id(card) not in matched_card_ids:
-            card.status = "REJECTED"
-            card.outcome_text = "FUERA PRECIO"
+            if card.error_reason and "PULLBACK" in card.error_reason and "EN ESPERA" in card.error_reason:
+                card.status = "PENDING_PULLBACK"
+                card.outcome_text = "EN ESPERA (PULLBACK)"
+                card.modifications = ["Vigilando retroceso hacia rango de entrada..."]
+            else:
+                card.status = "REJECTED"
+                card.outcome_text = card.error_reason or "FUERA PRECIO"
 
     return [t.to_dict() for t in reversed(trades)]
 

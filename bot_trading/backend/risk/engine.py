@@ -83,14 +83,18 @@ class RiskEngine:
         signal_entry: Decimal,
         side: OrderSide,
         entry_min: Optional[Decimal] = None,
-        entry_max: Optional[Decimal] = None
+        entry_max: Optional[Decimal] = None,
+        current_tick: Optional[Any] = None
     ) -> Tuple[bool, Decimal, Decimal]:
         """
         Comprueba el tick actual contra el precio de entrada de la señal o rango seguro.
         Si hay un rango seguro [entry_min, entry_max] y el precio actual está dentro, diff = 0.
         Retorna (is_valid, market_price, diff).
         """
-        tick = await self.broker.get_current_tick("XAUUSD")
+        if current_tick is None:
+            tick = await self.broker.get_current_tick("XAUUSD")
+        else:
+            tick = current_tick
         market_price = tick.ask if side == OrderSide.BUY else tick.bid
 
         if entry_min is not None and entry_max is not None:

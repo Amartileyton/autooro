@@ -13,6 +13,7 @@ from backend.broker.paper import LocalPaperBroker
 from backend.broker.live_adapter import LiveBrokerAdapter
 from backend.risk.engine import RiskEngine
 from backend.risk.state_machine import TradeStateMachine
+from backend.risk.pullback_watcher import PullbackWatcher
 from backend.ingesta.client import TelegramIngestionClient
 from backend.ingesta.schemas import TradingSignalEvent, ModifierSignalEvent, OrderSide
 from backend.telegram_admin.bot import TelegramAdminBot
@@ -31,6 +32,7 @@ app_state = {
     "broker": None,
     "risk_engine": None,
     "state_machine": None,
+    "pullback_watcher": None,
     "telegram_client": None,
     "telegram_bot": None,
     "signal_queue": None
@@ -41,7 +43,8 @@ async def signal_consumer_worker(
     queue: asyncio.Queue,
     risk_engine: RiskEngine,
     state_machine: TradeStateMachine,
-    broker
+    broker,
+    pullback_watcher: PullbackWatcher = None
 ):
     """
     Consumidor desacoplado de la cola de señales:
@@ -102,9 +105,41 @@ async def signal_consumer_worker(
             )
             if not is_slippage_ok:
                 logger.warning(
-                    f"Señal RECHAZADA por Slippage: Entrada={event.entry_price} (Rango: {entry_min}-{entry_max}), "
+                    f"Señal fuera de precio inicial: Entrada={event.entry_price} (Rango: {entry_min}-{entry_max}), "
                     f"Mercado={market_price}, Diff={diff:.2f} > Tolerancia={risk_engine.slippage_tolerance}"
                 )
+                
+                # Si el Pullback Watcher está habilitado, poner la señal en vigilancia de retroceso
+                if getattr(settings, 'PULLBACK_WATCHER_ENABLED', True) and pullback_watcher:
+                    added = await pullback_watcher.add_signal(event, entry_min=entry_min, entry_max=entry_max)
+                    if added:
+                        if event.message_id:
+                            try:
+                                from backend.database.session import AsyncSessionLocal
+                                from backend.database.models import RawTelegramMessage
+                                from sqlalchemy import update
+                                async with AsyncSessionLocal() as session:
+                                    stmt = (
+                                        update(RawTelegramMessage)
+                                        .where(RawTelegramMessage.message_id == event.message_id)
+                                        .values(error_reason="EN ESPERA (PULLBACK)")
+                                    )
+                                    await session.execute(stmt)
+                                    await session.commit()
+                            except Exception as db_err:
+                                logger.debug(f"Aviso al actualizar error_reason en DB: {db_err}")
+
+                        await state_machine.emit_alert("SIGNAL_PENDING_PULLBACK", {
+                            "diff": float(diff),
+                            "market_price": float(market_price),
+                            "message_id": event.message_id,
+                            "entry_price": float(event.entry_price),
+                            "timeout_minutes": getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 15)
+                        })
+                        queue.task_done()
+                        continue
+
+                # Si no se pudo poner en vigilancia (ej. TP1 ya alcanzado), descartar
                 if event.message_id:
                     try:
                         from backend.database.session import AsyncSessionLocal
@@ -205,11 +240,13 @@ async def lifespan(app: FastAPI):
     app_state["broker"] = broker
     await broker.connect()
 
-    # 4. Inicializar Risk Engine y State Machine
+    # 4. Inicializar Risk Engine, State Machine y Pullback Watcher
     risk_engine = RiskEngine(broker=broker)
     state_machine = TradeStateMachine(broker=broker)
+    pullback_watcher = PullbackWatcher(risk_engine=risk_engine, state_machine=state_machine, broker=broker)
     app_state["risk_engine"] = risk_engine
     app_state["state_machine"] = state_machine
+    app_state["pullback_watcher"] = pullback_watcher
 
     # 4.1 Registrar callbacks de alertas para WebSocket y Notificador
     async def on_state_machine_alert(event_type: str, data: dict):
@@ -230,11 +267,14 @@ async def lifespan(app: FastAPI):
     # 5. Ejecutar Protocolo de Reconciliación Post-Reinicio
     await run_startup_reconciliation(broker=broker, state_machine=state_machine)
 
-    # 6. Suscribir State Machine y WebSocket al flujo de ticks de alta frecuencia
+    # 6. Suscribir State Machine, Pullback Watcher y WebSocket al flujo de ticks de alta frecuencia
     async def on_tick_received(tick):
-        # A) Procesar hitos en State Machine (< 100ms)
+        # A) Evaluar Pullback Watcher en señales en espera (< 10ms)
+        if getattr(settings, 'PULLBACK_WATCHER_ENABLED', True) and pullback_watcher:
+            await pullback_watcher.on_market_tick(tick)
+        # B) Procesar hitos en State Machine (< 100ms)
         await state_machine.on_market_tick(tick)
-        # B) Retransmitir al Dashboard WebSocket
+        # C) Retransmitir al Dashboard WebSocket
         acc = await broker.get_account_info()
         await broadcast_tick_update(tick, acc, state_machine.active_slots)
 
@@ -258,7 +298,7 @@ async def lifespan(app: FastAPI):
 
     # 9. Iniciar Worker Consumidor de Señales
     consumer_task = asyncio.create_task(
-        signal_consumer_worker(signal_queue, risk_engine, state_machine, broker)
+        signal_consumer_worker(signal_queue, risk_engine, state_machine, broker, pullback_watcher)
     )
 
     # 10. Iniciar Worker de Actualización Horaria de Noticias (cada 3600s)
