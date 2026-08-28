@@ -120,15 +120,27 @@ class GreenPipsParser(BaseSignalParser):
             tp_levels = [default_tp1]
 
         # 7. Validar coherencia matemática básica
+        ref_entry_low = entry_min if entry_min else entry_price
+        ref_entry_high = entry_max if entry_max else entry_price
+
+        # Validar coherencia de TP1 con la dirección
+        if side == OrderSide.BUY and tp_levels[0] <= ref_entry_low:
+            logger.warning(f"GreenPips: Señal BUY rechazada por TP1 incoherente ({tp_levels[0]} <= {ref_entry_low})")
+            return None
+        elif side == OrderSide.SELL and tp_levels[0] >= ref_entry_high:
+            logger.warning(f"GreenPips: Señal SELL rechazada por TP1 incoherente ({tp_levels[0]} >= {ref_entry_high})")
+            return None
+
+        # Validar coherencia de SL (si es errata del emisor como poner SL por debajo en SELL, aplicar SL dinámico)
         if not requires_dynamic_sl and sl_price is not None:
-            ref_entry_low = entry_min if entry_min else entry_price
-            ref_entry_high = entry_max if entry_max else entry_price
-            if side == OrderSide.BUY and (sl_price >= ref_entry_low or tp_levels[0] <= ref_entry_low):
-                logger.warning(f"GreenPips: Señal BUY inconsistente (Entry:{entry_price}, SL:{sl_price}, TP1:{tp_levels[0]})")
-                return None
-            elif side == OrderSide.SELL and (sl_price <= ref_entry_high or tp_levels[0] >= ref_entry_high):
-                logger.warning(f"GreenPips: Señal SELL inconsistente (Entry:{entry_price}, SL:{sl_price}, TP1:{tp_levels[0]})")
-                return None
+            if side == OrderSide.BUY and sl_price >= ref_entry_low:
+                logger.warning(f"GreenPips: Errata en SL para BUY ({sl_price} >= {ref_entry_low}). Aplicando SL dinámico de seguridad.")
+                sl_price = None
+                requires_dynamic_sl = True
+            elif side == OrderSide.SELL and sl_price <= ref_entry_high:
+                logger.warning(f"GreenPips: Errata en SL para SELL ({sl_price} <= {ref_entry_high}). Aplicando SL dinámico de seguridad.")
+                sl_price = None
+                requires_dynamic_sl = True
 
         return TradingSignalEvent(
             asset="XAUUSD",

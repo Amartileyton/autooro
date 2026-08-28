@@ -146,20 +146,23 @@ def parse_signal(
         return None
 
     # 8. Validación Matemática de Coherencia
+    tp1 = tp_levels[0]
+    if side == OrderSide.BUY and tp1 <= entry_price:
+        logger.warning(f"Señal BUY rechazada por TP1 incoherente: TP1 ({tp1}) <= Entry ({entry_price})")
+        return None
+    elif side == OrderSide.SELL and tp1 >= entry_price:
+        logger.warning(f"Señal SELL rechazada por TP1 incoherente: TP1 ({tp1}) >= Entry ({entry_price})")
+        return None
+
     if not requires_dynamic_sl and sl_price is not None:
-        is_valid, reason = _validate_mathematical_coherence(side, entry_price, sl_price, tp_levels)
-        if not is_valid:
-            logger.warning(f"Señal rechazada por incoherencia matemática: {reason} | Texto: {cleaned_text}")
-            return None
-    else:
-        # Validar coherencia básica de TP1 con la dirección
-        tp1 = tp_levels[0]
-        if side == OrderSide.BUY and tp1 <= entry_price:
-            logger.warning(f"Señal BUY incoherente: TP1 ({tp1}) <= Entry ({entry_price})")
-            return None
-        elif side == OrderSide.SELL and tp1 >= entry_price:
-            logger.warning(f"Señal SELL incoherente: TP1 ({tp1}) >= Entry ({entry_price})")
-            return None
+        if side == OrderSide.BUY and sl_price >= entry_price:
+            logger.warning(f"Errata en SL para BUY ({sl_price} >= {entry_price}). Aplicando SL dinámico.")
+            sl_price = None
+            requires_dynamic_sl = True
+        elif side == OrderSide.SELL and sl_price <= entry_price:
+            logger.warning(f"Errata en SL para SELL ({sl_price} <= {entry_price}). Aplicando SL dinámico.")
+            sl_price = None
+            requires_dynamic_sl = True
 
     return TradingSignalEvent(
         asset="XAUUSD",

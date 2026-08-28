@@ -223,3 +223,30 @@ def test_risk_engine_sl_circuit_breaker():
     assert sanitized_sell == Decimal("4615.00")
 
 
+def test_green_pips_sell_with_incoherent_sl_typo():
+    from backend.ingesta.parsers.green_pips import GreenPipsParser
+    from backend.ingesta.schemas import OrderSide
+
+    text = """Pair (Gold vs USD)
+ 
+    Direction:  SELL 
+Entry :  4615 / 4610
+
+✔️Take Profit 1       4600
+✔️Take Profit 2       4590
+✔️Take Profit 3       4580
+
+😢Sop Loss            4520
+
+
+🫣🔤Risk Management Is Important"""
+
+    parser = GreenPipsParser()
+    event = parser.parse(text, message_id=2671)
+    assert event is not None
+    assert event.side == OrderSide.SELL
+    assert event.entry_price == Decimal("4612.50")
+    assert event.requires_dynamic_sl is True
+
+
+

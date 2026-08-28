@@ -81,14 +81,25 @@ def test_parse_modifier_close_order():
 
 
 def test_reject_incoherent_math_buy():
-    # BUY con SL mayor que entrada
+    # BUY con TP1 menor que entrada (incoherencia fatal -> rechazar)
     text = """
+    BUY XAUUSD 2345.00
+    SL 2335.00
+    TP1 2330.00
+    """
+    event = parse_signal(text)
+    assert event is None
+
+    # BUY con errata en SL (SL mayor que entrada) -> rescatar aplicando SL dinámico
+    text_typo = """
     BUY XAUUSD 2345.00
     SL 2355.00
     TP1 2360.00
     """
-    event = parse_signal(text)
-    assert event is None
+    event_typo = parse_signal(text_typo)
+    assert event_typo is not None
+    assert event_typo.requires_dynamic_sl is True
+    assert event_typo.sl_price is None
 
 
 def test_reject_incoherent_math_sell():

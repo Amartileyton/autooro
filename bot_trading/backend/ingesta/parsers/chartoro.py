@@ -102,17 +102,23 @@ class ChartoroParser(BaseSignalParser):
             return None
 
         # 8. Validación matemática
+        tp1 = tp_levels[0]
+        if side == OrderSide.BUY and tp1 <= entry_price:
+            logger.warning(f"Señal Chartoro BUY rechazada por TP1 incoherente: {tp1} <= {entry_price}")
+            return None
+        elif side == OrderSide.SELL and tp1 >= entry_price:
+            logger.warning(f"Señal Chartoro SELL rechazada por TP1 incoherente: {tp1} >= {entry_price}")
+            return None
+
         if not requires_dynamic_sl and sl_price is not None:
-            is_valid, reason = self._validate_coherence(side, entry_price, sl_price, tp_levels)
-            if not is_valid:
-                logger.warning(f"Señal Chartoro rechazada por incoherencia matemática: {reason}")
-                return None
-        else:
-            tp1 = tp_levels[0]
-            if side == OrderSide.BUY and tp1 <= entry_price:
-                return None
-            elif side == OrderSide.SELL and tp1 >= entry_price:
-                return None
+            if side == OrderSide.BUY and sl_price >= entry_price:
+                logger.warning(f"Chartoro: Errata en SL para BUY ({sl_price} >= {entry_price}). Aplicando SL dinámico.")
+                sl_price = None
+                requires_dynamic_sl = True
+            elif side == OrderSide.SELL and sl_price <= entry_price:
+                logger.warning(f"Chartoro: Errata en SL para SELL ({sl_price} <= {entry_price}). Aplicando SL dinámico.")
+                sl_price = None
+                requires_dynamic_sl = True
 
         return TradingSignalEvent(
             asset="XAUUSD",
