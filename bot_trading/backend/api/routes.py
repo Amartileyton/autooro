@@ -346,7 +346,7 @@ async def get_raw_messages(
 
 @router.get("/signals/trades")
 async def get_consolidated_trade_cards(
-    limit: int = 10,
+    limit: int = 50,
     channel: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
@@ -376,6 +376,7 @@ async def get_consolidated_trade_cards(
     except Exception as e:
         logger.error(f"Error al consolidar tarjetas de trade: {e}", exc_info=True)
         return []
+
 
 
 

@@ -110,7 +110,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
               </button>
             )}
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface border border-outline-variant text-white font-bold">
-              {displayTrades.length} SEÑALES
+              {displayTrades.length} TRADES
             </span>
           </div>
         </div>

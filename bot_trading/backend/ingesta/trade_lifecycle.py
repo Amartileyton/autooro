@@ -63,8 +63,12 @@ class TradeLifecycleCard:
         tp3: Optional[float] = None,
         margin_usd: float = 250.00,
         lot_size: float = 0.09,
+        message_id: Optional[int] = None,
+        ticket_id: Optional[str] = None,
     ):
         self.trade_id = str(trade_id)
+        self.message_id = message_id
+        self.ticket_id = ticket_id
         self.channel_name = str(channel_name or "Chartoro FX")
         self.side = str(side).upper() if side else "BUY"
         self.entry_price = safe_num(entry_price, 2650.0) or 2650.0
@@ -110,7 +114,7 @@ class TradeLifecycleCard:
         self.closed_at = str(timestamp or "")
         self.formatted_closed_at = format_full_datetime(timestamp)
 
-        # Cálculo preciso de PnL: Diferencia de precio * 100 onzas/lote * volumen
+        # Cálculo de PnL base
         if self.side == "BUY":
             price_diff = self.exit_price - self.entry_price
         else:
@@ -120,6 +124,18 @@ class TradeLifecycleCard:
 
     def apply_db_trade(self, db_t: Any):
         """Sincroniza la tarjeta directamente con los datos reales y oficiales del motor de trading (tabla 'trades')."""
+        self.ticket_id = getattr(db_t, 'ticket_id', self.ticket_id) or self.ticket_id
+        if getattr(db_t, 'raw_signal_id', None):
+            self.message_id = getattr(db_t, 'raw_signal_id')
+        if getattr(db_t, 'channel_name', None):
+            self.channel_name = str(db_t.channel_name)
+        if getattr(db_t, 'side', None):
+            self.side = (db_t.side.value if hasattr(db_t.side, 'value') else str(db_t.side)).upper()
+
+        db_entry = getattr(db_t, 'entry_price', None)
+        if db_entry is not None:
+            self.entry_price = float(db_entry)
+
         self.lot_size = safe_num(getattr(db_t, 'lot_size', None), self.lot_size) or self.lot_size
         self.margin_usd = round(self.lot_size * self.entry_price * 100.0 / 100.0, 2)
         
@@ -134,6 +150,11 @@ class TradeLifecycleCard:
         if getattr(db_t, 'tp3', None):
             self.tp3 = safe_num(db_t.tp3, self.tp3)
 
+        open_time_val = getattr(db_t, 'open_time', None)
+        if open_time_val and not self.created_at:
+            self.created_at = open_time_val.isoformat() if hasattr(open_time_val, 'isoformat') else str(open_time_val)
+            self.formatted_created_at = format_full_datetime(open_time_val)
+
         st = getattr(db_t, 'status', None)
         st_str = (st.value if hasattr(st, 'value') else str(st or "")).upper()
         close_reason_str = str(getattr(db_t, 'close_reason', '') or '')
@@ -143,8 +164,15 @@ class TradeLifecycleCard:
         if is_closed:
             pnl_val = float(getattr(db_t, 'pnl', 0.0) or 0.0)
             self.pnl_usd = round(pnl_val, 2)
-            self.status = "WIN" if pnl_val >= 0 else "LOSS"
-            self.outcome_text = "GANADA" if pnl_val > 0 else ("BREAK-EVEN" if pnl_val == 0 else "PERDIDA")
+            if pnl_val > 0:
+                self.status = "WIN"
+                self.outcome_text = "GANADA"
+            elif pnl_val < 0:
+                self.status = "LOSS"
+                self.outcome_text = "PERDIDA"
+            else:
+                self.status = "WIN"
+                self.outcome_text = "BREAK-EVEN"
             
             close_px = getattr(db_t, 'close_price', None)
             self.exit_price = safe_num(close_px, self.sl_price) or self.sl_price
@@ -157,9 +185,9 @@ class TradeLifecycleCard:
             mods = []
             realized_cash = float(getattr(db_t, 'realized_cash_pnl', 0.0) or 0.0)
             if realized_cash > 0:
-                mods.append(f"Cobro parcial 50% en TP1 (+${realized_cash:.2f} USD)")
+                mods.append(f"Cobro parcial en TP (+${realized_cash:.2f} USD)")
 
-            if "SL_HIT" in close_reason_str.upper():
+            if "SL_HIT" in close_reason_str.upper() or "TRAILING_SL" in close_reason_str.upper():
                 curr_sl = float(self.sl_price or 0.0)
                 entry_px = float(self.entry_price or 0.0)
                 if self.side == "BUY" and curr_sl >= entry_px:
@@ -178,7 +206,7 @@ class TradeLifecycleCard:
             # El trade se encuentra actualmente ACTIVO y EN CURSO en el motor
             self.status = "OPEN"
             self.exit_price = None
-            self.pnl_usd = None
+            self.pnl_usd = round(float(getattr(db_t, 'pnl', 0.0) or 0.0), 2) if getattr(db_t, 'pnl', None) is not None else None
             self.closed_at = None
             self.formatted_closed_at = None
 
@@ -207,6 +235,8 @@ class TradeLifecycleCard:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "trade_id": self.trade_id,
+            "message_id": self.message_id,
+            "ticket_id": self.ticket_id,
             "channel_name": self.channel_name,
             "side": self.side,
             "entry_price": float(self.entry_price),
@@ -249,12 +279,27 @@ def get_msg_datetime(msg: Any) -> datetime:
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
+def get_card_timestamp(c: TradeLifecycleCard) -> datetime:
+    """Extrae la fecha/hora más relevante para ordenar las tarjetas (más reciente primero)."""
+    for raw_dt in [c.closed_at, c.created_at]:
+        if raw_dt:
+            try:
+                clean = str(raw_dt).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(clean)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                pass
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Optional[list] = None) -> List[Dict[str, Any]]:
     """
-    Agrupa cronológicamente los mensajes crudos de Telegram en TARJETAS DE CICLO DE VIDA DE TRADES:
-    - Las tarjetas se inicializan en estado 'EN CURSO' al entrar la señal.
-    - Se sincronizan 100% con los trades reales del motor de trading (tabla 'trades').
-    - Al cerrarse la posición en el broker/motor, se exportan fielmente todos los datos de auditoría al historial.
+    Agrupa y sincroniza cronológicamente los mensajes de Telegram y los trades ejecutados en la base de datos:
+    - Las tarjetas sincronizan 100% sus métricas de PnL (ganancias y pérdidas reales descontadas/añadidas).
+    - Multi-pass matching exacto para vincular trades de BD con tarjetas de señales sin falsos duplicados ni sobrescrituras.
+    - Ordena estrictamente de más reciente a más antiguo garantizando que los últimos trades siempre aparezcan al inicio.
     """
     if not messages and not executed_trades:
         return []
@@ -313,7 +358,8 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                         tp3=tp3,
                         created_at=time_str,
                         margin_usd=250.00,
-                        lot_size=0.09
+                        lot_size=0.09,
+                        message_id=msg_id
                     )
                     new_card.error_reason = getattr(m, 'error_reason', None)
                     trades.append(new_card)
@@ -333,50 +379,84 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
         except Exception:
             continue
 
-    # 3. Sincronización Directa y Absoluta con la tabla 'trades' del motor de mercado
+    # 3. Sincronización Multi-Pass con la tabla 'trades' del motor de mercado
     matched_card_ids = set()
+    matched_db_ids = set()
+
     if executed_trades:
+        # Pase 1: Coincidencia exacta por raw_signal_id / message_id
         for db_t in executed_trades:
             raw_id = getattr(db_t, 'raw_signal_id', None)
-            raw_id_str = str(raw_id) if raw_id else ""
+            if not raw_id:
+                continue
+
+            for card in trades:
+                if id(card) in matched_card_ids:
+                    continue
+                if card.message_id == raw_id or f"-{raw_id}-" in f"-{card.trade_id}-":
+                    card.apply_db_trade(db_t)
+                    matched_card_ids.add(id(card))
+                    matched_db_ids.add(getattr(db_t, 'id', id(db_t)))
+                    break
+
+        # Pase 2: Coincidencia por canal, dirección y precio cercano (dentro de 3.0 USD)
+        for db_t in executed_trades:
+            db_id = getattr(db_t, 'id', id(db_t))
+            if db_id in matched_db_ids:
+                continue
+
             db_side = (db_t.side.value if hasattr(db_t.side, 'value') else str(db_t.side or "")).upper()
             db_entry = float(getattr(db_t, 'entry_price', 0.0) or 0.0)
+            db_channel = str(getattr(db_t, 'channel_name', '') or '').lower()
 
-            # Buscar la tarjeta correspondiente
-            matched_card = None
-            for card in trades:
-                if raw_id_str and raw_id_str in card.trade_id:
-                    matched_card = card
-                    break
-                
-                # Coincidencia por dirección y precio cercano (dentro de 2.0 USD)
-                if abs(card.entry_price - db_entry) <= 2.0 and card.side.upper() == db_side:
-                    matched_card = card
-                    break
+            best_card = None
+            best_diff = 999.0
+            for card in reversed(trades):
+                if id(card) in matched_card_ids:
+                    continue
+                if card.side.upper() == db_side:
+                    card_channel = str(card.channel_name or '').lower()
+                    channel_match = (db_channel in card_channel or card_channel in db_channel) if (db_channel and card_channel) else True
+                    diff = abs(card.entry_price - db_entry)
+                    if channel_match and diff <= 3.0 and diff < best_diff:
+                        best_diff = diff
+                        best_card = card
 
-            if matched_card:
-                matched_card.apply_db_trade(db_t)
-                matched_card_ids.add(id(matched_card))
-            else:
-                # Si el trade en DB no tenía tarjeta asociada en raw_messages, crearla directamente
-                open_time_val = getattr(db_t, 'open_time', None)
-                open_time_str = open_time_val.isoformat() if hasattr(open_time_val, 'isoformat') else str(open_time_val or "")
-                new_card = TradeLifecycleCard(
-                    trade_id=f"trade-{db_t.raw_signal_id or db_t.ticket_id}-{int(db_entry)}",
-                    channel_name=getattr(db_t, 'channel_name', None) or "Chartoro FX",
-                    side=db_side,
-                    entry_price=db_entry,
-                    sl_price=safe_num(getattr(db_t, 'current_sl', None)),
-                    tp1=safe_num(getattr(db_t, 'tp1', None)),
-                    tp2=safe_num(getattr(db_t, 'tp2', None)),
-                    tp3=safe_num(getattr(db_t, 'tp3', None)),
-                    created_at=open_time_str,
-                    margin_usd=round(float(getattr(db_t, 'lot_size', 0.03)) * db_entry * 100.0 / 100.0, 2),
-                    lot_size=float(getattr(db_t, 'lot_size', 0.03))
-                )
-                new_card.apply_db_trade(db_t)
-                matched_card_ids.add(id(new_card))
-                trades.append(new_card)
+            if best_card:
+                best_card.apply_db_trade(db_t)
+                matched_card_ids.add(id(best_card))
+                matched_db_ids.add(db_id)
+
+        # Pase 3: Para trades en DB sin tarjeta asociada en raw_messages, crear la tarjeta directamente
+        for db_t in executed_trades:
+            db_id = getattr(db_t, 'id', id(db_t))
+            if db_id in matched_db_ids:
+                continue
+
+            db_side = (db_t.side.value if hasattr(db_t.side, 'value') else str(db_t.side or "")).upper()
+            db_entry = float(getattr(db_t, 'entry_price', 0.0) or 0.0)
+            open_time_val = getattr(db_t, 'open_time', None)
+            open_time_str = open_time_val.isoformat() if hasattr(open_time_val, 'isoformat') else str(open_time_val or "")
+            
+            new_card = TradeLifecycleCard(
+                trade_id=f"trade-db-{getattr(db_t, 'id', '0')}-{getattr(db_t, 'ticket_id', 'TKT')}",
+                channel_name=getattr(db_t, 'channel_name', None) or "Chartoro FX",
+                side=db_side,
+                entry_price=db_entry,
+                sl_price=safe_num(getattr(db_t, 'current_sl', None)),
+                tp1=safe_num(getattr(db_t, 'tp1', None)),
+                tp2=safe_num(getattr(db_t, 'tp2', None)),
+                tp3=safe_num(getattr(db_t, 'tp3', None)),
+                created_at=open_time_str,
+                margin_usd=round(float(getattr(db_t, 'lot_size', 0.03)) * db_entry * 100.0 / 100.0, 2),
+                lot_size=float(getattr(db_t, 'lot_size', 0.03)),
+                message_id=getattr(db_t, 'raw_signal_id', None),
+                ticket_id=getattr(db_t, 'ticket_id', None)
+            )
+            new_card.apply_db_trade(db_t)
+            matched_card_ids.add(id(new_card))
+            matched_db_ids.add(db_id)
+            trades.append(new_card)
 
     # 4. Señales no ejecutadas: clasificar si están en espera de retroceso (Pullback) o rechazadas
     for card in trades:
@@ -389,5 +469,9 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 card.status = "REJECTED"
                 card.outcome_text = card.error_reason or "FUERA PRECIO"
 
-    return [t.to_dict() for t in reversed(trades)]
+    # 5. Ordenación cronológica estricta: los trades más recientes van SIEMPRE al inicio
+    trades.sort(key=get_card_timestamp, reverse=True)
+
+    return [t.to_dict() for t in trades]
+
 

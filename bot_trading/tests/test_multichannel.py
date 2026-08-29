@@ -249,4 +249,138 @@ Entry :  4615 / 4610
     assert event.requires_dynamic_sl is True
 
 
+def test_trade_lifecycle_cards_pnl_sync_loss_and_win():
+    from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone, timedelta
+    from backend.database.models import TradeStatus, OrderSide
+
+    t0 = datetime(2026, 8, 28, 10, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(minutes=5)
+    t2 = t0 + timedelta(minutes=10)
+
+    # 1. Mensaje de señal
+    msg1 = MagicMock()
+    msg1.id = 1
+    msg1.message_id = 7001
+    msg1.channel_name = "Chartoro FX"
+    msg1.channel_id = -1002763662248
+    msg1.raw_text = "BUY XAUUSD 2650.00 SL 2640.00 TP1 2655.00"
+    msg1.received_at = t0
+    msg1.error_reason = None
+
+    # 2. Trade 1 ejecutado en DB que cerró en LOSS (-$135.00)
+    db_trade1 = MagicMock()
+    db_trade1.id = 10
+    db_trade1.ticket_id = "TKT-LOSS-01"
+    db_trade1.slot_id = 1
+    db_trade1.channel_name = "Chartoro FX"
+    db_trade1.side = OrderSide.BUY
+    db_trade1.entry_price = 2650.00
+    db_trade1.close_price = 2635.00
+    db_trade1.current_sl = 2635.00
+    db_trade1.initial_sl = 2640.00
+    db_trade1.tp1 = 2655.00
+    db_trade1.tp2 = 2660.00
+    db_trade1.tp3 = 2670.00
+    db_trade1.lot_size = 0.09
+    db_trade1.status = TradeStatus.CLOSED_SL
+    db_trade1.pnl = -135.00
+    db_trade1.realized_cash_pnl = 0.00
+    db_trade1.close_reason = "SL_HIT (2635.00)"
+    db_trade1.open_time = t0
+    db_trade1.close_time = t1
+    db_trade1.raw_signal_id = 7001
+
+    # 3. Trade 2 ejecutado en DB que cerró en WIN (+$315.00)
+    db_trade2 = MagicMock()
+    db_trade2.id = 11
+    db_trade2.ticket_id = "TKT-WIN-02"
+    db_trade2.slot_id = 2
+    db_trade2.channel_name = "XAU(USD) GREEN PIPS"
+    db_trade2.side = OrderSide.SELL
+    db_trade2.entry_price = 2660.00
+    db_trade2.close_price = 2625.00
+    db_trade2.current_sl = 2630.00
+    db_trade2.initial_sl = 2670.00
+    db_trade2.tp1 = 2655.00
+    db_trade2.tp2 = 2645.00
+    db_trade2.tp3 = 2630.00
+    db_trade2.lot_size = 0.09
+    db_trade2.status = TradeStatus.CLOSED_TP
+    db_trade2.pnl = 315.00
+    db_trade2.realized_cash_pnl = 100.00
+    db_trade2.close_reason = "TRAILING_SL_HIT"
+    db_trade2.open_time = t1
+    db_trade2.close_time = t2
+    db_trade2.raw_signal_id = None
+
+    cards = consolidate_telegram_trade_lifecycle([msg1], executed_trades=[db_trade1, db_trade2])
+
+    assert len(cards) == 2
+    # El más reciente (Trade 2 cerrado a las t2) debe ser el primero (index 0)
+    assert cards[0]["ticket_id"] == "TKT-WIN-02"
+    assert cards[0]["status"] == "WIN"
+    assert cards[0]["outcome_text"] == "GANADA"
+    assert cards[0]["pnl_usd"] == 315.00
+    assert cards[0]["exit_price"] == 2625.00
+
+    # Trade 1 cerrado en LOSS (-$135.00)
+    assert cards[1]["ticket_id"] == "TKT-LOSS-01"
+    assert cards[1]["status"] == "LOSS"
+    assert cards[1]["outcome_text"] == "PERDIDA"
+    assert cards[1]["pnl_usd"] == -135.00
+    assert cards[1]["exit_price"] == 2635.00
+
+
+def test_trade_lifecycle_always_shows_last_10_trades_sorted():
+    from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone, timedelta
+    from backend.database.models import TradeStatus, OrderSide
+
+    base_time = datetime(2026, 8, 28, 8, 0, 0, tzinfo=timezone.utc)
+    executed_trades = []
+
+    for i in range(15):
+        t = MagicMock()
+        t.id = i + 1
+        t.ticket_id = f"TKT-BATCH-{i:02d}"
+        t.slot_id = (i % 4) + 1
+        t.channel_name = "Chartoro FX" if i % 2 == 0 else "XAU(USD) GREEN PIPS"
+        t.side = OrderSide.BUY if i % 2 == 0 else OrderSide.SELL
+        t.entry_price = 2650.0 + i
+        t.close_price = 2655.0 + i
+        t.current_sl = 2640.0
+        t.initial_sl = 2640.0
+        t.tp1 = 2655.0
+        t.tp2 = 2660.0
+        t.tp3 = 2670.0
+        t.lot_size = 0.05
+        t.status = TradeStatus.CLOSED_TP
+        t.pnl = 50.0 + i * 10
+        t.realized_cash_pnl = 20.0
+        t.close_reason = "TP1_HIT"
+        t.open_time = base_time + timedelta(hours=i)
+        t.close_time = base_time + timedelta(hours=i, minutes=30)
+        t.raw_signal_id = None
+        executed_trades.append(t)
+
+    cards = consolidate_telegram_trade_lifecycle([], executed_trades=executed_trades)
+    assert len(cards) == 15
+
+    # Tomar los últimos 10 trades
+    last_10 = cards[:10]
+    assert len(last_10) == 10
+
+    # El primero debe ser el trade número 15 (el más reciente, i=14)
+    assert last_10[0]["ticket_id"] == "TKT-BATCH-14"
+    assert last_10[0]["pnl_usd"] == 190.0
+
+    # El décimo debe ser el trade número 6 (i=5)
+    assert last_10[9]["ticket_id"] == "TKT-BATCH-05"
+    assert last_10[9]["pnl_usd"] == 100.0
+
+
+
 
