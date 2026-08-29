@@ -177,6 +177,9 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
             const isLoss = status === 'LOSS';
 
             const pnlNum = t.pnl_usd !== null && t.pnl_usd !== undefined ? safeNum(t.pnl_usd) : null;
+            const netPnlVal = t.net_pnl_usd !== undefined && t.net_pnl_usd !== null
+              ? t.net_pnl_usd
+              : (pnlNum !== null ? (pnlNum - safeNum(t.commission_usd, 0.16) - safeNum(t.spread_cost_usd, 0.15)) : null);
             const isModified = Boolean((t.modifications && t.modifications.length > 0) || (t.initial_sl && t.sl_price && t.initial_sl !== t.sl_price));
             const fullDateStr = formatFullDateTime(t.created_at, t.formatted_created_at);
 
