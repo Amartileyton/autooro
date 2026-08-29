@@ -452,8 +452,20 @@ export const DashboardApp: React.FC = () => {
     setIsAuditModalOpen(true);
   };
 
+  // Pantalla de carga mientras se verifica la sesión en localStorage o backend
+  if (isAuthChecking) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0d0e12] overflow-hidden">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-mono text-amber-400/80 tracking-wider">Iniciando GOLD-EX Terminal...</span>
+        </div>
+      </div>
+    );
+  }
+
   // Si no está autenticado, mostrar la pantalla de bloqueo Obsidian Terminal Google OAuth
-  if (!authToken && !isAuthChecking) {
+  if (!authToken) {
     return (
       <LoginScreen
         apiBaseUrl={getApiBaseUrl()}
