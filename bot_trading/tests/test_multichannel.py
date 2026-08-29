@@ -382,5 +382,70 @@ def test_trade_lifecycle_always_shows_last_10_trades_sorted():
     assert last_10[9]["pnl_usd"] == 100.0
 
 
+def test_tp2_hit_detection_from_messages_and_db():
+    from backend.ingesta.trade_lifecycle import consolidate_telegram_trade_lifecycle
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone, timedelta
+    from backend.database.models import TradeStatus, OrderSide
+
+    t0 = datetime(2026, 8, 28, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(minutes=10)
+
+    # 1. Señal inicial BUY con TP1=2655, TP2=2660, TP3=2670
+    msg1 = MagicMock()
+    msg1.id = 1
+    msg1.message_id = 8801
+    msg1.channel_name = "Chartoro FX"
+    msg1.channel_id = -1002763662248
+    msg1.raw_text = "BUY XAUUSD 2650.00 SL 2640.00 TP1 2655.00 TP2 2660.00 TP3 2670.00"
+    msg1.received_at = t0
+    msg1.error_reason = None
+
+    # 2. Mensaje de Telegram indicando TP2 alcanzado
+    msg2 = MagicMock()
+    msg2.id = 2
+    msg2.message_id = 8802
+    msg2.channel_name = "Chartoro FX"
+    msg2.channel_id = -1002763662248
+    msg2.raw_text = "**MOMENTUM A TODO RITMO ****💥** **#XAUUSD**** TP2 HIT, +80 Pips 🏆**"
+    msg2.received_at = t1
+    msg2.error_reason = None
+
+    # 3. Trade en DB con TP2_HIT y trailing activo
+    db_trade = MagicMock()
+    db_trade.id = 50
+    db_trade.ticket_id = "TKT-TP2-HIT"
+    db_trade.slot_id = 1
+    db_trade.channel_name = "Chartoro FX"
+    db_trade.side = OrderSide.BUY
+    db_trade.entry_price = 2650.00
+    db_trade.close_price = 2655.00
+    db_trade.current_sl = 2655.00  # SL subido a TP1 (2655)
+    db_trade.initial_sl = 2640.00
+    db_trade.tp1 = 2655.00
+    db_trade.tp2 = 2660.00
+    db_trade.tp3 = 2670.00
+    db_trade.lot_size = 0.09
+    db_trade.status = TradeStatus.CLOSED_TP
+    db_trade.pnl = 180.00
+    db_trade.realized_cash_pnl = 135.00  # Cobro de 75%
+    db_trade.close_reason = "TRAILING_SL_HIT (2655.00)"
+    db_trade.peak_price = 2662.50  # Pico superó TP2 (2660.00)
+    db_trade.open_time = t0
+    db_trade.close_time = t1
+    db_trade.raw_signal_id = 8801
+
+    cards = consolidate_telegram_trade_lifecycle([msg1, msg2], executed_trades=[db_trade])
+    assert len(cards) == 1
+    card = cards[0]
+
+    assert card["status"] == "WIN"
+    assert card["tp1_hit"] is True
+    assert card["tp2_hit"] is True
+    assert card["highest_tp"] >= 2
+    assert any("TP2" in m for m in card["modifications"])
+
+
+
 
 

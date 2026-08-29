@@ -2,6 +2,8 @@ import React from 'react';
 
 export interface TradeLifecycleCardItem {
   trade_id: string;
+  message_id?: number | null;
+  ticket_id?: string | null;
   channel_name: string;
   side: 'BUY' | 'SELL';
   entry_price: number;
@@ -14,13 +16,18 @@ export interface TradeLifecycleCardItem {
   tp1?: number | null;
   tp2?: number | null;
   tp3?: number | null;
-  status: 'OPEN' | 'WIN' | 'LOSS' | 'REJECTED';
+  tp1_hit?: boolean;
+  tp2_hit?: boolean;
+  tp3_hit?: boolean;
+  highest_tp?: number;
+  status: 'OPEN' | 'WIN' | 'LOSS' | 'PENDING_PULLBACK' | 'REJECTED';
   outcome_text: string;
   created_at: string;
   formatted_created_at?: string;
   closed_at?: string | null;
   formatted_closed_at?: string;
   modifications?: string[];
+  error_reason?: string | null;
 }
 
 interface SignalFeedProps {
@@ -170,13 +177,33 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
             const fullDateStr = formatFullDateTime(t.created_at, t.formatted_created_at);
 
             const exitPriceNum = safeNum(t.exit_price, 0);
-            const tp3Num = safeNum(t.tp3, 0);
+            const tp1Num = safeNum(t.tp1, 0);
             const tp2Num = safeNum(t.tp2, 0);
+            const tp3Num = safeNum(t.tp3, 0);
 
-            // Identificar qué nivel disparó la orden
-            const isTp3Triggered = isWin && exitPriceNum > 0 && tp3Num > 0 && Math.abs(exitPriceNum - tp3Num) < 1.5;
-            const isTp2Triggered = isWin && !isTp3Triggered && exitPriceNum > 0 && tp2Num > 0 && Math.abs(exitPriceNum - tp2Num) < 1.5;
-            const isTp1Triggered = isWin && !isTp3Triggered && !isTp2Triggered;
+            // Identificar con precisión institucional qué niveles de Take Profit se alcanzaron
+            const isTp3Triggered = Boolean(
+              t.tp3_hit ||
+              (t.highest_tp && t.highest_tp >= 3) ||
+              (t.modifications && t.modifications.some(m => m.includes('TP3') || m.includes('Infinite Runner'))) ||
+              (isWin && tp3Num > 0 && ((isBuy && exitPriceNum >= tp3Num - 1.0) || (!isBuy && exitPriceNum <= tp3Num + 1.0)))
+            );
+
+            const isTp2Triggered = Boolean(
+              isTp3Triggered ||
+              t.tp2_hit ||
+              (t.highest_tp && t.highest_tp >= 2) ||
+              (t.modifications && t.modifications.some(m => m.includes('TP2') || m.includes('Runner') || m.includes('75%'))) ||
+              (isWin && tp2Num > 0 && ((isBuy && exitPriceNum >= tp2Num - 1.0) || (!isBuy && exitPriceNum <= tp2Num + 1.0)))
+            );
+
+            const isTp1Triggered = Boolean(
+              isTp2Triggered ||
+              t.tp1_hit ||
+              (t.highest_tp && t.highest_tp >= 1) ||
+              (t.modifications && t.modifications.some(m => m.includes('TP1') || m.includes('TP2') || m.includes('TP3') || m.includes('Cobro parcial') || m.includes('50%'))) ||
+              (isWin && tp1Num > 0 && ((isBuy && exitPriceNum >= tp1Num - 1.0) || (!isBuy && exitPriceNum <= tp1Num + 1.0)))
+            );
             const isSlTriggered = isLoss;
             const isPendingPullback = status === 'PENDING_PULLBACK' || (t.outcome_text && t.outcome_text.toUpperCase().includes('PULLBACK') && !t.outcome_text.toUpperCase().includes('TIMEOUT') && !t.outcome_text.toUpperCase().includes('ALCANZADO'));
             const isRejected = (status === 'REJECTED' || (t.outcome_text && t.outcome_text.toUpperCase().includes('FUERA'))) && !isPendingPullback;
@@ -366,8 +393,9 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                         : 'bg-black/30 border-white/5 opacity-80'
                     }`}
                   >
-                    <span className={`text-[8px] font-mono uppercase ${isTp1Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
-                      TP1
+                    <span className={`text-[8px] font-mono uppercase flex items-center justify-between ${isTp1Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
+                      <span>TP1</span>
+                      {isTp1Triggered && <span className="material-symbols-outlined text-[10px] text-emerald-400 font-bold">check</span>}
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp1Triggered ? 'text-white' : t.tp1 ? 'text-emerald-400' : 'text-outline/40'}`}>
                       {t.tp1 ? `$${safePrice(t.tp1)}` : '---'}
@@ -382,8 +410,9 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                         : 'bg-black/30 border-white/5 opacity-80'
                     }`}
                   >
-                    <span className={`text-[8px] font-mono uppercase ${isTp2Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
-                      TP2
+                    <span className={`text-[8px] font-mono uppercase flex items-center justify-between ${isTp2Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
+                      <span>TP2</span>
+                      {isTp2Triggered && <span className="material-symbols-outlined text-[10px] text-emerald-400 font-bold">check</span>}
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp2Triggered ? 'text-white' : t.tp2 ? 'text-emerald-400' : 'text-outline/40'}`}>
                       {t.tp2 ? `$${safePrice(t.tp2)}` : '---'}
@@ -398,8 +427,9 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                         : 'bg-black/30 border-white/5 opacity-80'
                     }`}
                   >
-                    <span className={`text-[8px] font-mono uppercase ${isTp3Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
-                      TP3
+                    <span className={`text-[8px] font-mono uppercase flex items-center justify-between ${isTp3Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
+                      <span>TP3</span>
+                      {isTp3Triggered && <span className="material-symbols-outlined text-[10px] text-emerald-400 font-bold">check</span>}
                     </span>
                     <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp3Triggered ? 'text-white' : t.tp3 ? 'text-emerald-400' : 'text-outline/40'}`}>
                       {t.tp3 ? `$${safePrice(t.tp3)}` : '---'}

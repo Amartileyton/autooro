@@ -49,6 +49,15 @@ def safe_num(val: Any, default: Optional[float] = None) -> Optional[float]:
         return default
 
 
+import re
+
+RE_TP_HIT = re.compile(
+    r'(?:#|\b)?(?:XAUUSD|GOLD|ORO)?\s*(?:TAKE\s*PROFIT|TP|TARGET|OBJETIVO)\s*([1-5])\s*(?:HIT|ALCANZADO|TOCADO|DONE|SUPERADO|RUNNING|\+?\d+\s*PIPS)',
+    re.IGNORECASE
+)
+RE_PIPS_EXTRACT = re.compile(r'(\+\d+\s*PIPS?)', re.IGNORECASE)
+
+
 class TradeLifecycleCard:
     def __init__(
         self,
@@ -81,6 +90,10 @@ class TradeLifecycleCard:
         self.tp1 = safe_num(tp1)
         self.tp2 = safe_num(tp2)
         self.tp3 = safe_num(tp3)
+        self.tp1_hit = False
+        self.tp2_hit = False
+        self.tp3_hit = False
+        self.highest_tp = 0
         self.status = "OPEN"  # "OPEN", "WIN", "LOSS", "PENDING_PULLBACK", "REJECTED"
         self.outcome_text = "EN CURSO"
         self.created_at = str(created_at or "")
@@ -106,6 +119,40 @@ class TradeLifecycleCard:
         if parsed_sl is not None:
             self.sl_price = parsed_sl
             self.modifications.append(f"SL modificado a ${parsed_sl:.2f}")
+
+    def mark_tp_hit(self, tp_num: int, pips_text: str = "", timestamp: str = ""):
+        """Registra el alcance de un Take Profit (TP1, TP2, TP3...) y actualiza el estado."""
+        if tp_num >= 1:
+            self.tp1_hit = True
+        if tp_num >= 2:
+            self.tp2_hit = True
+        if tp_num >= 3:
+            self.tp3_hit = True
+        self.highest_tp = max(self.highest_tp, tp_num)
+        self.status = "WIN"
+        self.outcome_text = "GANADA"
+        
+        if timestamp and not self.closed_at:
+            self.closed_at = str(timestamp)
+            self.formatted_closed_at = format_full_datetime(timestamp)
+
+        if tp_num == 1 and self.tp1:
+            self.exit_price = self.exit_price or self.tp1
+        elif tp_num == 2 and self.tp2:
+            self.exit_price = self.tp2
+        elif tp_num == 3 and self.tp3:
+            self.exit_price = self.tp3
+
+        if self.exit_price and self.entry_price and (self.pnl_usd is None or self.pnl_usd <= 0):
+            if self.side == "BUY":
+                price_diff = self.exit_price - self.entry_price
+            else:
+                price_diff = self.entry_price - self.exit_price
+            self.pnl_usd = round(price_diff * 100.0 * self.lot_size, 2)
+
+        msg = f"🏆 TP{tp_num} alcanzado" + (f" ({pips_text})" if pips_text else "")
+        if msg not in self.modifications:
+            self.modifications.append(msg)
 
     def close_trade(self, outcome: str, exit_price: float, outcome_text: str, timestamp: str):
         self.status = outcome if outcome in ("WIN", "LOSS", "OPEN") else "WIN"
@@ -157,9 +204,91 @@ class TradeLifecycleCard:
 
         st = getattr(db_t, 'status', None)
         st_str = (st.value if hasattr(st, 'value') else str(st or "")).upper()
-        close_reason_str = str(getattr(db_t, 'close_reason', '') or '')
+        close_reason_str = str(getattr(db_t, 'close_reason', '') or '').upper()
         close_time_val = getattr(db_t, 'close_time', None)
         is_closed = "CLOSED" in st_str or close_time_val is not None
+        realized_cash = float(getattr(db_t, 'realized_cash_pnl', 0.0) or 0.0)
+        peak_px = float(getattr(db_t, 'peak_price', 0.0) or 0.0)
+        close_px = float(getattr(db_t, 'close_price', 0.0) or 0.0)
+        curr_sl = float(self.sl_price or 0.0)
+        tp1_px = float(self.tp1 or 0.0)
+        tp2_px = float(self.tp2 or 0.0)
+        tp3_px = float(self.tp3 or 0.0)
+
+        # Detección exhaustiva de TP1, TP2 y TP3
+        if "TP1" in st_str or "TP2" in st_str or "TP3" in st_str or "TRAILING" in st_str or realized_cash > 0:
+            self.tp1_hit = True
+        if "TP1" in close_reason_str or "TP2" in close_reason_str or "TP3" in close_reason_str or "TRAILING" in close_reason_str:
+            self.tp1_hit = True
+
+        if "TP2" in st_str or "TP3" in st_str:
+            self.tp1_hit = True
+            self.tp2_hit = True
+        if "TP2" in close_reason_str or "TP3" in close_reason_str:
+            self.tp1_hit = True
+            self.tp2_hit = True
+
+        if "TP3" in st_str or "TP3" in close_reason_str:
+            self.tp1_hit = True
+            self.tp2_hit = True
+            self.tp3_hit = True
+
+        # Comprobación por niveles de precio (Peak Price y Close Price)
+        if self.side == "BUY":
+            if peak_px > 0:
+                if tp1_px > 0 and peak_px >= tp1_px - 0.20:
+                    self.tp1_hit = True
+                if tp2_px > 0 and peak_px >= tp2_px - 0.20:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                if tp3_px > 0 and peak_px >= tp3_px - 0.20:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                    self.tp3_hit = True
+            if close_px > 0:
+                if tp1_px > 0 and close_px >= tp1_px - 0.50:
+                    self.tp1_hit = True
+                if tp2_px > 0 and close_px >= tp2_px - 0.50:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                if tp3_px > 0 and close_px >= tp3_px - 0.50:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                    self.tp3_hit = True
+            if curr_sl > 0 and tp1_px > 0 and curr_sl >= tp1_px - 0.50:
+                self.tp1_hit = True
+                self.tp2_hit = True
+        else:  # SELL
+            if peak_px > 0:
+                if tp1_px > 0 and peak_px <= tp1_px + 0.20:
+                    self.tp1_hit = True
+                if tp2_px > 0 and peak_px <= tp2_px + 0.20:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                if tp3_px > 0 and peak_px <= tp3_px + 0.20:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                    self.tp3_hit = True
+            if close_px > 0:
+                if tp1_px > 0 and close_px <= tp1_px + 0.50:
+                    self.tp1_hit = True
+                if tp2_px > 0 and close_px <= tp2_px + 0.50:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                if tp3_px > 0 and close_px <= tp3_px + 0.50:
+                    self.tp1_hit = True
+                    self.tp2_hit = True
+                    self.tp3_hit = True
+            if curr_sl > 0 and tp1_px > 0 and curr_sl <= tp1_px + 0.50:
+                self.tp1_hit = True
+                self.tp2_hit = True
+
+        if self.tp3_hit:
+            self.highest_tp = 3
+        elif self.tp2_hit:
+            self.highest_tp = 2
+        elif self.tp1_hit:
+            self.highest_tp = 1
 
         if is_closed:
             pnl_val = float(getattr(db_t, 'pnl', 0.0) or 0.0)
@@ -174,7 +303,6 @@ class TradeLifecycleCard:
                 self.status = "WIN"
                 self.outcome_text = "BREAK-EVEN"
             
-            close_px = getattr(db_t, 'close_price', None)
             self.exit_price = safe_num(close_px, self.sl_price) or self.sl_price
             
             if close_time_val:
@@ -183,12 +311,17 @@ class TradeLifecycleCard:
 
             # Historial de modificaciones e hitos documentados del trade
             mods = []
-            realized_cash = float(getattr(db_t, 'realized_cash_pnl', 0.0) or 0.0)
+            if self.tp3_hit:
+                mods.append(f"🏆 TP1, TP2 y TP3 alcanzados (Runner completado)")
+            elif self.tp2_hit:
+                mods.append(f"🏆 TP1 y TP2 alcanzados (+75% asegurado)")
+            elif self.tp1_hit:
+                mods.append(f"🏆 TP1 alcanzado (+50% asegurado)")
+
             if realized_cash > 0:
                 mods.append(f"Cobro parcial en TP (+${realized_cash:.2f} USD)")
 
-            if "SL_HIT" in close_reason_str.upper() or "TRAILING_SL" in close_reason_str.upper():
-                curr_sl = float(self.sl_price or 0.0)
+            if "SL_HIT" in close_reason_str or "TRAILING_SL" in close_reason_str:
                 entry_px = float(self.entry_price or 0.0)
                 if self.side == "BUY" and curr_sl >= entry_px:
                     mods.append(f"Cierre de remanente en Break-Even + Spread (${curr_sl:.2f})")
@@ -196,7 +329,7 @@ class TradeLifecycleCard:
                     mods.append(f"Cierre de remanente en Break-Even + Spread (${curr_sl:.2f})")
                 else:
                     mods.append(f"Cierre por Stop Loss (${curr_sl:.2f})")
-            elif "TP" in close_reason_str.upper():
+            elif "TP" in close_reason_str:
                 mods.append(f"Cierre en Take Profit (${float(self.exit_price or 0.0):.2f})")
             elif close_reason_str:
                 mods.append(f"Cierre ({close_reason_str})")
@@ -210,20 +343,19 @@ class TradeLifecycleCard:
             self.closed_at = None
             self.formatted_closed_at = None
 
-            realized_cash = float(getattr(db_t, 'realized_cash_pnl', 0.0) or 0.0)
             if "TP1" in st_str or realized_cash > 0:
                 self.outcome_text = "EN CURSO (TP1 Cobrado 50% + BE)"
                 self.modifications = [
                     "TP1 cobrado (50% asegurado en caja)",
                     f"SL blindado a Break-Even (${float(self.sl_price or self.entry_price):.2f})"
                 ]
-            elif "TP2" in st_str:
+            elif "TP2" in st_str or self.tp2_hit:
                 self.outcome_text = "EN CURSO (TP2 Cobrado 75% + Runner)"
                 self.modifications = [
                     "TP1 y TP2 cobrados",
                     f"Trailing SL ajustado a ${float(self.sl_price or self.entry_price):.2f}"
                 ]
-            elif "TP3" in st_str or "TRAILING" in st_str:
+            elif "TP3" in st_str or "TRAILING" in st_str or self.tp3_hit:
                 self.outcome_text = "EN CURSO (Infinite Runner)"
                 self.modifications = [
                     f"Trailing SL dinámico persiguiendo pico (${float(self.sl_price or self.entry_price):.2f})"
@@ -249,6 +381,10 @@ class TradeLifecycleCard:
             "tp1": float(self.tp1) if self.tp1 is not None else None,
             "tp2": float(self.tp2) if self.tp2 else None,
             "tp3": float(self.tp3) if self.tp3 else None,
+            "tp1_hit": self.tp1_hit,
+            "tp2_hit": self.tp2_hit,
+            "tp3_hit": self.tp3_hit,
+            "highest_tp": self.highest_tp,
             "status": self.status,
             "outcome_text": self.outcome_text,
             "created_at": self.created_at,
@@ -299,6 +435,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
     Agrupa y sincroniza cronológicamente los mensajes de Telegram y los trades ejecutados en la base de datos:
     - Las tarjetas sincronizan 100% sus métricas de PnL (ganancias y pérdidas reales descontadas/añadidas).
     - Multi-pass matching exacto para vincular trades de BD con tarjetas de señales sin falsos duplicados ni sobrescrituras.
+    - Sincroniza hitos de Take Profit alcanzados (TP1, TP2, TP3) desde avisos de Telegram y base de datos.
     - Ordena estrictamente de más reciente a más antiguo garantizando que los últimos trades siempre aparezcan al inicio.
     """
     if not messages and not executed_trades:
@@ -375,6 +512,18 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                             if target_sl:
                                 t.modify_sl(target_sl, time_str)
                         break
+
+            # 3. ¿Es un mensaje informativo de TP alcanzado (ej. "TP1 HIT, +30 Pips", "TP2 HIT, +80 Pips")?
+            else:
+                tp_hit_m = RE_TP_HIT.search(raw_text)
+                if tp_hit_m:
+                    tp_num = int(tp_hit_m.group(1))
+                    pips_m = RE_PIPS_EXTRACT.search(raw_text)
+                    pips_txt = pips_m.group(1) if pips_m else ""
+                    for t in reversed(trades):
+                        if t.channel_name == channel and (t.status == "OPEN" or t.status == "WIN"):
+                            t.mark_tp_hit(tp_num, pips_txt, time_str)
+                            break
 
         except Exception:
             continue
@@ -473,5 +622,6 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
     trades.sort(key=get_card_timestamp, reverse=True)
 
     return [t.to_dict() for t in trades]
+
 
 
