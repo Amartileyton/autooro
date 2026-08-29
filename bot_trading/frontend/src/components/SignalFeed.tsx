@@ -89,6 +89,11 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
   onOpenAuditModal,
 }) => {
   const [localChannelFilter, setLocalChannelFilter] = React.useState<string>(selectedChannel);
+  const [expandedCards, setExpandedCards] = React.useState<Record<string, boolean>>({});
+
+  const toggleCardExpand = (cardKey: string) => {
+    setExpandedCards(prev => ({ ...prev, [cardKey]: !prev[cardKey] }));
+  };
 
   const activeFilter = onSelectChannel ? selectedChannel : localChannelFilter;
   const setFilter = onSelectChannel || setLocalChannelFilter;
