@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from backend.ingesta.schemas import TradingSignalEvent, ModifierSignalEvent, OrderSide
 from backend.ingesta.parser import parse_signal
 
@@ -85,6 +85,10 @@ class TradeLifecycleCard:
         self.margin_usd = safe_num(margin_usd, 250.0) or 250.0
         self.lot_size = safe_num(lot_size, 0.09) or 0.09
         self.pnl_usd: Optional[float] = None
+        self.gross_pnl_usd: Optional[float] = None
+        self.spread_cost_usd: float = 0.15
+        self.commission_usd: float = 0.16
+        self.net_pnl_usd: Optional[float] = None
         self.sl_price = safe_num(sl_price)
         self.initial_sl = safe_num(sl_price)
         self.tp1 = safe_num(tp1)
@@ -102,6 +106,36 @@ class TradeLifecycleCard:
         self.formatted_closed_at: Optional[str] = None
         self.modifications: List[str] = []
         self.error_reason: Optional[str] = None
+
+    def calculate_trade_costs(self) -> Tuple[Optional[float], float, float, Optional[float]]:
+        """
+        Calcula el desglose financiero exacto de costes para XAUUSD:
+        - Spread cTrader: ~0.15$ USD por onza * volumen de onzas (lot_size * 100).
+        - Comisión IC Markets: 3.00$ USD por cada 100k USD negociados (6.00$ round-turn).
+        - Ganancia Bruta: PnL por diferencia de precio.
+        - Ganancia Neta: Ganancia Bruta - Comisión.
+        """
+        oz = float(self.lot_size or 0.01) * 100.0
+        entry_val_usd = float(self.entry_price or 2650.0) * oz
+
+        spread_cost = round(0.15 * oz, 2)
+        commission = round((entry_val_usd / 100000.0) * 6.0, 2)
+        if commission < 0.10 and oz >= 1.0:
+            commission = 0.16
+
+        self.spread_cost_usd = spread_cost
+        self.commission_usd = commission
+
+        if self.pnl_usd is not None:
+            gross = round(float(self.pnl_usd), 2)
+            net = round(gross - commission, 2)
+            self.gross_pnl_usd = gross
+            self.net_pnl_usd = net
+        else:
+            self.gross_pnl_usd = None
+            self.net_pnl_usd = None
+
+        return self.gross_pnl_usd, self.spread_cost_usd, self.commission_usd, self.net_pnl_usd
 
     def update_levels(self, sl_price: Optional[float] = None, tp1: Optional[float] = None, tp2: Optional[float] = None, tp3: Optional[float] = None):
         if sl_price is not None and self.sl_price is None:
@@ -365,6 +399,7 @@ class TradeLifecycleCard:
                 self.modifications = []
 
     def to_dict(self) -> Dict[str, Any]:
+        gross, spread, commission, net = self.calculate_trade_costs()
         return {
             "trade_id": self.trade_id,
             "message_id": self.message_id,
@@ -376,6 +411,10 @@ class TradeLifecycleCard:
             "margin_usd": float(self.margin_usd),
             "lot_size": float(self.lot_size),
             "pnl_usd": float(self.pnl_usd) if self.pnl_usd is not None else None,
+            "gross_pnl_usd": float(gross) if gross is not None else None,
+            "spread_cost_usd": float(spread),
+            "commission_usd": float(commission),
+            "net_pnl_usd": float(net) if net is not None else None,
             "sl_price": float(self.sl_price) if self.sl_price is not None else None,
             "initial_sl": float(self.initial_sl) if self.initial_sl is not None else None,
             "tp1": float(self.tp1) if self.tp1 is not None else None,

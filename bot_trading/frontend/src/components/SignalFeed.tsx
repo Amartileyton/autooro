@@ -11,6 +11,10 @@ export interface TradeLifecycleCardItem {
   margin_usd?: number;
   lot_size?: number;
   pnl_usd?: number | null;
+  gross_pnl_usd?: number | null;
+  spread_cost_usd?: number;
+  commission_usd?: number;
+  net_pnl_usd?: number | null;
   sl_price?: number | null;
   initial_sl?: number | null;
   tp1?: number | null;
@@ -362,6 +366,53 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Desglose de Costes IC Markets / cTrader (Spread + Comisión + Neto) */}
+                  {(t.status === 'WIN' || t.status === 'LOSS' || pnlNum !== null) && (
+                    <div className="pt-1.5 border-t border-white/5 flex flex-col gap-0.5 text-[10px] font-mono bg-black/20 p-1.5 rounded">
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="flex items-center gap-1 text-[9.5px]">
+                          <span className="material-symbols-outlined text-[11px] text-slate-400">price_change</span>
+                          Bruto (Precio):
+                        </span>
+                        <span className={`font-semibold text-[10px] ${pnlNum && pnlNum >= 0 ? 'text-emerald-400' : 'text-crimson-red'}`}>
+                          {safePnlStr(t.gross_pnl_usd ?? pnlNum)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="flex items-center gap-1 text-[9px]">
+                          <span className="material-symbols-outlined text-[11px] text-amber-400">toll</span>
+                          Spread cTrader (~0.15$):
+                        </span>
+                        <span className="text-amber-300/90 font-mono text-[9px]">
+                          -${safePrice(t.spread_cost_usd, '0.15')}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="flex items-center gap-1 text-[9px]">
+                          <span className="material-symbols-outlined text-[11px] text-blue-400">receipt_long</span>
+                          Comisión IC Markets:
+                        </span>
+                        <span className="text-blue-300/90 font-mono text-[9px]">
+                          -${safePrice(t.commission_usd, '0.16')}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-1 border-t border-white/10 font-bold">
+                        <span className="text-white text-[9.5px] flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[12px] text-emerald-400">payments</span>
+                          GANANCIA NETA:
+                        </span>
+                        <span className={`text-[11px] font-mono ${
+                          (t.net_pnl_usd ?? pnlNum ?? 0) >= 0 ? 'text-emerald-400 font-bold' : 'text-crimson-red font-bold'
+                        }`}>
+                          {safePnlStr(t.net_pnl_usd ?? (pnlNum !== null ? (pnlNum - 0.16) : null))}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Fila 4: Rejilla de Niveles de SL y Take Profits */}

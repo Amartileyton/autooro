@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     CTRADER_CLIENT_SECRET: str = Field(default="", description="cTrader Open API Client Secret")
     CTRADER_ACCOUNT_ID: int = Field(default=0, description="cTrader Account ID")
     CTRADER_ACCESS_TOKEN: str = Field(default="", description="cTrader Access Token")
+    CTRADER_REFRESH_TOKEN: str = Field(default="", description="cTrader Refresh Token")
     CTRADER_HOST: str = Field(default="live.ctraderapi.com", description="Host cTrader Open API")
     CTRADER_PORT: int = Field(default=5035, description="Puerto cTrader Open API")
 

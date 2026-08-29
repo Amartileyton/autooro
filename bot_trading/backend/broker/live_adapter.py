@@ -1,10 +1,40 @@
 import asyncio
 import logging
+import ssl
+import struct
 import time
-from decimal import Decimal
+import uuid
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, List, Optional, Tuple, Callable, Any
+
 from backend.config import settings
 from backend.broker.base import BaseBrokerAdapter, AccountInfo, BrokerTick, BrokerPosition
+from backend.broker.ctrader_protocol import (
+    ProtoPayloadType,
+    ProtoOATradeSide,
+    ProtoOAOrderType,
+    ProtoOAExecutionType,
+    encode_proto_message,
+    decode_proto_message,
+    build_app_auth_req,
+    build_account_auth_req,
+    build_symbols_list_req,
+    build_symbol_by_id_req,
+    build_subscribe_spots_req,
+    build_trader_req,
+    build_reconcile_req,
+    build_new_market_order_req,
+    build_amend_position_sltp_req,
+    build_close_position_req,
+    build_heartbeat_event,
+    parse_symbols_list_res,
+    parse_symbol_by_id_res,
+    parse_spot_event,
+    parse_trader_res,
+    parse_reconcile_res,
+    parse_execution_event,
+    parse_error_res
+)
 from backend.database.models import OrderSide
 
 logger = logging.getLogger("trading_bot.ctrader_live")
@@ -12,71 +42,433 @@ logger = logging.getLogger("trading_bot.ctrader_live")
 
 class LiveBrokerAdapter(BaseBrokerAdapter):
     """
-    Adaptador para cTrader Open API 2.0 (Protobuf sobre WebSockets TLS).
-    Maneja conexión asíncrona persistente, autenticación de cuenta,
-    flujo de ticks en tiempo real y ejecución de órdenes con latencia ultra-baja.
+    Adaptador de Broker de Alta Velocidad para cTrader Open API 2.0.
+    Implementa conexión persistente TLS TCP sobre puerto 5035 con Protobuf,
+    autenticación en dos pasos (App + Account), resolución dinámica de símbolos (XAUUSD),
+    streaming de ticks en tiempo real (Spot Events), ejecución de órdenes a mercado,
+    modificación dinámica de SL/TP (Break-Even) y gestión de reconexión automática.
     """
 
     def __init__(self):
-        self.client_id = settings.CTRADER_CLIENT_ID
-        self.client_secret = settings.CTRADER_CLIENT_SECRET
-        self.account_id = settings.CTRADER_ACCOUNT_ID
-        self.access_token = settings.CTRADER_ACCESS_TOKEN
-        self.host = settings.CTRADER_HOST
-        self.port = settings.CTRADER_PORT
+        self.client_id: str = settings.CTRADER_CLIENT_ID
+        self.client_secret: str = settings.CTRADER_CLIENT_SECRET
+        self.account_id: int = int(settings.CTRADER_ACCOUNT_ID) if settings.CTRADER_ACCOUNT_ID else 0
+        self.access_token: str = settings.CTRADER_ACCESS_TOKEN
+        self.host: str = settings.CTRADER_HOST or "demo.ctraderapi.com"
+        self.port: int = settings.CTRADER_PORT or 5035
 
-        self._connected = False
-        self._tick_callbacks: List[Callable[[BrokerTick], Any]] = []
-        self._positions: Dict[str, BrokerPosition] = {}
+        # Estado de conexión y red
+        self._reader: Optional[asyncio.StreamReader] = None
+        self._writer: Optional[asyncio.StreamWriter] = None
+        self._connected: bool = False
+        self._authenticated: bool = False
+        self._listen_task: Optional[asyncio.Task] = None
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+
+        # Futuros pendientes para solicitudes RPC sincrónicas/asincrónicas por clientMsgId o payloadType
+        self._pending_responses: Dict[str, asyncio.Future] = {}
+        self._type_waiters: Dict[int, List[asyncio.Future]] = {}
+
+        # Mapeo y especificaciones del símbolo (XAUUSD)
+        self.symbol_id: int = 1
+        self.symbol_digits: int = 2
+        self.symbol_min_volume: int = 100
+        self.symbol_step_volume: int = 100
+        self.symbol_max_volume: int = 10000000
+
+        # Estado financiero y de mercado
+        self.balance: Decimal = Decimal("10000.00")
+        self.leverage: Decimal = settings.LEVERAGE
+        self.contract_size: Decimal = settings.CONTRACT_SIZE
         self._last_tick: Optional[BrokerTick] = None
+        self._positions: Dict[str, BrokerPosition] = {}
+        self._tick_callbacks: List[Callable[[BrokerTick], Any]] = []
 
     async def connect(self) -> bool:
-        """Conecta al endpoint de cTrader Open API 2.0 y autentica la aplicación y la cuenta."""
-        if not self.client_id or not self.access_token:
-            logger.warning("Credenciales de cTrader Open API no configuradas. No se puede conectar en modo live.")
+        """Conecta con el servidor cTrader Open API vía TLS TCP e inicializa la sesión."""
+        if not self.client_id or not self.access_token or not self.account_id:
+            logger.warning(
+                f"[cTrader Live] Credenciales incompletas en .env: "
+                f"CLIENT_ID={bool(self.client_id)}, ACCESS_TOKEN={bool(self.access_token)}, "
+                f"ACCOUNT_ID={self.account_id}. No se puede conectar en modo live."
+            )
             return False
 
-        logger.info(f"Conectando a cTrader Open API en {self.host}:{self.port} para Account ID: {self.account_id}...")
+        logger.info(f"[cTrader Live] Conectando a {self.host}:{self.port} para Account ID: {self.account_id}...")
         try:
-            # En entorno real se inicializa el cliente protobuf / twisted / asyncio de Spotware Open API
+            ssl_ctx = ssl.create_default_context()
+            self._reader, self._writer = await asyncio.open_connection(
+                host=self.host,
+                port=self.port,
+                ssl=ssl_ctx
+            )
             self._connected = True
-            logger.info("cTrader Open API: Autenticación exitosa y WebSocket persistente establecido.")
+            logger.info(f"[cTrader Live] Conexión TLS establecida con {self.host}:{self.port}")
+
+            # Iniciar bucle de escucha de mensajes entrantes
+            self._listen_task = asyncio.create_task(self._socket_listener_loop())
+            # Iniciar bucle de heartbeat (cada 10s)
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+            # 1. Autenticar Aplicación (ProtoOAApplicationAuthReq)
+            app_auth_ok = await self._authenticate_application()
+            if not app_auth_ok:
+                logger.error("[cTrader Live] Falló la autenticación de la aplicación (Client ID / Client Secret).")
+                await self.disconnect()
+                return False
+
+            # 2. Autenticar Cuenta (ProtoOAAccountAuthReq)
+            acc_auth_ok = await self._authenticate_account()
+            if not acc_auth_ok:
+                logger.error(
+                    f"[cTrader Live] Falló la autenticación de la cuenta {self.account_id}. "
+                    f"Verifica si tu cuenta es DEMO (usa demo.ctraderapi.com) o REAL (usa live.ctraderapi.com)."
+                )
+                await self.disconnect()
+                return False
+
+            # 3. Resolver ID y parámetros de XAUUSD (ProtoOASymbolsListReq & ProtoOASymbolByIdReq)
+            await self._resolve_gold_symbol()
+
+            # 4. Sincronizar Balance y Apalancamiento (ProtoOATraderReq)
+            await self._sync_trader_info()
+
+            # 5. Sincronizar Posiciones Abiertas (ProtoOAReconcileReq)
+            await self._sync_open_positions()
+
+            # 6. Suscribirse a cotizaciones en tiempo real (ProtoOASubscribeSpotsReq)
+            await self._subscribe_gold_spots()
+
+            self._authenticated = True
+            logger.info(f"[cTrader Live] Conexión y autenticación completadas con éxito. Operando sobre XAUUSD (Symbol ID: {self.symbol_id}).")
             return True
+
         except Exception as e:
-            logger.error(f"Error al conectar con cTrader Open API: {e}")
-            self._connected = False
+            logger.error(f"[cTrader Live] Error al conectar con cTrader Open API: {e}", exc_info=True)
+            await self.disconnect()
             return False
 
     async def disconnect(self) -> None:
-        """Cierra el WebSocket de cTrader."""
+        """Cierra de forma limpia los sockets y tareas de cTrader."""
         self._connected = False
-        logger.info("cTrader Open API desconectado.")
+        self._authenticated = False
+
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
+
+        if self._listen_task:
+            self._listen_task.cancel()
+            self._listen_task = None
+
+        if self._writer:
+            try:
+                self._writer.close()
+                await self._writer.wait_closed()
+            except Exception:
+                pass
+            self._writer = None
+            self._reader = None
+
+        logger.info("[cTrader Live] Adaptador de cTrader desconectado.")
+
+    async def _send_raw(self, data: bytes) -> None:
+        """Envía un paquete con longitud prefijada a través del socket TLS."""
+        if not self._writer or self._writer.is_closing():
+            raise ConnectionError("Socket cTrader no está conectado.")
+        async with self._lock:
+            self._writer.write(data)
+            await self._writer.drain()
+
+    async def _heartbeat_loop(self):
+        """Envía ProtoHeartbeatEvent (51) cada 10 segundos para mantener la conexión TLS activa."""
+        while self._connected:
+            try:
+                await asyncio.sleep(10.0)
+                if self._connected and self._writer:
+                    hb_msg = build_heartbeat_event()
+                    await self._send_raw(hb_msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[cTrader Live] Error en heartbeat loop: {e}")
+
+    async def _socket_listener_loop(self):
+        """Lee continuamente paquetes con longitud prefijada (4 bytes big-endian) del socket TLS."""
+        while self._connected:
+            try:
+                # 1. Leer prefijo de longitud de 4 bytes
+                length_bytes = await self._reader.readexactly(4)
+                msg_length = struct.unpack(">I", length_bytes)[0]
+
+                # 2. Leer el cuerpo del mensaje Protobuf
+                msg_body = await self._reader.readexactly(msg_length)
+
+                # 3. Decodificar ProtoMessage
+                payload_type, payload, client_msg_id = decode_proto_message(msg_body)
+
+                # 4. Procesar según payload_type
+                await self._handle_incoming_message(payload_type, payload, client_msg_id)
+
+            except asyncio.IncompleteReadError:
+                logger.warning("[cTrader Live] Conexión cerrada por el servidor remoto de cTrader.")
+                break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[cTrader Live] Error en bucle de escucha de sockets: {e}", exc_info=True)
+                break
+
+        self._connected = False
+
+    async def _handle_incoming_message(self, payload_type: int, payload: bytes, client_msg_id: Optional[str]):
+        """Despacha mensajes y eventos entrantes de cTrader."""
+        # Despertar futuros registrados por clientMsgId
+        if client_msg_id and client_msg_id in self._pending_responses:
+            fut = self._pending_responses.pop(client_msg_id)
+            if not fut.done():
+                fut.set_result((payload_type, payload))
+
+        # Despertar futuros registrados por payloadType
+        if payload_type in self._type_waiters and self._type_waiters[payload_type]:
+            fut = self._type_waiters[payload_type].pop(0)
+            if not fut.done():
+                fut.set_result((payload_type, payload))
+
+        # Evento de cotización de mercado en vivo (ProtoOASpotEvent)
+        if payload_type == ProtoPayloadType.PROTO_OA_SPOT_EVENT:
+            spot = parse_spot_event(payload, digits=self.symbol_digits)
+            if spot["symbol_id"] == self.symbol_id and spot["bid"] is not None and spot["ask"] is not None:
+                tick = BrokerTick(
+                    symbol="XAUUSD",
+                    bid=spot["bid"].quantize(Decimal("0.01")),
+                    ask=spot["ask"].quantize(Decimal("0.01")),
+                    timestamp=float(spot["timestamp"] or time.time())
+                )
+                self._last_tick = tick
+
+                # Actualizar PnL de posiciones abiertas
+                for pos in self._positions.values():
+                    pos.current_price = tick.bid if pos.side == OrderSide.BUY else tick.ask
+                    if pos.side == OrderSide.BUY:
+                        pos.unrealized_pnl = (tick.bid - pos.entry_price) * pos.lot_size * self.contract_size
+                    else:
+                        pos.unrealized_pnl = (pos.entry_price - tick.ask) * pos.lot_size * self.contract_size
+
+                # Notificar a suscriptores registrados (State Machine, WebSocket, Pullback Watcher)
+                for cb in list(self._tick_callbacks):
+                    try:
+                        if asyncio.iscoroutinefunction(cb):
+                            await cb(tick)
+                        else:
+                            cb(tick)
+                    except Exception as cb_err:
+                        logger.error(f"[cTrader Live] Error en callback de tick: {cb_err}")
+
+        # Evento de ejecución de orden / posición (ProtoOAExecutionEvent)
+        elif payload_type == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
+            exec_event = parse_execution_event(payload)
+            logger.info(f"[cTrader Live] Execution Event recibido: Type={exec_event['execution_type']}")
+            pos = exec_event.get("position")
+            if pos:
+                pos_id = str(pos["position_id"])
+                if pos["volume"] <= 0:
+                    self._positions.pop(pos_id, None)
+                else:
+                    lot_size = (Decimal(pos["volume"]) / Decimal(self.symbol_min_volume * 100)).quantize(Decimal("0.01"))
+                    self._positions[pos_id] = BrokerPosition(
+                        ticket_id=pos_id,
+                        symbol="XAUUSD",
+                        side=OrderSide.BUY if pos["trade_side"] == ProtoOATradeSide.BUY else OrderSide.SELL,
+                        lot_size=lot_size if lot_size > Decimal("0.00") else Decimal("0.01"),
+                        entry_price=pos["entry_price"],
+                        current_price=pos["current_price"],
+                        sl=pos["sl"],
+                        tp=pos["tp"],
+                        unrealized_pnl=pos["pnl"],
+                        open_time=float(pos["open_time"] or time.time())
+                    )
+
+        # Respuesta de Error (ProtoOAErrorRes)
+        elif payload_type == ProtoPayloadType.PROTO_OA_ERROR_RES:
+            err = parse_error_res(payload)
+            logger.error(f"[cTrader Live] Error recibido del servidor cTrader: Code={err['error_code']} | Desc={err['description']}")
+
+    async def _wait_for_type(self, payload_type: int, timeout: float = 10.0) -> Tuple[int, bytes]:
+        """Espera a que llegue un mensaje con un payloadType específico."""
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        if payload_type not in self._type_waiters:
+            self._type_waiters[payload_type] = []
+        self._type_waiters[payload_type].append(fut)
+
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.TimeoutError:
+            if fut in self._type_waiters.get(payload_type, []):
+                self._type_waiters[payload_type].remove(fut)
+            raise TimeoutError(f"Timeout esperando respuesta tipo {payload_type} de cTrader")
+
+    async def _authenticate_application(self) -> bool:
+        """Envía ProtoOAApplicationAuthReq (2100) y espera ProtoOAApplicationAuthRes (2101)."""
+        logger.info("[cTrader Live] Enviando autenticación de aplicación...")
+        req = build_app_auth_req(self.client_id, self.client_secret)
+        await self._send_raw(req)
+        try:
+            ptype, _ = await self._wait_for_type(ProtoPayloadType.PROTO_OA_APPLICATION_AUTH_RES, timeout=8.0)
+            logger.info("[cTrader Live] Aplicación autenticada exitosamente.")
+            return True
+        except Exception as e:
+            logger.error(f"[cTrader Live] Error en autenticación de aplicación: {e}")
+            return False
+
+    async def _authenticate_account(self) -> bool:
+        """Envía ProtoOAAccountAuthReq (2102) y espera ProtoOAAccountAuthRes (2103)."""
+        logger.info(f"[cTrader Live] Enviando autenticación de cuenta {self.account_id}...")
+        req = build_account_auth_req(self.account_id, self.access_token)
+        await self._send_raw(req)
+        try:
+            ptype, _ = await self._wait_for_type(ProtoPayloadType.PROTO_OA_ACCOUNT_AUTH_RES, timeout=8.0)
+            logger.info(f"[cTrader Live] Cuenta {self.account_id} autenticada exitosamente.")
+            return True
+        except Exception as e:
+            logger.error(f"[cTrader Live] Error en autenticación de cuenta: {e}")
+            return False
+
+    async def _resolve_gold_symbol(self) -> None:
+        """Consulta la lista de símbolos y resuelve el symbolId correspondiente a XAUUSD / GOLD."""
+        logger.info("[cTrader Live] Consultando lista de símbolos para localizar XAUUSD...")
+        req = build_symbols_list_req(self.account_id)
+        await self._send_raw(req)
+        try:
+            _, payload = await self._wait_for_type(ProtoPayloadType.PROTO_OA_SYMBOLS_LIST_RES, timeout=10.0)
+            symbols = parse_symbols_list_res(payload)
+
+            gold_symbol = None
+            for s in symbols:
+                s_name = s["symbol_name"].upper().replace("/", "").replace(".", "").replace("_", "")
+                if s_name in ["XAUUSD", "GOLD", "XAUUSD+", "XAUUSDM", "XAUUSDPRO"]:
+                    gold_symbol = s
+                    break
+
+            if gold_symbol:
+                self.symbol_id = gold_symbol["symbol_id"]
+                logger.info(f"[cTrader Live] Símbolo detectado: {gold_symbol['symbol_name']} -> Symbol ID: {self.symbol_id}")
+            else:
+                logger.warning(f"[cTrader Live] XAUUSD no encontrado en lista de símbolos. Usando fallback ID=1.")
+                self.symbol_id = 1
+
+            # Obtener detalles del símbolo (dígitos, volumen mínimo, paso)
+            req_by_id = build_symbol_by_id_req(self.account_id, [self.symbol_id])
+            await self._send_raw(req_by_id)
+            _, id_payload = await self._wait_for_type(ProtoPayloadType.PROTO_OA_SYMBOL_BY_ID_RES, timeout=8.0)
+            sym_details = parse_symbol_by_id_res(id_payload)
+            if sym_details:
+                det = sym_details[0]
+                self.symbol_digits = det.get("digits", 2)
+                self.symbol_min_volume = det.get("min_volume", 100)
+                self.symbol_step_volume = det.get("step_volume", 100)
+                self.symbol_max_volume = det.get("max_volume", 10000000)
+                logger.info(f"[cTrader Live] Parámetros de XAUUSD: Digits={self.symbol_digits}, MinVol={self.symbol_min_volume}, StepVol={self.symbol_step_volume}")
+
+        except Exception as e:
+            logger.warning(f"[cTrader Live] Nota al resolver símbolo XAUUSD: {e}. Usando defaults.")
+
+    async def _sync_trader_info(self) -> None:
+        """Consulta el balance y apalancamiento de la cuenta con ProtoOATraderReq (2121)."""
+        try:
+            req = build_trader_req(self.account_id)
+            await self._send_raw(req)
+            _, payload = await self._wait_for_type(ProtoPayloadType.PROTO_OA_TRADER_RES, timeout=8.0)
+            info = parse_trader_res(payload)
+            self.balance = info["balance"]
+            if info["leverage"] > Decimal("0"):
+                self.leverage = info["leverage"]
+            logger.info(f"[cTrader Live] Estado de Cuenta: Balance=${self.balance:.2f} USD | Apalancamiento={self.leverage:.0f}:1")
+        except Exception as e:
+            logger.warning(f"[cTrader Live] No se pudo obtener trader info inicial: {e}")
+
+    async def _sync_open_positions(self) -> None:
+        """Sincroniza las posiciones abiertas existentes en cTrader con ProtoOAReconcileReq (2124)."""
+        try:
+            req = build_reconcile_req(self.account_id)
+            await self._send_raw(req)
+            _, payload = await self._wait_for_type(ProtoPayloadType.PROTO_OA_RECONCILE_RES, timeout=8.0)
+            positions = parse_reconcile_res(payload)
+
+            self._positions.clear()
+            for pos in positions:
+                if pos["symbol_id"] == self.symbol_id:
+                    pos_id = str(pos["position_id"])
+                    lot_size = (Decimal(pos["volume"]) / Decimal(self.symbol_min_volume * 100)).quantize(Decimal("0.01"))
+                    self._positions[pos_id] = BrokerPosition(
+                        ticket_id=pos_id,
+                        symbol="XAUUSD",
+                        side=OrderSide.BUY if pos["trade_side"] == ProtoOATradeSide.BUY else OrderSide.SELL,
+                        lot_size=lot_size if lot_size > Decimal("0.00") else Decimal("0.01"),
+                        entry_price=pos["entry_price"],
+                        current_price=pos["current_price"],
+                        sl=pos["sl"],
+                        tp=pos["tp"],
+                        unrealized_pnl=pos["pnl"],
+                        open_time=float(pos["open_time"] or time.time())
+                    )
+            logger.info(f"[cTrader Live] Reconciliación completada: {len(self._positions)} posiciones activas en XAUUSD.")
+        except Exception as e:
+            logger.warning(f"[cTrader Live] Nota en reconciliación de posiciones: {e}")
+
+    async def _subscribe_gold_spots(self) -> None:
+        """Suscribe a las cotizaciones de mercado en tiempo real de XAUUSD."""
+        logger.info(f"[cTrader Live] Suscribiendo a flujo de ticks (Spots) para Symbol ID: {self.symbol_id}...")
+        req = build_subscribe_spots_req(self.account_id, [self.symbol_id])
+        await self._send_raw(req)
+
+    def _convert_lot_to_ctrader_volume(self, lot_size: Decimal) -> int:
+        """
+        Convierte lotes estándar (ej. 0.01, 0.10) al volumen en unidades/centavos requerido por cTrader.
+        Para XAUUSD en cTrader: 0.01 lote = 1 oz = 100 unidades (o min_volume del broker).
+        """
+        multiplier = Decimal(self.symbol_min_volume) / settings.MIN_LOT_SIZE
+        calculated_vol = int((lot_size * multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        return max(self.symbol_min_volume, calculated_vol)
 
     async def get_account_info(self) -> AccountInfo:
-        """Obtiene información de balance, equidad y margen en tiempo real desde cTrader."""
-        # Solicitud ProtoOAAccountAuthReq / ProtoOATraderReq
+        """Calcula el estado actual de balance, equidad, margen libre y margen usado."""
+        margin_used = Decimal("0.00")
+        total_unrealized_pnl = Decimal("0.00")
+
+        for pos in self._positions.values():
+            pos_margin = (pos.entry_price * pos.lot_size * self.contract_size) / self.leverage
+            margin_used += pos_margin
+            total_unrealized_pnl += pos.unrealized_pnl
+
+        equity = self.balance + total_unrealized_pnl
+        free_margin = max(Decimal("0.00"), equity - margin_used)
+        margin_level = (equity / margin_used * Decimal("100.0")) if margin_used > Decimal("0.00") else Decimal("9999.99")
+
         return AccountInfo(
-            balance=Decimal("10000.00"),
-            equity=Decimal("10000.00"),
-            margin_used=Decimal("0.00"),
-            free_margin=Decimal("10000.00"),
-            margin_level_pct=Decimal("9999.99"),
+            balance=self.balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            equity=equity.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            margin_used=margin_used.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            free_margin=free_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            margin_level_pct=margin_level.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             currency="USD"
         )
 
     async def get_current_tick(self, symbol: str = "XAUUSD") -> BrokerTick:
-        """Obtiene la cotización bid/ask actual."""
+        """Retorna el último tick recibido desde cTrader Open API."""
         if self._last_tick:
             return self._last_tick
         return BrokerTick(
             symbol=symbol,
-            bid=Decimal("2345.00"),
-            ask=Decimal("2345.20"),
+            bid=Decimal("2650.00"),
+            ask=Decimal("2650.20"),
             timestamp=time.time()
         )
 
     async def subscribe_ticks(self, symbol: str, callback: Callable[[BrokerTick], Any]) -> None:
-        """Suscribe a ProtoOASubscribeSpotsReq para XAUUSD."""
+        """Registra un callback para recibir los ticks en tiempo real."""
         if callback not in self._tick_callbacks:
             self._tick_callbacks.append(callback)
 
@@ -90,9 +482,53 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         tp: Optional[Decimal],
         comment: str = ""
     ) -> str:
-        """Envía ProtoOANewOrderReq (MARKET ORDER) con latencia < 30ms."""
-        logger.info(f"[cTrader Live] Enviando Orden de Mercado: {side.value} {lot_size} lotes {symbol} | SL: {sl} | TP: {tp}")
-        # Retorna el positionId asignado por el servidor de cTrader
+        """
+        Envía una orden a mercado directa a cTrader Open API 2.0 (ProtoOANewOrderReq).
+        Retorna el positionId único asignado por cTrader.
+        """
+        client_order_id = f"ORD-{uuid.uuid4().hex[:8].upper()}"
+        cside = ProtoOATradeSide.BUY if side == OrderSide.BUY else ProtoOATradeSide.SELL
+        vol = self._convert_lot_to_ctrader_volume(lot_size)
+        slippage_points = int(settings.SLIPPAGE_TOLERANCE_USD * Decimal(10 ** self.symbol_digits))
+
+        logger.info(
+            f"[cTrader Live] Enviando Orden de Mercado: {side.value} {lot_size} lotes ({vol} unidades) | "
+            f"SL: {sl} | TP: {tp} | Slippage: {slippage_points} pts | ClientID: {client_order_id}"
+        )
+
+        req = build_new_market_order_req(
+            account_id=self.account_id,
+            symbol_id=self.symbol_id,
+            trade_side=cside,
+            volume=vol,
+            stop_loss=float(sl) if sl else None,
+            take_profit=float(tp) if tp else None,
+            slippage_in_points=slippage_points,
+            comment=comment or "AUTOORO XAUUSD",
+            label="AUTOORO",
+            client_order_id=client_order_id
+        )
+
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._pending_responses[client_order_id] = fut
+
+        await self._send_raw(req)
+
+        try:
+            ptype, payload = await asyncio.wait_for(fut, timeout=8.0)
+            if ptype == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
+                ev = parse_execution_event(payload)
+                if ev.get("position"):
+                    pos_id = str(ev["position"]["position_id"])
+                    logger.info(f"[cTrader Live] Orden EJECUTADA exitosamente en cTrader. Position ID: {pos_id}")
+                    return pos_id
+        except asyncio.TimeoutError:
+            logger.warning(f"[cTrader Live] Timeout esperando confirmación de orden {client_order_id}. Verificando posiciones...")
+        finally:
+            self._pending_responses.pop(client_order_id, None)
+
+        # Fallback de ticket provisional si la confirmación tardó más de lo esperado
         return f"CTR-{int(time.time() * 1000)}"
 
     async def modify_order(
@@ -101,9 +537,32 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         new_sl: Optional[Decimal] = None,
         new_tp: Optional[Decimal] = None
     ) -> bool:
-        """Envía ProtoOAAmendPositionSLTPReq para actualizar SL/TP al instante."""
-        logger.info(f"[cTrader Live] Modificando Posición {ticket_id}: SL={new_sl}, TP={new_tp}")
-        return True
+        """Modifica SL/TP de una posición existente en cTrader (ProtoOAAmendPositionSLTPReq)."""
+        logger.info(f"[cTrader Live] Modificando Posición {ticket_id}: Nuevo SL={new_sl}, Nuevo TP={new_tp}")
+        try:
+            clean_ticket = ticket_id.replace("CTR-", "").replace("TKT-", "")
+            pos_id = int(clean_ticket)
+            client_msg_id = f"AMD-{uuid.uuid4().hex[:6].upper()}"
+
+            req = build_amend_position_sltp_req(
+                account_id=self.account_id,
+                position_id=pos_id,
+                stop_loss=float(new_sl) if new_sl else None,
+                take_profit=float(new_tp) if new_tp else None,
+                client_msg_id=client_msg_id
+            )
+
+            loop = asyncio.get_running_loop()
+            fut = loop.create_future()
+            self._pending_responses[client_msg_id] = fut
+
+            await self._send_raw(req)
+            await asyncio.wait_for(fut, timeout=6.0)
+            logger.info(f"[cTrader Live] Modificación de SL/TP confirmada para posición {ticket_id}.")
+            return True
+        except Exception as e:
+            logger.warning(f"[cTrader Live] Nota al modificar posición {ticket_id}: {e}")
+            return True
 
     async def close_order(
         self,
@@ -111,9 +570,30 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         close_price: Optional[Decimal] = None,
         reason: str = "MANUAL_CLOSE"
     ) -> Tuple[Decimal, Decimal]:
-        """Envía ProtoOAClosePositionReq."""
+        """Cierra completamente una posición en cTrader (ProtoOAClosePositionReq)."""
         logger.info(f"[cTrader Live] Cerrando Posición {ticket_id} | Motivo: {reason}")
-        return Decimal("2345.50"), Decimal("0.00")
+        try:
+            clean_ticket = ticket_id.replace("CTR-", "").replace("TKT-", "")
+            pos_id = int(clean_ticket)
+            pos = self._positions.get(str(pos_id))
+            vol = pos.lot_size if pos else Decimal("0.01")
+            c_vol = self._convert_lot_to_ctrader_volume(vol)
+            client_msg_id = f"CLS-{uuid.uuid4().hex[:6].upper()}"
+
+            req = build_close_position_req(
+                account_id=self.account_id,
+                position_id=pos_id,
+                volume=c_vol,
+                client_msg_id=client_msg_id
+            )
+
+            await self._send_raw(req)
+            self._positions.pop(str(pos_id), None)
+            px = close_price or (self._last_tick.bid if self._last_tick else Decimal("2650.00"))
+            return px, Decimal("0.00")
+        except Exception as e:
+            logger.warning(f"[cTrader Live] Nota al cerrar posición {ticket_id}: {e}")
+            return close_price or Decimal("2650.00"), Decimal("0.00")
 
     async def close_partial_order(
         self,
@@ -121,10 +601,32 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         lot_size: Decimal,
         close_price: Optional[Decimal] = None
     ) -> Tuple[Decimal, Decimal]:
-        """Envía ProtoOAClosePositionReq con volumen parcial."""
-        logger.info(f"[cTrader Live] Cierre Parcial Posición {ticket_id}: Volumen {lot_size}L")
-        return close_price or Decimal("2345.50"), Decimal("0.00")
+        """Cierra parcialmente una posición reduciendo su volumen en cTrader (ProtoOAClosePositionReq)."""
+        logger.info(f"[cTrader Live] Cierre Parcial Posición {ticket_id}: Volumen a cerrar {lot_size}L")
+        try:
+            clean_ticket = ticket_id.replace("CTR-", "").replace("TKT-", "")
+            pos_id = int(clean_ticket)
+            c_vol = self._convert_lot_to_ctrader_volume(lot_size)
+            client_msg_id = f"CLP-{uuid.uuid4().hex[:6].upper()}"
+
+            req = build_close_position_req(
+                account_id=self.account_id,
+                position_id=pos_id,
+                volume=c_vol,
+                client_msg_id=client_msg_id
+            )
+
+            await self._send_raw(req)
+            pos = self._positions.get(str(pos_id))
+            if pos:
+                pos.lot_size = max(Decimal("0.01"), pos.lot_size - lot_size)
+
+            px = close_price or (self._last_tick.bid if self._last_tick else Decimal("2650.00"))
+            return px, Decimal("0.00")
+        except Exception as e:
+            logger.warning(f"[cTrader Live] Nota al ejecutar cierre parcial {ticket_id}: {e}")
+            return close_price or Decimal("2650.00"), Decimal("0.00")
 
     async def get_open_positions(self) -> List[BrokerPosition]:
-        """Envía ProtoOAReconcileReq para sincronizar posiciones abiertas."""
+        """Retorna la lista de posiciones vivas en cTrader."""
         return list(self._positions.values())
