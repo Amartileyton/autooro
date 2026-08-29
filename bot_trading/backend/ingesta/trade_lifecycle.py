@@ -110,16 +110,24 @@ class TradeLifecycleCard:
     def calculate_trade_costs(self) -> Tuple[Optional[float], float, float, Optional[float]]:
         """
         Calcula el desglose financiero exacto de costes para XAUUSD:
-        - Spread cTrader: ~0.15$ USD por onza * volumen de onzas (lot_size * 100).
-        - Comisión IC Markets: 3.00$ USD por cada 100k USD negociados (6.00$ round-turn).
-        - Ganancia Bruta: PnL por diferencia de precio.
-        - Ganancia Neta: Ganancia Bruta - Comisión.
+        - Spread cTrader: 0.15$ USD por onza * volumen de onzas (lot_size * 100).
+        - Comisión IC Markets cTrader: 3.00$ USD por cada 100.000$ negociados por lado (apertura + cierre).
+        - Ganancia Bruta: PnL generado únicamente por la distancia de cotización.
+        - Beneficio/Pérdida Neto Final: Bruto - Comisión IC Markets - Spread cTrader.
         """
         oz = float(self.lot_size or 0.01) * 100.0
-        entry_val_usd = float(self.entry_price or 2650.0) * oz
+        entry_px = float(self.entry_price or 2650.0)
+        exit_px = float(self.exit_price or entry_px)
 
+        # 1. Coste del Spread (~0.15$ USD por onza)
         spread_cost = round(0.15 * oz, 2)
-        commission = round((entry_val_usd / 100000.0) * 6.0, 2)
+
+        # 2. Comisión IC Markets cTrader (3$ / 100k USD por lado)
+        entry_notional_usd = entry_px * oz
+        exit_notional_usd = exit_px * oz
+        comm_open = (entry_notional_usd / 100000.0) * 3.00
+        comm_close = (exit_notional_usd / 100000.0) * 3.00
+        commission = round(comm_open + comm_close, 2)
         if commission < 0.10 and oz >= 1.0:
             commission = 0.16
 
@@ -128,7 +136,8 @@ class TradeLifecycleCard:
 
         if self.pnl_usd is not None:
             gross = round(float(self.pnl_usd), 2)
-            net = round(gross - commission, 2)
+            # El beneficio o pérdida final entrega el valor con comisiones y spreads ya descontados
+            net = round(gross - commission - spread_cost, 2)
             self.gross_pnl_usd = gross
             self.net_pnl_usd = net
         else:

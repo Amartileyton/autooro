@@ -208,6 +208,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
               (t.modifications && t.modifications.some(m => m.includes('TP1') || m.includes('TP2') || m.includes('TP3') || m.includes('Cobro parcial') || m.includes('50%'))) ||
               (isWin && tp1Num > 0 && ((isBuy && exitPriceNum >= tp1Num - 1.0) || (!isBuy && exitPriceNum <= tp1Num + 1.0)))
             );
+            
             const isSlTriggered = isLoss;
             const isPendingPullback = status === 'PENDING_PULLBACK' || (t.outcome_text && t.outcome_text.toUpperCase().includes('PULLBACK') && !t.outcome_text.toUpperCase().includes('TIMEOUT') && !t.outcome_text.toUpperCase().includes('ALCANZADO'));
             const isRejected = (status === 'REJECTED' || (t.outcome_text && t.outcome_text.toUpperCase().includes('FUERA'))) && !isPendingPullback;
@@ -215,7 +216,6 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
 
             const isGreenPipsCard = (t.channel_name || '').toUpperCase().includes('GREEN');
 
-            // Estilos de tarjeta general
             let borderColor = 'border-outline-variant/50';
             let bgColor = 'bg-surface/60';
             let statusBadge = 'bg-primary/20 text-primary border-primary/40';
@@ -243,268 +243,107 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
             }
 
             const cardKey = t.trade_id || `signal-card-${idx}`;
+            const isExpanded = Boolean(expandedCards[cardKey]);
 
             return (
-              <div
-                key={cardKey}
-                className={`p-3 border rounded-md relative overflow-hidden transition-all space-y-2.5 ${bgColor} ${borderColor}`}
-              >
-                {/* Borde lateral indicador de estado */}
-                <div
-                  className={`absolute top-0 left-0 w-1.5 h-full ${
-                    isWin ? 'bg-emerald-green' : isLoss ? 'bg-crimson-red' : isPendingPullback ? 'bg-amber-400' : isRejected ? 'bg-slate-500' : 'bg-primary'
-                  }`}
-                />
+              <div key={cardKey} className={`p-3 border rounded-md relative overflow-hidden transition-all space-y-2.5 ${bgColor} ${borderColor}`}>
+                <div className={`absolute top-0 left-0 w-1.5 h-full ${isWin ? 'bg-emerald-green' : isLoss ? 'bg-crimson-red' : isPendingPullback ? 'bg-amber-400' : isRejected ? 'bg-slate-500' : 'bg-primary'}`} />
 
-                {/* Fila 1: Origen + Modo Auditoría + Estado */}
                 <div className="flex justify-between items-center pl-1.5 gap-2">
                   <div className="flex items-center gap-1.5">
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 font-semibold ${
-                        isGreenPipsCard
-                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                          : 'bg-blue-500/15 text-blue-300 border-blue-500/40'
-                      }`}
-                    >
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 font-semibold ${isGreenPipsCard ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-blue-500/15 text-blue-300 border-blue-500/40'}`}>
                       <span className="material-symbols-outlined text-[11px]">cell_tower</span>
                       {t.channel_name || 'Chartoro FX'}
                     </span>
-
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">
-                      AUDIT
-                    </span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">AUDIT</span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {pnlNum !== null && (
-                      <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded ${pnlNum >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-crimson-red/20 text-crimson-red'}`}>
-                        {safePnlStr(pnlNum)}
-                      </span>
-                    )}
-
-                    {/* Insignia con SVG Oficial */}
-                    {isWin ? (
-                      <svg
-                        className="w-5 h-5 fill-current text-emerald-400 shrink-0 drop-shadow-[0_0_6px_rgba(16,185,129,0.4)]"
-                        viewBox="0 0 24 24"
-                        title="Operación Ganada"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          clipRule="evenodd"
-                          d="M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM15.7071 9.29289C16.0976 9.68342 16.0976 10.3166 15.7071 10.7071L12.0243 14.3899C11.4586 14.9556 10.5414 14.9556 9.97568 14.3899L8.29289 12.7071C7.90237 12.3166 7.90237 11.6834 8.29289 11.2929C8.68342 10.9024 9.31658 10.9024 9.70711 11.2929L11 12.5858L14.2929 9.29289C14.6834 8.90237 15.3166 8.90237 15.7071 9.29289Z"
-                        />
-                      </svg>
-                    ) : isLoss ? (
-                      <svg
-                        className="w-5 h-5 fill-current text-crimson-red shrink-0 drop-shadow-[0_0_6px_rgba(239,68,68,0.4)]"
-                        viewBox="0 0 24 24"
-                        title="Operación Perdida"
-                      >
-                        <path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm3.71,12.29a1,1,0,0,1,0,1.42,1,1,0,0,1-1.42,0L12,13.42,9.71,15.71a1,1,0,0,1-1.42,0,1,1,0,0,1,0-1.42L10.58,12,8.29,9.71A1,1,0,0,1,9.71,8.29L12,10.58l2.29-2.29a1,1,0,0,1,1.42,1.42L13.42,12Z" />
-                      </svg>
-                    ) : isPendingPullback ? (
-                      <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold border flex items-center gap-1 bg-amber-500/15 text-amber-300 border-amber-500/40">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                        ESPERANDO RETROCESO
-                      </span>
-                    ) : isRejected ? (
-                      <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold border flex items-center gap-1 bg-slate-500/15 text-slate-400 border-slate-500/40">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        FUERA PRECIO
-                      </span>
-                    ) : (
-                      <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold border flex items-center gap-1 ${statusBadge}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                        EN CURSO
+                    {netPnlVal !== null && (
+                      <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded ${netPnlVal >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-crimson-red/20 text-crimson-red'}`}>
+                        {safePnlStr(netPnlVal)}
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Fila 2: Fecha y Hora Completa */}
                 <div className="pl-1.5 flex items-center gap-1 text-[10px] font-mono text-outline">
                   <span className="material-symbols-outlined text-[13px] opacity-70">schedule</span>
                   <span>{fullDateStr || 'Reciente'}</span>
                 </div>
 
-                {/* Fila 3: Tarjeta de Inversión, Entrada y Salida */}
                 <div className="pl-1.5 bg-black/40 p-2 rounded border border-white/5 space-y-1.5">
-                  {/* Dirección y Margen */}
                   <div className="flex justify-between items-center text-[12px] font-mono">
                     <span className={`font-bold flex items-center gap-1 ${isBuy ? 'text-emerald-400' : 'text-crimson-red'}`}>
-                      <span className="material-symbols-outlined text-[15px]">
-                        {isBuy ? 'arrow_upward' : 'arrow_downward'}
-                      </span>
+                      <span className="material-symbols-outlined text-[15px]">{isBuy ? 'arrow_upward' : 'arrow_downward'}</span>
                       {isBuy ? 'BUY XAUUSD' : 'SELL XAUUSD'}
                     </span>
-
                     <span className="text-[11px] text-slate-300 font-semibold">
                       Margen: ${safeNum(t.margin_usd, 250).toFixed(0)} <span className="text-outline font-normal">({safePrice(t.lot_size, '0.09')}L)</span>
                     </span>
                   </div>
-
-                  {/* Precios de Entrada y Salida */}
                   <div className="flex justify-between items-center text-[11px] font-mono pt-1 border-t border-white/5">
                     <div>
                       <span className="text-outline text-[10px] mr-1">ENTRADA:</span>
                       <strong className="text-on-surface font-bold">${safePrice(t.entry_price, '2650.00')}</strong>
                     </div>
-
                     <div>
                       <span className="text-outline text-[10px] mr-1">SALIDA:</span>
-                      {t.exit_price ? (
-                        <strong className={`font-bold ${isWin ? 'text-emerald-400' : 'text-crimson-red'}`}>
-                          ${safePrice(t.exit_price)}
-                        </strong>
-                      ) : isPendingPullback ? (
-                        <span className="text-amber-300 font-mono text-[10px] font-semibold">ESPERANDO PULLBACK</span>
-                      ) : isRejected ? (
-                        <span className="text-slate-400 font-mono text-[10px] font-semibold">FUERA PRECIO</span>
-                      ) : (
-                        <span className="text-primary font-mono text-[10px] italic">En Curso...</span>
-                      )}
+                      {t.exit_price ? <strong className={`font-bold ${isWin ? 'text-emerald-400' : 'text-crimson-red'}`}>${safePrice(t.exit_price)}</strong> : <span className="text-primary font-mono text-[10px] italic">En Curso...</span>}
                     </div>
                   </div>
-
-                  {/* Desglose de Costes IC Markets / cTrader (Spread + Comisión + Neto) */}
-                  {(t.status === 'WIN' || t.status === 'LOSS' || pnlNum !== null) && (
-                    <div className="pt-1.5 border-t border-white/5 flex flex-col gap-0.5 text-[10px] font-mono bg-black/20 p-1.5 rounded">
-                      <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1 text-[9.5px]">
-                          <span className="material-symbols-outlined text-[11px] text-slate-400">price_change</span>
-                          Bruto (Precio):
-                        </span>
-                        <span className={`font-semibold text-[10px] ${pnlNum && pnlNum >= 0 ? 'text-emerald-400' : 'text-crimson-red'}`}>
-                          {safePnlStr(t.gross_pnl_usd ?? pnlNum)}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1 text-[9px]">
-                          <span className="material-symbols-outlined text-[11px] text-amber-400">toll</span>
-                          Spread cTrader (~0.15$):
-                        </span>
-                        <span className="text-amber-300/90 font-mono text-[9px]">
-                          -${safePrice(t.spread_cost_usd, '0.15')}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1 text-[9px]">
-                          <span className="material-symbols-outlined text-[11px] text-blue-400">receipt_long</span>
-                          Comisión IC Markets:
-                        </span>
-                        <span className="text-blue-300/90 font-mono text-[9px]">
-                          -${safePrice(t.commission_usd, '0.16')}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-1 border-t border-white/10 font-bold">
-                        <span className="text-white text-[9.5px] flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[12px] text-emerald-400">payments</span>
-                          GANANCIA NETA:
-                        </span>
-                        <span className={`text-[11px] font-mono ${
-                          (t.net_pnl_usd ?? pnlNum ?? 0) >= 0 ? 'text-emerald-400 font-bold' : 'text-crimson-red font-bold'
-                        }`}>
-                          {safePnlStr(t.net_pnl_usd ?? (pnlNum !== null ? (pnlNum - 0.16) : null))}
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Fila 4: Rejilla de Niveles de SL y Take Profits */}
                 <div className="pl-1.5 grid grid-cols-4 gap-1.5">
-                  {/* Stop Loss */}
-                  <div
-                    className={`p-1 rounded flex flex-col transition-all border ${
-                      isSlTriggered
-                        ? 'bg-crimson-red/30 border-crimson-red shadow-[0_0_10px_rgba(239,68,68,0.35)] ring-1 ring-crimson-red/80'
-                        : 'bg-black/30 border-white/5 opacity-80'
-                    }`}
-                  >
-                    <span className="text-[8px] font-mono uppercase flex items-center justify-between">
-                      <span className={isSlTriggered ? 'text-crimson-red font-bold' : 'text-outline'}>
-                        SL
-                      </span>
-                      {isModified && <span className="text-amber-400 font-bold text-[7px]">MOD</span>}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold mt-0.5 ${isSlTriggered ? 'text-white' : t.sl_price ? 'text-crimson-red' : 'text-outline/40'}`}>
-                      {t.sl_price ? `$${safePrice(t.sl_price)}` : '---'}
-                    </span>
+                  <div className={`p-1 rounded flex flex-col transition-all border ${isSlTriggered ? 'bg-crimson-red/30 border-crimson-red' : 'bg-black/30 border-white/5'}`}>
+                    <span className="text-[8px] font-mono uppercase text-outline">SL</span>
+                    <span className={`text-[10px] font-mono font-bold ${isSlTriggered ? 'text-white' : 'text-crimson-red'}`}>{t.sl_price ? `$${safePrice(t.sl_price)}` : '---'}</span>
                   </div>
-
-                  {/* TP1 */}
-                  <div
-                    className={`p-1 rounded flex flex-col transition-all border ${
-                      isTp1Triggered
-                        ? 'bg-emerald-500/30 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/80'
-                        : 'bg-black/30 border-white/5 opacity-80'
-                    }`}
-                  >
-                    <span className={`text-[8px] font-mono uppercase flex items-center justify-between ${isTp1Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
-                      <span>TP1</span>
-                      {isTp1Triggered && <span className="material-symbols-outlined text-[10px] text-emerald-400 font-bold">check</span>}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp1Triggered ? 'text-white' : t.tp1 ? 'text-emerald-400' : 'text-outline/40'}`}>
-                      {t.tp1 ? `$${safePrice(t.tp1)}` : '---'}
-                    </span>
+                  <div className={`p-1 rounded flex flex-col transition-all border ${isTp1Triggered ? 'bg-emerald-500/30 border-emerald-400' : 'bg-black/30 border-white/5'}`}>
+                    <span className="text-[8px] font-mono uppercase text-outline">TP1</span>
+                    <span className={`text-[10px] font-mono font-bold ${isTp1Triggered ? 'text-white' : 'text-emerald-400'}`}>{t.tp1 ? `$${safePrice(t.tp1)}` : '---'}</span>
                   </div>
-
-                  {/* TP2 */}
-                  <div
-                    className={`p-1 rounded flex flex-col transition-all border ${
-                      isTp2Triggered
-                        ? 'bg-emerald-500/30 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/80'
-                        : 'bg-black/30 border-white/5 opacity-80'
-                    }`}
-                  >
-                    <span className={`text-[8px] font-mono uppercase flex items-center justify-between ${isTp2Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
-                      <span>TP2</span>
-                      {isTp2Triggered && <span className="material-symbols-outlined text-[10px] text-emerald-400 font-bold">check</span>}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp2Triggered ? 'text-white' : t.tp2 ? 'text-emerald-400' : 'text-outline/40'}`}>
-                      {t.tp2 ? `$${safePrice(t.tp2)}` : '---'}
-                    </span>
+                  <div className={`p-1 rounded flex flex-col transition-all border ${isTp2Triggered ? 'bg-emerald-500/30 border-emerald-400' : 'bg-black/30 border-white/5'}`}>
+                    <span className="text-[8px] font-mono uppercase text-outline">TP2</span>
+                    <span className={`text-[10px] font-mono font-bold ${isTp2Triggered ? 'text-white' : 'text-emerald-400'}`}>{t.tp2 ? `$${safePrice(t.tp2)}` : '---'}</span>
                   </div>
-
-                  {/* TP3 */}
-                  <div
-                    className={`p-1 rounded flex flex-col transition-all border ${
-                      isTp3Triggered
-                        ? 'bg-emerald-500/30 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/80'
-                        : 'bg-black/30 border-white/5 opacity-80'
-                    }`}
-                  >
-                    <span className={`text-[8px] font-mono uppercase flex items-center justify-between ${isTp3Triggered ? 'text-emerald-300 font-bold' : 'text-outline'}`}>
-                      <span>TP3</span>
-                      {isTp3Triggered && <span className="material-symbols-outlined text-[10px] text-emerald-400 font-bold">check</span>}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold mt-0.5 ${isTp3Triggered ? 'text-white' : t.tp3 ? 'text-emerald-400' : 'text-outline/40'}`}>
-                      {t.tp3 ? `$${safePrice(t.tp3)}` : '---'}
-                    </span>
+                  <div className={`p-1 rounded flex flex-col transition-all border ${isTp3Triggered ? 'bg-emerald-500/30 border-emerald-400' : 'bg-black/30 border-white/5'}`}>
+                    <span className="text-[8px] font-mono uppercase text-outline">TP3</span>
+                    <span className={`text-[10px] font-mono font-bold ${isTp3Triggered ? 'text-white' : 'text-emerald-400'}`}>{t.tp3 ? `$${safePrice(t.tp3)}` : '---'}</span>
                   </div>
                 </div>
 
-                {/* Modificaciones posteriores o motivo de descarte */}
-                {isPendingPullback ? (
-                  <div className="pl-1.5 text-[9px] font-mono text-amber-300 bg-amber-500/10 p-1 rounded border border-amber-500/20 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[12px]">timelapse</span>
-                    Vigilando retroceso a zona segura de entrada (máx 15 min)...
+                {(t.status === 'WIN' || t.status === 'LOSS' || pnlNum !== null || t.exit_price) && (
+                  <div className="pt-1 border-t border-white/5 pl-1.5">
+                    <button type="button" onClick={() => toggleCardExpand(cardKey)} className="w-full py-1 px-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-[9.5px] font-mono text-slate-300 flex items-center justify-between transition-colors">
+                      <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                        <span className="material-symbols-outlined text-[12px] text-amber-400">receipt_long</span>
+                        {isExpanded ? 'Ocultar desglose' : 'Ver desglose financiero'}
+                      </span>
+                      <span className="material-symbols-outlined text-[14px] text-slate-400">{isExpanded ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+                    {isExpanded && (
+                      <div className="mt-1.5 p-2 rounded bg-black/50 border border-white/10 flex flex-col gap-1 text-[9.5px] font-mono animate-fadeIn">
+                        <div className="flex justify-between items-center text-slate-400 border-b border-white/5 pb-1">
+                          <span>Movimiento Bruto:</span>
+                          <span className={pnlNum !== null && pnlNum >= 0 ? 'text-emerald-400' : 'text-crimson-red'}>{safePnlStr(pnlNum)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-slate-400">
+                          <span>Spread cTrader:</span>
+                          <span className="text-amber-300">-${safePrice(t.spread_cost_usd, '0.15')}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-slate-400">
+                          <span>Comisión IC Markets:</span>
+                          <span className="text-blue-300">-${safePrice(t.commission_usd, '0.16')}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-1 border-t border-white/10 font-bold text-[10.5px]">
+                          <span>NETO FINAL:</span>
+                          <span className={netPnlVal !== null && netPnlVal >= 0 ? 'text-emerald-400' : 'text-crimson-red'}>{safePnlStr(netPnlVal)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : isRejected ? (
-                  <div className="pl-1.5 text-[9px] font-mono text-slate-400 bg-slate-500/10 p-1 rounded border border-slate-500/20 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[12px]">block</span>
-                    Sin ejecución: {t.outcome_text || 'precio fuera de horquilla al recibir la señal'}
-                  </div>
-                ) : t.modifications && t.modifications.length > 0 ? (
-                  <div className="pl-1.5 text-[9px] font-mono text-amber-300 bg-amber-500/10 p-1 rounded border border-amber-500/20 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[12px]">update</span>
-                    {t.modifications[t.modifications.length - 1]}
-                  </div>
-                ) : null}
+                )}
               </div>
             );
           })
