@@ -153,6 +153,20 @@ def get_user_news_feedback() -> Dict[str, Dict[str, Any]]:
     try:
         conn = sqlite3.connect("trading_bot.db")
         cursor = conn.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS news_interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                news_id TEXT NOT NULL,
+                news_title TEXT NOT NULL,
+                news_url TEXT,
+                news_asset TEXT DEFAULT 'MACRO',
+                action_type TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
         cursor.execute("SELECT news_id, action_type FROM news_interactions ORDER BY id ASC;")
         rows = cursor.fetchall()
         cursor.close()
