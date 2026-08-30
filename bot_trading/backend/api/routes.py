@@ -717,5 +717,46 @@ async def register_news_feedback(req: NewsFeedbackRequest):
     return {"status": "success" if ok else "error"}
 
 
+@router.post("/admin/reset-trades")
+async def reset_all_trade_history(
+    clear_raw_messages: bool = True,
+    user: dict = Depends(verify_auth_or_key),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Borra todo el historial de trades y reinicia el conteo desde cero para una nueva sesión operativa.
+    """
+    try:
+        from sqlalchemy import text
+        from backend.main import app_state
+        
+        await db.execute(text("DELETE FROM trades;"))
+        if clear_raw_messages:
+            await db.execute(text("DELETE FROM raw_telegram_messages;"))
+        await db.execute(text("DELETE FROM system_audit_logs;"))
+        await db.commit()
+
+        # Si el broker es Paper, sincronizar balance a limpio
+        broker = app_state.get("broker")
+        if broker and hasattr(broker, "sync_balance_from_db"):
+            broker.sync_balance_from_db()
+
+        # Notificar a WebSockets para vaciar tarjetas en vivo
+        from backend.api.ws import manager
+        await manager.broadcast({
+            "type": "TRADES_RESET",
+            "message": "Historial de operaciones reiniciado a cero"
+        })
+
+        return {
+            "status": "success",
+            "message": "Historial de trades y mensajes reiniciado a cero exitosamente."
+        }
+    except Exception as e:
+        logger.error(f"Error al reiniciar historial de trades: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 
