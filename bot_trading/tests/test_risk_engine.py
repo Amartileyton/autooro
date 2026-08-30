@@ -39,6 +39,7 @@ async def test_slot_allocation_max_4():
 async def test_exact_lot_sizing_calculation():
     broker = LocalPaperBroker()
     engine = RiskEngine(broker=broker)
+    engine.leverage = Decimal("100.0")
 
     # Balance/Margen Libre = 10,000 USD
     # Slot Margin (25%) = 2,500 USD

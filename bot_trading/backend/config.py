@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     # Motor de Riesgo y Slots
     MAX_CONCURRENT_SLOTS: int = Field(default=4, description="Número máximo de slots concurrentes")
     SLOT_MARGIN_PERCENT: Decimal = Field(default=Decimal("0.25"), description="Porcentaje de margen libre por slot (25%)")
-    LEVERAGE: Decimal = Field(default=Decimal("100.0"), description="Apalancamiento de la cuenta (ej. 100:1)")
+    LEVERAGE: Decimal = Field(default=Decimal("30.0"), description="Apalancamiento de la cuenta (ej. 1:30 regulación europea / IC Markets)")
     CONTRACT_SIZE: Decimal = Field(default=Decimal("100.0"), description="Tamaño de contrato XAUUSD (100 oz troy)")
     MIN_LOT_SIZE: Decimal = Field(default=Decimal("0.01"), description="Lote mínimo permitido por el broker")
     LOT_STEP: Decimal = Field(default=Decimal("0.01"), description="Incremento de lote permitido")

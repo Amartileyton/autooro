@@ -7,6 +7,7 @@ from backend.database.models import OrderSide
 @pytest.mark.asyncio
 async def test_paper_broker_order_lifecycle():
     broker = LocalPaperBroker()
+    broker.leverage = Decimal("100.0")
     broker.balance = Decimal("10000.00")
     broker._current_ask = Decimal("2345.20")
     broker._current_bid = Decimal("2345.00")
