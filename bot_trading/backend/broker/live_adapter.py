@@ -239,11 +239,23 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         # Evento de cotización de mercado en vivo (ProtoOASpotEvent)
         if payload_type == ProtoPayloadType.PROTO_OA_SPOT_EVENT:
             spot = parse_spot_event(payload, digits=self.symbol_digits)
-            if spot["symbol_id"] == self.symbol_id and spot["bid"] is not None and spot["ask"] is not None:
+            if spot["symbol_id"] == self.symbol_id and (spot["bid"] is not None or spot["ask"] is not None):
+                default_px = settings.INITIAL_XAUUSD_PRICE if settings.INITIAL_XAUUSD_PRICE > Decimal("0") else Decimal("4450.00")
+                prev_bid = self._last_tick.bid if self._last_tick else default_px
+                prev_ask = self._last_tick.ask if self._last_tick else (default_px + Decimal("0.20"))
+
+                new_bid = spot["bid"].quantize(Decimal("0.01")) if spot["bid"] is not None else prev_bid
+                new_ask = spot["ask"].quantize(Decimal("0.01")) if spot["ask"] is not None else prev_ask
+
+                if new_bid is None and new_ask is not None:
+                    new_bid = new_ask - Decimal("0.20")
+                elif new_ask is None and new_bid is not None:
+                    new_ask = new_bid + Decimal("0.20")
+
                 tick = BrokerTick(
                     symbol="XAUUSD",
-                    bid=spot["bid"].quantize(Decimal("0.01")),
-                    ask=spot["ask"].quantize(Decimal("0.01")),
+                    bid=new_bid,
+                    ask=new_ask,
                     timestamp=float(spot["timestamp"] or time.time())
                 )
                 self._last_tick = tick
@@ -460,10 +472,11 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         """Retorna el último tick recibido desde cTrader Open API."""
         if self._last_tick:
             return self._last_tick
+        default_px = settings.INITIAL_XAUUSD_PRICE if settings.INITIAL_XAUUSD_PRICE > Decimal("0") else Decimal("4450.00")
         return BrokerTick(
             symbol=symbol,
-            bid=Decimal("2650.00"),
-            ask=Decimal("2650.20"),
+            bid=default_px,
+            ask=default_px + Decimal("0.20"),
             timestamp=time.time()
         )
 

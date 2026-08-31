@@ -29,7 +29,7 @@ class LocalPaperBroker(BaseBrokerAdapter):
         self.sync_balance_from_db()
         
         # Precio actual de simulación (sincronizado con mercado real de Oro)
-        self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE if settings.INITIAL_XAUUSD_PRICE > Decimal("0.00") else Decimal("2650.00")
+        self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE if settings.INITIAL_XAUUSD_PRICE > Decimal("0.00") else Decimal("4450.00")
         self._current_bid: Decimal = self._current_mid_price - (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         self._current_ask: Decimal = self._current_mid_price + (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         
