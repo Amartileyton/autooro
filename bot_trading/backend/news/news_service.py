@@ -462,18 +462,45 @@ def _generate_expert_contextual_summary(title: str, source: str = "", url: str =
         }
 
 
+async def fetch_article_text_async(url: str, max_chars: int = 2500) -> str:
+    """Extrae el contenido textual del artículo si está accesible libremente usando httpx asíncrono."""
+    if not url or not url.startswith("http"):
+        return ""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        }
+        async with httpx.AsyncClient(headers=headers, timeout=6.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                html = resp.text
+                text = re.sub(r'<script.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<style.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+                return text[:max_chars] if len(text) > 100 else ""
+    except Exception as e:
+        logger.debug(f"Aviso al extraer texto del artículo desde {url}: {e}")
+    return ""
+
+
 async def summarize_news_with_deepseek(title: str, source: str = "", url: str = "") -> Dict[str, Any]:
     """Genera un análisis magistral estructurado en 3 bloques didácticos utilizando DeepSeek, Gemini o el motor pedagógico institucional."""
     record_news_interaction(news_id=f"hash_{abs(hash(title))%1000000}", title=title, url=url, action_type="summarize")
 
     api_key = (getattr(settings, 'DEEPSEEK_API_KEY', '') or getattr(settings, 'AI_API_KEY', '') or "").strip()
 
-    # Si no hay API Key configurada, devolver análisis magistral inmediato
+    # Si no hay API Key configurada, advertir en el log y devolver análisis magistral contextual inmediato
     if not api_key:
+        logger.warning(
+            f"⚠️ [DEEPSEEK AI] No se encontró DEEPSEEK_API_KEY en .env. "
+            f"Para resúmenes 100% generados en vivo por IA, añade tu clave en bot_trading/.env: DEEPSEEK_API_KEY=sk-..."
+        )
         return _generate_expert_contextual_summary(title, source, url)
 
     # Intentar extraer texto del artículo vinculado
-    article_body = fetch_article_text(url)
+    article_body = await fetch_article_text_async(url)
     article_context = f"\nTexto extracto de la noticia: {article_body[:1500]}" if article_body else ""
 
     prompt = f"""Eres un maestro de economía y analista institucional supremo de materias primas (especialista en Oro / XAUUSD y banca central).
@@ -507,32 +534,32 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
     # 1. Si es Gemini API Key
     if api_key.startswith("AIzaSy") or getattr(settings, 'AI_PROVIDER', '').lower() == "gemini":
         try:
+            logger.info(f"🤖 [GEMINI AI] Solicitando análisis a Gemini para: '{title[:50]}...'")
             gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{getattr(settings, 'AI_MODEL', 'gemini-2.0-flash')}:generateContent?key={api_key}"
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0.4, "response_mime_type": "application/json"}
             }
-            ctx = ssl._create_unverified_context()
-            req = urllib.request.Request(
-                gemini_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, context=ctx, timeout=12.0) as resp:
-                data = json.loads(resp.read().decode())
-                cand_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                clean_text = cand_text.replace("```json", "").replace("```", "").strip()
-                parsed = json.loads(clean_text)
-                return {
-                    "status": "success",
-                    "provider": "gemini",
-                    "translated_title": parsed.get("translated_title", title),
-                    "summary_bullets": parsed.get("bullets", []),
-                    "sentiment": parsed.get("sentiment", "NEUTRAL"),
-                    "key_takeaway": parsed.get("key_takeaway", "")
-                }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(gemini_url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    cand_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    clean_text = cand_text.replace("```json", "").replace("```", "").strip()
+                    parsed = json.loads(clean_text)
+                    logger.info(f"✅ [GEMINI AI] Masterclass generada con éxito.")
+                    return {
+                        "status": "success",
+                        "provider": "gemini",
+                        "translated_title": parsed.get("translated_title", title),
+                        "summary_bullets": parsed.get("bullets", []),
+                        "sentiment": parsed.get("sentiment", "NEUTRAL"),
+                        "key_takeaway": parsed.get("key_takeaway", "")
+                    }
+                else:
+                    logger.error(f"❌ [GEMINI AI] Error HTTP {resp.status_code}: {resp.text}")
         except Exception as gem_err:
-            logger.debug(f"Aviso en llamada Gemini News: {gem_err}")
+            logger.error(f"❌ [GEMINI AI] Excepción en llamada Gemini News: {gem_err}")
 
     # 2. Llamada a DeepSeek / OpenAI Compatible API
     try:
@@ -540,8 +567,11 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
         if "/v1/chat/completions" in endpoint:
             endpoint = endpoint.replace("/v1/chat/completions", "/chat/completions")
 
+        model_name = getattr(settings, 'DEEPSEEK_MODEL', 'deepseek-chat') or "deepseek-chat"
+        logger.info(f"🤖 [DEEPSEEK AI] Conectando a DeepSeek API ({endpoint} | {model_name}) para: '{title[:50]}...'")
+
         payload = {
-            "model": getattr(settings, 'DEEPSEEK_MODEL', 'deepseek-chat') or "deepseek-chat",
+            "model": model_name,
             "messages": [
                 {"role": "system", "content": "Eres un catedrático de macroeconomía y maestro de trading institucional de materias primas. Respondes exclusivamente en JSON válido en perfecto castellano."},
                 {"role": "user", "content": prompt}
@@ -550,31 +580,40 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
             "max_tokens": 1200
         }
 
-        ctx = ssl._create_unverified_context()
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-                "User-Agent": "GoldExTerminal/2.0"
-            }
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "GoldExTerminal/2.0"
+        }
 
-        with urllib.request.urlopen(req, context=ctx, timeout=12.0) as resp:
-            raw_data = json.loads(resp.read().decode())
-            content = raw_data["choices"][0]["message"]["content"]
-            clean_text = content.replace("```json", "").replace("```", "").strip()
-            parsed = json.loads(clean_text)
-            return {
-                "status": "success",
-                "provider": "deepseek",
-                "translated_title": parsed.get("translated_title", title),
-                "summary_bullets": parsed.get("bullets", []),
-                "sentiment": parsed.get("sentiment", "NEUTRAL"),
-                "key_takeaway": parsed.get("key_takeaway", "")
-            }
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(endpoint, json=payload, headers=headers)
+            if resp.status_code == 200:
+                raw_data = resp.json()
+                content = raw_data["choices"][0]["message"]["content"]
+                clean_text = content.replace("```json", "").replace("```", "").strip()
+                # Extraer JSON limpio si hay texto extra
+                match = re.search(r'\{.*\}', clean_text, re.DOTALL)
+                if match:
+                    clean_text = match.group(0)
+                parsed = json.loads(clean_text)
+                logger.info(f"✅ [DEEPSEEK AI] Masterclass generada con éxito por DeepSeek.")
+                return {
+                    "status": "success",
+                    "provider": "deepseek",
+                    "translated_title": parsed.get("translated_title", title),
+                    "summary_bullets": parsed.get("bullets", []),
+                    "sentiment": parsed.get("sentiment", "NEUTRAL"),
+                    "key_takeaway": parsed.get("key_takeaway", "")
+                }
+            else:
+                logger.error(f"❌ [DEEPSEEK AI] Error HTTP {resp.status_code} desde DeepSeek: {resp.text}")
+                if resp.status_code == 402:
+                    logger.error("❌ [DEEPSEEK AI] 'Insufficient Balance': Tu cuenta de DeepSeek no tiene saldo de créditos disponible.")
+                elif resp.status_code == 401:
+                    logger.error("❌ [DEEPSEEK AI] 'Unauthorized': La DEEPSEEK_API_KEY no es válida.")
     except Exception as e:
-        logger.debug(f"Aviso al invocar DeepSeek API: {e}. Activando lección magistral de contingencia.")
-        return _generate_expert_contextual_summary(title, source, url)
+        logger.error(f"❌ [DEEPSEEK AI] Error de conexión con DeepSeek API: {e}. Activando lección magistral de contingencia.")
+
+    return _generate_expert_contextual_summary(title, source, url)
 
