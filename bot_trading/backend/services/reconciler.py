@@ -232,12 +232,31 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             trades.append(new_card)
 
     # 4. Señales no ejecutadas: clasificar si están en espera de retroceso (Pullback) o rechazadas
+    from datetime import timedelta
+    from backend.config import settings
+    now_utc = datetime.now(timezone.utc)
+    timeout_mins = getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 15)
+
     for card in trades:
         if id(card) not in matched_card_ids:
-            if card.error_reason and "PULLBACK" in card.error_reason and "EN ESPERA" in card.error_reason:
+            is_pb = bool(card.error_reason and "PULLBACK" in card.error_reason and "EN ESPERA" in card.error_reason)
+            card_dt = get_card_timestamp(card)
+            # Si tiene timestamp válido, comprobar si han pasado más de 15 minutos
+            is_expired = False
+            if card_dt != datetime.min.replace(tzinfo=timezone.utc):
+                is_expired = (now_utc - card_dt) > timedelta(minutes=timeout_mins)
+
+            if is_pb and not is_expired:
                 card.status = "PENDING_PULLBACK"
                 card.outcome_text = card.error_reason or "EN ESPERA (PULLBACK)"
                 card.modifications = ["Vigilando retroceso hacia rango de entrada..."]
+            elif is_pb and is_expired:
+                card.status = "REJECTED"
+                card.outcome_text = "FUERA PRECIO (TIMEOUT PULLBACK)"
+                card.pnl_usd = None
+                card.gross_pnl_usd = None
+                card.net_pnl_usd = None
+                card.modifications = [f"Timeout de retroceso ({timeout_mins} min) expirado sin volver a rango"]
             else:
                 card.status = "REJECTED"
                 card.outcome_text = card.error_reason or "FUERA PRECIO"

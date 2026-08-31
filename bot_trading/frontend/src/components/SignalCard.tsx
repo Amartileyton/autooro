@@ -58,8 +58,8 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
     );
     
     const isSlTriggered = isLoss;
-    const isPendingPullback = status === 'PENDING_PULLBACK' || (t.outcome_text && t.outcome_text.toUpperCase().includes('PULLBACK') && !t.outcome_text.toUpperCase().includes('TIMEOUT') && !t.outcome_text.toUpperCase().includes('ALCANZADO'));
-    const isRejected = (status === 'REJECTED' || (t.outcome_text && t.outcome_text.toUpperCase().includes('FUERA'))) && !isPendingPullback;
+    const isRejected = (status === 'REJECTED' || (t.outcome_text && (t.outcome_text.toUpperCase().includes('FUERA') || t.outcome_text.toUpperCase().includes('TIMEOUT') || t.outcome_text.toUpperCase().includes('ALCANZADO'))));
+    const isPendingPullback = !isRejected && (status === 'PENDING_PULLBACK' || (t.outcome_text && t.outcome_text.toUpperCase().includes('PULLBACK')));
     const isOpen = status === 'OPEN' && !isRejected && !isPendingPullback;
 
     const isGreenPipsCard = (t.channel_name || '').toUpperCase().includes('GREEN');

@@ -30,6 +30,27 @@ async def run_startup_reconciliation(
     logger.info("Iniciando Protocolo de Reconciliación Post-Reinicio...")
 
     with Session(sync_engine) as session:
+        # 1.1 Limpiar mensajes residuales de pullback expirados (>15 min) en DB
+        try:
+            from backend.database.models import RawTelegramMessage
+            from sqlalchemy import update
+            from datetime import timedelta
+            cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=15)
+            stmt_stale = (
+                update(RawTelegramMessage)
+                .where(
+                    RawTelegramMessage.error_reason.like("%EN ESPERA%PULLBACK%"),
+                    RawTelegramMessage.received_at < cutoff_time
+                )
+                .values(error_reason="FUERA PRECIO (TIMEOUT PULLBACK)")
+            )
+            res = session.execute(stmt_stale)
+            session.commit()
+            if res.rowcount and res.rowcount > 0:
+                logger.info(f"Reconciliación: {res.rowcount} mensajes antiguos en espera de pullback actualizados a TIMEOUT.")
+        except Exception as e:
+            logger.debug(f"Aviso limpiando mensajes de pullback en reconciliación: {e}")
+
         # 1. Consultar trades abiertos en DB
         stmt = select(Trade).where(
             Trade.status.in_([
