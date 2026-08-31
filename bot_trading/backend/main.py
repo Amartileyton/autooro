@@ -122,7 +122,7 @@ async def signal_consumer_worker(
                                     stmt = (
                                         update(RawTelegramMessage)
                                         .where(RawTelegramMessage.message_id == event.message_id)
-                                        .values(error_reason="EN ESPERA (PULLBACK)")
+                                        .values(error_reason=f"EN ESPERA PULLBACK (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})")
                                     )
                                     await session.execute(stmt)
                                     await session.commit()
@@ -149,7 +149,7 @@ async def signal_consumer_worker(
                             stmt = (
                                 update(RawTelegramMessage)
                                 .where(RawTelegramMessage.message_id == event.message_id)
-                                .values(error_reason="FUERA PRECIO")
+                                .values(error_reason=f"FUERA PRECIO (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})")
                             )
                             await session.execute(stmt)
                             await session.commit()
@@ -157,7 +157,7 @@ async def signal_consumer_worker(
                         logger.debug(f"Aviso al actualizar error_reason en DB: {db_err}")
 
                 await state_machine.emit_alert("SIGNAL_REJECTED", {
-                    "reason": "FUERA PRECIO",
+                    "reason": f"FUERA PRECIO (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})",
                     "diff": float(diff),
                     "market_price": float(market_price),
                     "message_id": event.message_id,

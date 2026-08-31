@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional, Dict, Any
@@ -66,6 +66,91 @@ def build_alert_message(event_type: str, data: Optional[Dict[str, Any]] = None) 
             "• *Ingesta Telegram:* `🟢 ACTIVA`\n"
             f"• *Hora (Madrid):* `{now_str}`\n"
             "ℹ️ _El bot vuelve a procesar las señales del canal._"
+        )
+
+    elif event_type == "SIGNAL_REJECTED":
+        reason = data.get("reason", "FUERA PRECIO")
+        entry = data.get("entry_price", 0.0)
+        market = data.get("market_price", 0.0)
+        diff = data.get("diff", 0.0)
+        entry_str = f"${entry:.2f}" if entry else "N/A"
+        market_str = f"${market:.2f}" if market else "N/A"
+        diff_str = f"+${diff:.2f} USD" if diff else "N/A"
+        return (
+            "🚫 *ALERTA GOLD-EX: SEÑAL RECHAZADA (FUERA PRECIO)*\n"
+            "══════════════════════════════════════\n"
+            "• *Estado:* `🚫 NO EJECUTADA (PROTECCIÓN CAPITAL)`\n"
+            f"• *Motivo:* `{reason}`\n"
+            f"• *Precio Señal:* `{entry_str}`\n"
+            f"• *Precio Mercado al llegar:* `{market_str}`\n"
+            f"• *Desvío / Slippage:* `{diff_str}` (Tolerancia: `$2.00 USD`)\n"
+            f"• *Hora (Madrid):* `{now_str}`\n"
+            "──────────────────────────────────────\n"
+            "🛡️ _La orden no se ejecutó para proteger tu balance de deslizamientos negativos o entradas tardías._"
+        )
+
+    elif event_type == "SIGNAL_PENDING_PULLBACK":
+        entry = data.get("entry_price", 0.0)
+        market = data.get("market_price", 0.0)
+        diff = data.get("diff", 0.0)
+        timeout = data.get("timeout_minutes", 15)
+        entry_str = f"${entry:.2f}" if entry else "N/A"
+        market_str = f"${market:.2f}" if market else "N/A"
+        diff_str = f"+${diff:.2f} USD" if diff else "N/A"
+        return (
+            "⏳ *ALERTA GOLD-EX: EN ESPERA DE RETROCESO (PULLBACK)*\n"
+            "══════════════════════════════════════\n"
+            "• *Estado:* `⏳ VIGILANDO RETROCESO EN MERCADO`\n"
+            f"• *Precio Señal:* `{entry_str}`\n"
+            f"• *Precio Mercado al llegar:* `{market_str}` (Desfase: `{diff_str}`)\n"
+            f"• *Tiempo Límite:* `{timeout} min`\n"
+            f"• *Hora (Madrid):* `{now_str}`\n"
+            "──────────────────────────────────────\n"
+            "🎯 _Si el precio retrocede a la zona segura se abrirá la orden. Si toca TP1 antes, se cancelará._"
+        )
+
+    elif event_type == "PULLBACK_EXPIRED":
+        channel = data.get("channel", "Chartoro FX")
+        reason = data.get("reason", "Timeout alcanzado sin retroceso")
+        return (
+            "⌛ *ALERTA GOLD-EX: VIGILANCIA EXPIRADA (FUERA PRECIO)*\n"
+            "══════════════════════════════════════\n"
+            "• *Estado:* `⌛ CANCELADA TRAS TIMEOUT`\n"
+            f"• *Canal:* `{channel}`\n"
+            f"• *Motivo:* `{reason}`\n"
+            f"• *Hora (Madrid):* `{now_str}`\n"
+            "──────────────────────────────────────\n"
+            "ℹ️ _El precio no regresó a la zona de entrada durante el tiempo límite. Orden descartada._"
+        )
+
+    elif event_type == "PULLBACK_CANCELLED_TP":
+        channel = data.get("channel", "Chartoro FX")
+        tp1 = data.get("tp1", 0.0)
+        return (
+            "🎯 *ALERTA GOLD-EX: SEÑAL INVALIDADA POR TP1 (FUERA PRECIO)*\n"
+            "══════════════════════════════════════\n"
+            "• *Estado:* `🚫 CANCELADA (OBJETIVO TOCADO DIRECTO)`\n"
+            f"• *Canal:* `{channel}`\n"
+            f"• *TP1 Alcanzado:* `${tp1:.2f}`\n"
+            f"• *Hora (Madrid):* `{now_str}`\n"
+            "──────────────────────────────────────\n"
+            "ℹ️ _El mercado alcanzó el objetivo sin retroceder a la zona de entrada. Orden descartada por seguridad._"
+        )
+
+    elif event_type == "ORDER_OPENED":
+        ticket = data.get("ticket_id", "")
+        side = data.get("side", "")
+        entry = data.get("entry_price", 0.0)
+        lot = data.get("lot_size", 0.0)
+        sl = data.get("sl", 0.0)
+        return (
+            f"🚀 *ALERTA GOLD-EX: ORDEN EJECUTADA ({side} XAUUSD)*\n"
+            "══════════════════════════════════════\n"
+            f"• *Ticket:* `{ticket}`\n"
+            f"• *Entrada Ejecutada:* `${entry:.2f}`\n"
+            f"• *Volumen:* `{lot} Lotes`\n"
+            f"• *Stop Loss:* `${sl:.2f}`\n"
+            f"• *Hora (Madrid):* `{now_str}`"
         )
 
     return f"🔔 *ALERTA GOLD-EX:* `{event_type}` | {now_str}"

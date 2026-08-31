@@ -660,11 +660,17 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
         if id(card) not in matched_card_ids:
             if card.error_reason and "PULLBACK" in card.error_reason and "EN ESPERA" in card.error_reason:
                 card.status = "PENDING_PULLBACK"
-                card.outcome_text = "EN ESPERA (PULLBACK)"
+                card.outcome_text = card.error_reason or "EN ESPERA (PULLBACK)"
                 card.modifications = ["Vigilando retroceso hacia rango de entrada..."]
             else:
                 card.status = "REJECTED"
                 card.outcome_text = card.error_reason or "FUERA PRECIO"
+                # Limpiar cualquier PnL teórico para garantizar que no se confunda con balance real
+                card.pnl_usd = None
+                card.gross_pnl_usd = None
+                card.net_pnl_usd = None
+                if not card.modifications:
+                    card.modifications = [f"Orden no ejecutada: {card.outcome_text}"]
 
     # 5. Ordenación cronológica estricta: los trades más recientes van SIEMPRE al inicio
     trades.sort(key=get_card_timestamp, reverse=True)

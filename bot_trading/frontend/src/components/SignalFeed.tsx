@@ -258,7 +258,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                 <div className={`absolute top-0 left-0 w-1.5 h-full ${isWin ? 'bg-emerald-green' : isLoss ? 'bg-crimson-red' : isPendingPullback ? 'bg-amber-400' : isRejected ? 'bg-slate-500' : 'bg-primary'}`} />
 
                 <div className="flex justify-between items-center pl-1.5 gap-2">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 font-semibold ${isGreenPipsCard ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-blue-500/15 text-blue-300 border-blue-500/40'}`}>
                       <span className="material-symbols-outlined text-[11px]">cell_tower</span>
                       {t.channel_name || 'Chartoro FX'}
@@ -267,11 +267,26 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {netPnlVal !== null && (
+                    {isRejected ? (
+                      <span className="text-[9.5px] font-mono font-bold px-2 py-0.5 rounded bg-slate-700/60 text-slate-200 border border-slate-500/60 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[12px] text-amber-400">block</span>
+                        FUERA PRECIO
+                      </span>
+                    ) : isPendingPullback ? (
+                      <span className="text-[9.5px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[12px] text-amber-400">hourglass_top</span>
+                        EN ESPERA (PULLBACK)
+                      </span>
+                    ) : netPnlVal !== null ? (
                       <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded ${netPnlVal >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-crimson-red/20 text-crimson-red'}`}>
                         {safePnlStr(netPnlVal)}
                       </span>
-                    )}
+                    ) : isOpen ? (
+                      <span className="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary border border-primary/40 flex items-center gap-1 animate-pulse">
+                        <span className="material-symbols-outlined text-[11px]">radio_button_checked</span>
+                        EN CURSO
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -297,10 +312,30 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                     </div>
                     <div>
                       <span className="text-outline text-[10px] mr-1">SALIDA:</span>
-                      {t.exit_price ? <strong className={`font-bold ${isWin ? 'text-emerald-400' : 'text-crimson-red'}`}>${safePrice(t.exit_price)}</strong> : <span className="text-primary font-mono text-[10px] italic">En Curso...</span>}
+                      {isRejected ? (
+                        <span className="text-slate-400 font-mono text-[10px] font-semibold">No ejecutada (Slippage)</span>
+                      ) : isPendingPullback ? (
+                        <span className="text-amber-400 font-mono text-[10px] font-semibold">Vigilando retroceso...</span>
+                      ) : t.exit_price ? (
+                        <strong className={`font-bold ${isWin ? 'text-emerald-400' : 'text-crimson-red'}`}>${safePrice(t.exit_price)}</strong>
+                      ) : (
+                        <span className="text-primary font-mono text-[10px] italic">En Curso...</span>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {isRejected && (
+                  <div className="pl-1.5 py-1 px-2 rounded bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-[9.5px] font-mono text-slate-300">
+                    <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                      <span className="material-symbols-outlined text-[12px]">shield</span>
+                      FUERA PRECIO:
+                    </span>
+                    <span className="text-slate-300 text-right truncate max-w-[220px]" title={t.outcome_text || 'Orden no ejecutada por deslizamiento'}>
+                      {t.outcome_text && t.outcome_text !== 'FUERA PRECIO' ? t.outcome_text : 'Entrada cancelada por protección de Slippage'}
+                    </span>
+                  </div>
+                )}
 
                 <div className="pl-1.5 grid grid-cols-4 gap-1.5">
                   <div className={`p-1 rounded flex flex-col transition-all border ${isSlTriggered ? 'bg-crimson-red/30 border-crimson-red' : 'bg-black/30 border-white/5'}`}>
@@ -321,7 +356,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
                   </div>
                 </div>
 
-                {(t.status === 'WIN' || t.status === 'LOSS' || pnlNum !== null || t.exit_price) && (
+                {!isRejected && !isPendingPullback && (t.status === 'WIN' || t.status === 'LOSS' || pnlNum !== null || t.exit_price) && (
                   <div className="pt-1 border-t border-white/5 pl-1.5">
                     <button type="button" onClick={() => toggleCardExpand(cardKey)} className="w-full py-1 px-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-[9.5px] font-mono text-slate-300 flex items-center justify-between transition-colors">
                       <span className="flex items-center gap-1.5 font-semibold text-slate-200">
