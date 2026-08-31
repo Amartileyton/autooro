@@ -396,59 +396,79 @@ def fetch_article_text(url: str, max_chars: int = 2500) -> str:
 
 
 def _generate_expert_contextual_summary(title: str, source: str = "", url: str = "") -> Dict[str, Any]:
-    """Genera un análisis macroeconómico y técnico contextual de alta calidad cuando la API externa no está disponible."""
+    """Genera una auténtica lección magistral de macroeconomía, banca central y trading de Oro en 100% castellano."""
     t_low = title.lower()
-    is_gold = "gold" in t_low or "oro" in t_low or "xau" in t_low
-    is_fed = "fed" in t_low or "powell" in t_low or "inflaci" in t_low or "tipos" in t_low or "rates" in t_low or "dólar" in t_low or "dollar" in t_low
-    is_stocks = "s&p" in t_low or "nasdaq" in t_low or "wall street" in t_low or "acciones" in t_low or "tech" in t_low or "dax" in t_low
 
-    if is_gold or is_fed:
-        sentiment = "BULLISH" if ("sube" in t_low or "rally" in t_low or "demanda" in t_low or "recorte" in t_low or "corte" in t_low or "refugio" in t_low) else "NEUTRAL"
+    is_gold = any(k in t_low for k in ["gold", "oro", "xau", "bullion", "metal", "precious", "reserves", "lingote", "onza"])
+    is_fed_rates = any(k in t_low for k in ["fed", "powell", "rate", "tipo", "interest", "cut", "hike", "cpi", "pce", "inflaci", "yield", "treasury", "bono", "dólar", "dollar", "dxy", "bce", "lagarde"])
+    is_geopolitics = any(k in t_low for k in ["war", "guerra", "tension", "geopolit", "conflict", "crisis", "sanction", "sancion", "mideast", "oriente", "china", "taiwan", "russia", "ucrania", "petroleo", "oil", "opec", "arancel", "tariff"])
+    is_stocks = any(k in t_low for k in ["s&p", "nasdaq", "dow", "wall street", "stock", "accion", "nvidia", "apple", "tech", "earnings", "dax", "rally", "selloff", "bolsa"])
+
+    if is_geopolitics or (is_gold and any(k in t_low for k in ["refugio", "haven", "conflict", "tension", "crisis", "escalad"])):
+        sentiment = "BULLISH"
         return {
             "status": "success",
-            "provider": "macro_expert_quant",
+            "provider": "macro_academy",
+            "translated_title": f"Tensiones Geopolíticas e Incertidumbre Internacional: {title}",
             "summary_bullets": [
-                f"📖 Contexto Macro: {title}. Las decisiones de política monetaria de la Reserva Federal y los flujos hacia activos de reserva soberana continúan marcando el pulso estructural del mercado de metales preciosos.",
-                f"⚡ Impacto en XAUUSD / Oro: El comportamiento de los rendimientos de los bonos del Tesoro y la fortaleza del Dólar estadounidense actúan como catalizadores inmediatos de volatilidad, definiendo zonas de acumulación institucional en marcos intradía.",
-                f"🧭 Lectura Operativa: Vigilar la reacción del precio en torno a los soportes de volumen principales y mantener la disciplina de slots con Stop Loss blindado."
+                "🎓 Lección Económica y Mecanismo Causal: En momentos de tensión bélica, sanciones o inestabilidad soberana, el capital institucional huye de los activos dependientes de la solvencia de gobiernos o bancos (deuda fiduciaria y divisas) y busca refugio en activos tangibles sin riesgo de contraparte. El Oro físico es el activo monetario supremo de la historia humana porque no depende de ninguna promesa de pago y ningún banco central puede imprimirlo a voluntad.",
+                "⚡ Impacto en el Oro (XAUUSD) y Dinero Institucional: Los bancos centrales de potencias emergentes y los grandes fondos de cobertura (Hedge Funds) ejecutan compras sistemáticas de lingotes y futuros de Oro para desdolarizar sus reservas. Esta inyección masiva de liquidez construye un soporte inelástico de compra institucional que frena con fuerza cualquier retroceso correctivo intradía.",
+                "🧭 Guía Táctica para el Operador: La tendencia de fondo durante un choque geopolítico es fuertemente alcista. Queda terminantemente desaconsejado buscar ventas o techos contratendencia. La pauta profesional consiste en esperar retrocesos técnicos (pullbacks) hacia soportes de volumen o retrocesos de Fibonacci (38.2% - 50%) para incorporarse en compras con el riesgo protegido mediante Stop Loss blindado."
             ],
             "sentiment": sentiment,
-            "key_takeaway": "La correlación inversa entre tipos reales y demanda física de Oro marca la dirección de medio plazo."
+            "key_takeaway": "💡 Regla de Oro: En épocas de crisis el dinero no desaparece, solo huye de las promesas de papel hacia el oro físico. Nunca operes en corto contra el pánico geopolítico."
+        }
+    elif is_fed_rates or is_gold:
+        is_cut = any(k in t_low for k in ["cut", "recorte", "bajada", "pause", "dovish", "soft", "cool", "alivio", "frenan", "cae"])
+        sentiment = "BULLISH" if is_cut else "BEARISH" if any(k in t_low for k in ["hike", "subida", "hawkish", "hot", "fuerte", "sube"]) else "NEUTRAL"
+        return {
+            "status": "success",
+            "provider": "macro_academy",
+            "translated_title": f"Política Monetaria, Rendimiento de Bonos y Dólar: {title}",
+            "summary_bullets": [
+                "🎓 Lección Económica y Mecanismo Causal: La cotización del Oro está gobernada por los 'Tipos de Interés Reales' (el tipo oficial de la Reserva Federal menos la inflación esperada). Cuando los bancos centrales se preparan para bajar tipos de interés o cuando la inflación se resiste a caer, la rentabilidad real de los bonos del Tesoro estadounidense disminuye. Esto reduce el 'coste de oportunidad' de mantener Oro (que no paga intereses), haciéndolo infinitamente más atractivo para los grandes patrimonios.",
+                "⚡ Impacto en el Oro (XAUUSD) y Dinero Institucional: Existe una correlación inversa casi matemática entre el Índice Dólar (DXY) y el Oro (XAUUSD). Si los inversores descuentan recortes de tipos, el Dólar se deprecia frente a la cesta de divisas globales y los operadores necesitan más dólares para adquirir la misma onza troy de oro, desatando fuertes subidas en las aperturas de Londres y Nueva York.",
+                "🧭 Guía Táctica para el Operador: Mantén la máxima atención en los informes de IPC, deflactor PCE, nóminas no agrícolas (NFP) y comparecencias de la Fed. Si el dato macroeconómico debilita al Dólar, espera la primera vela de confirmación alcista en gráficos de 15 minutos (M15) para entrar en el retroceso con el Take Profit 1 (TP1) fijado para asegurar beneficios parciales de forma sistemática."
+            ],
+            "sentiment": sentiment,
+            "key_takeaway": "💡 Regla de Oro: El Oro es el termómetro de la devaluación monetaria. Cuando los tipos reales caen y el dólar pierde fuerza, el oro se convierte en el rey indiscutible del mercado."
         }
     elif is_stocks:
-        sentiment = "BULLISH" if ("ganancias" in t_low or "rally" in t_low or "lidera" in t_low or "récord" in t_low) else "BEARISH" if ("cae" in t_low or "frena" in t_low) else "NEUTRAL"
+        sentiment = "BULLISH" if any(k in t_low for k in ["rally", "gain", "record", "high", "sube", "maximo", "lidera"]) else "BEARISH" if any(k in t_low for k in ["drop", "fall", "selloff", "cae", "baja", "frena"]) else "NEUTRAL"
         return {
             "status": "success",
-            "provider": "macro_expert_quant",
+            "provider": "macro_academy",
+            "translated_title": f"Apetito por Riesgo e Índices Bursátiles (Wall Street): {title}",
             "summary_bullets": [
-                f"📖 Contexto y Renta Variable: {title}. La rotación de carteras entre sectores defensivos y tecnológicos refleja las expectativas de beneficios empresariales y costes de financiación.",
-                f"⚡ Apetito por Riesgo e Índices: La liquidez global y los resultados corporativos condicionan el sentimiento general de los operadores en S&P 500 y NASDAQ.",
-                f"🧭 Lectura Estratégica: Observar la amplitud de mercado y la volatilidad implícita (VIX) antes de tomar posiciones direccionales agresivas."
+                "🎓 Lección Económica y Mecanismo Causal: Los índices de renta variable (S&P 500, NASDAQ, DAX) miden el grado de optimismo y 'apetito por el riesgo' del mercado. Cuando la liquidez es abundante y los beneficios empresariales crecen, los inversores institucionales prefieren volcar su liquidez en activos con dividendos y crecimiento, relegando temporalmente a los metales defensivos a un segundo plano.",
+                "⚡ Impacto en el Oro (XAUUSD) y Dinero Institucional: Durante los periodos de gran euforia en bolsa, el Oro suele entrar en fases de consolidación lateral o descanso técnico. Sin embargo, si el rally bursátil viene acompañado de una expansión masiva de déficit fiscal o deuda pública, el Oro sube conjuntamente con las acciones actuando como seguro contra la pérdida de poder de compra de la divisa.",
+                "🧭 Guía Táctica para el Operador: Monitorea el índice de volatilidad implícita VIX. Si las acciones sufren un giro correctivo brusco y el VIX se dispara por encima de 20-25 puntos, prepárate para un traspaso violento de liquidez hacia el Oro. Opera con slots fraccionados y fija objetivos parciales (TP1) para proteger ganancias ante cambios repentinos en el sentimiento de Wall Street."
             ],
             "sentiment": sentiment,
-            "key_takeaway": "La liquidez y los tipos de descuento corporativo rigen las valoraciones bursátiles."
+            "key_takeaway": "💡 Regla de Oro: Comprender la rotación del dinero institucional entre acciones, bonos y materias primas es la brújula que distingue a un operador profesional de un aficionado."
         }
     else:
         return {
             "status": "success",
-            "provider": "macro_expert_quant",
+            "provider": "macro_academy",
+            "translated_title": f"Flujos de Capital Global y Estructura de Mercado: {title}",
             "summary_bullets": [
-                f"📖 Panorama Financiero: {title} ({source or 'Fuente Global'}). El evento genera ajustes de posicionamiento en las mesas de tesorería y arbitraje internacional.",
-                f"⚡ Repercusión en Flujos de Capital: Posible incremento de correlaciones cruzadas en divisas mayores (Forex) y materias primas spot.",
-                f"🧭 Plan Táctico: Ejecutar las órdenes con estricto respeto a los niveles de riesgo y trailing stop fijados."
+                "🎓 Lección Económica y Mecanismo Causal: Los mercados financieros globales funcionan como un circuito hidráulico cerrado: las divisas fiduciarias, los bonos soberanos y las materias primas se reequilibran continuamente en busca del mayor rendimiento ajustado al riesgo ante cualquier nuevo dato económico relevante.",
+                "⚡ Impacto en el Oro (XAUUSD) y Dinero Institucional: En ausencia de grandes anuncios macroeconómicos, los algoritmos de alta frecuencia (HFT) y los creadores de mercado dominan la cotización, buscando barrer la liquidez acumulada en los máximos y mínimos de las sesiones asiática y europea antes de definir el impulso direccional verdadero.",
+                "🧭 Guía Táctica para el Operador: Evita precipitarte operando en medio de los rangos de consolidación lateral. Espera pacientemente a que el precio testee los extremos de la horquilla horaria y confirma el rechazo del volumen antes de ejecutar cualquier orden con ratios riesgo/beneficio equilibrados."
             ],
             "sentiment": "NEUTRAL",
-            "key_takeaway": "La gestión cuantitativa del riesgo prevalece sobre el ruido informativo puntual."
+            "key_takeaway": "💡 Regla de Oro: La paciencia para esperar que el precio llegue a tu zona de ventaja estadística representa el 90% del éxito en el trading cuantitativo."
         }
 
 
 async def summarize_news_with_deepseek(title: str, source: str = "", url: str = "") -> Dict[str, Any]:
-    """Genera un resumen ejecutivo estructurado en 3 viñetas utilizando DeepSeek, Gemini o el motor de análisis macro."""
+    """Genera un análisis magistral estructurado en 3 bloques didácticos utilizando DeepSeek, Gemini o el motor pedagógico institucional."""
     record_news_interaction(news_id=f"hash_{abs(hash(title))%1000000}", title=title, url=url, action_type="summarize")
 
     api_key = (getattr(settings, 'DEEPSEEK_API_KEY', '') or getattr(settings, 'AI_API_KEY', '') or "").strip()
 
-    # Si no hay API Key configurada, devolver análisis contextual experto inmediato
+    # Si no hay API Key configurada, devolver análisis magistral inmediato
     if not api_key:
         return _generate_expert_contextual_summary(title, source, url)
 
@@ -456,22 +476,32 @@ async def summarize_news_with_deepseek(title: str, source: str = "", url: str = 
     article_body = fetch_article_text(url)
     article_context = f"\nTexto extracto de la noticia: {article_body[:1500]}" if article_body else ""
 
-    prompt = f"""Actúa como un maestro y estratega sénior de finanzas globales y materias primas (Oro / XAUUSD).
-Explica en profundidad, con rigor pedagógico y de forma cautivadora, la siguiente noticia:
-Titular: "{title}"
+    prompt = f"""Eres un maestro de economía y analista institucional supremo de materias primas (especialista en Oro / XAUUSD y banca central).
+Tu misión es transformar la siguiente noticia en una AUTÉNTICA MASTERCLASS FORMATIVA Y DIDÁCTICA en 100% perfecto castellano para un operador de trading.
+
+Titular original: "{title}"
 Fuente: {source}
 {article_context}
 
-Estructura tu respuesta en 3 bloques claros explicando causa-efecto.
-Responde ÚNICAMENTE con un JSON válido con la siguiente estructura:
+Instrucciones pedagógicas obligatorias:
+1. Traduce y redacta TODO en 100% castellano impecable, sin mezclar palabras en inglés ni usar anglicismos innecesarios.
+2. Sé PROFUNDO, DESCRIPTIVO y DIDÁCTICO. No hagas resúmenes telegráficos de una frase. Explica con claridad la cadena de causa y efecto: 'Pasa A -> provoca B -> los bancos centrales hacen C -> el precio del oro reacciona de tal forma'.
+3. Desarrolla exactamente 3 bloques pedagógicos extensos y bien explicados (mínimo 3 frases por bloque):
+   - Bloque 1: 🎓 Lección Económica y Mecanismo Causal: [Explica qué ocurre en el mundo, por qué se produce y cómo interactúan las fuerzas de fondo: inflación, tipos de interés reales, deuda pública o tensiones geopolíticas].
+   - Bloque 2: ⚡ Impacto en el Oro (XAUUSD) y Dinero Institucional: [Explica con precisión matemática y financiera cómo afecta al Oro frente al Dólar y los Bonos. Detalla por qué las 'manos fuertes' compran o venden].
+   - Bloque 3: 🧭 Guía Táctica para el Operador: [Consejos formativos de operativa: qué niveles técnicos vigilar, cómo gestionar el riesgo y qué señales de confirmación buscar].
+4. Concluye con una síntesis memorable que comience por '💡 Regla de Oro:'.
+
+Responde ÚNICAMENTE en formato JSON con la siguiente estructura exacta:
 {{
+  "translated_title": "[Titular traducido y adaptado a perfecto castellano]",
   "bullets": [
-    "📖 Contexto y Mecanismo: [Explicación profunda, amena y rigurosa de las causas reales]",
-    "⚡ Impacto en el Mercado y el Oro (XAUUSD): [Impacto en liquidez institucional, dólar y oro]",
-    "🧭 Lectura Estratégica: [Factores a vigilar y cómo interpretar las próximas reacciones]"
+    "🎓 Lección Económica y Mecanismo Causal: [Explicación profunda y amena de la causa-efecto]",
+    "⚡ Impacto en el Oro (XAUUSD) y Dinero Institucional: [Análisis detallado de cómo y por qué se mueve el Oro]",
+    "🧭 Guía Táctica para el Operador: [Consejos formativos de operativa, gestión de riesgo y confirmaciones]"
   ],
   "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL",
-  "key_takeaway": "[Síntesis memorable de una frase]"
+  "key_takeaway": "💡 Regla de Oro: [Axioma o lección financiera inolvidable]"
 }}"""
 
     # 1. Si es Gemini API Key
@@ -496,6 +526,7 @@ Responde ÚNICAMENTE con un JSON válido con la siguiente estructura:
                 return {
                     "status": "success",
                     "provider": "gemini",
+                    "translated_title": parsed.get("translated_title", title),
                     "summary_bullets": parsed.get("bullets", []),
                     "sentiment": parsed.get("sentiment", "NEUTRAL"),
                     "key_takeaway": parsed.get("key_takeaway", "")
@@ -512,11 +543,11 @@ Responde ÚNICAMENTE con un JSON válido con la siguiente estructura:
         payload = {
             "model": getattr(settings, 'DEEPSEEK_MODEL', 'deepseek-chat') or "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "Eres un maestro de finanzas y estratega de mercado global. Respondes exclusivamente en JSON válido."},
+                {"role": "system", "content": "Eres un catedrático de macroeconomía y maestro de trading institucional de materias primas. Respondes exclusivamente en JSON válido en perfecto castellano."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.4,
-            "max_tokens": 1000
+            "max_tokens": 1200
         }
 
         ctx = ssl._create_unverified_context()
@@ -538,11 +569,12 @@ Responde ÚNICAMENTE con un JSON válido con la siguiente estructura:
             return {
                 "status": "success",
                 "provider": "deepseek",
+                "translated_title": parsed.get("translated_title", title),
                 "summary_bullets": parsed.get("bullets", []),
                 "sentiment": parsed.get("sentiment", "NEUTRAL"),
                 "key_takeaway": parsed.get("key_takeaway", "")
             }
     except Exception as e:
-        logger.debug(f"Aviso al invocar DeepSeek API: {e}. Activando resumen contextual experto.")
+        logger.debug(f"Aviso al invocar DeepSeek API: {e}. Activando lección magistral de contingencia.")
         return _generate_expert_contextual_summary(title, source, url)
 

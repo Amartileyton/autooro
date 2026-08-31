@@ -404,17 +404,17 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
                   </button>
                 </div>
 
-                {/* Acordeón de Resumen Ejecutivo generado por DeepSeek */}
+                {/* Acordeón de Lección Magistral / Masterclass Macroeconómica */}
                 {summaryData && (
-                  <div className="mt-1 p-3 rounded-md bg-surface-container-high border border-primary/40 flex flex-col gap-2 text-xs animate-in fade-in duration-200 shadow-inner">
-                    <div className="flex items-center justify-between border-b border-outline-variant/60 pb-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-primary">
-                        <IaIcon className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <span>Análisis Ejecutivo DeepSeek</span>
+                  <div className="mt-2 p-3.5 rounded-lg bg-surface-container border border-primary/40 flex flex-col gap-3 text-xs animate-in fade-in duration-200 shadow-lg">
+                    <div className="flex items-center justify-between border-b border-outline-variant/60 pb-2">
+                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-primary">
+                        <IaIcon className="w-4 h-4 text-primary shrink-0" />
+                        <span>🎓 MASTERCLASS MACROECONÓMICA</span>
                       </div>
                       {summaryData.sentiment && (
                         <span
-                          className={`text-[9px] px-2 py-0.5 rounded font-bold font-mono ${
+                          className={`text-[9px] px-2.5 py-0.5 rounded font-bold font-mono uppercase tracking-wider ${
                             summaryData.sentiment === 'BULLISH'
                               ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                               : summaryData.sentiment === 'BEARISH'
@@ -431,17 +431,40 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({ className = '', isMobile = f
                       )}
                     </div>
 
-                    <div className="space-y-1.5 text-text-primary text-xs leading-relaxed">
-                      {(summaryData.summary_bullets || []).map((bullet: string, idx: number) => (
-                        <div key={idx} className="flex items-start gap-1">
-                          <span className="text-text-primary">{bullet}</span>
-                        </div>
-                      ))}
+                    {summaryData.translated_title && (
+                      <div className="text-[11px] font-semibold text-text-primary/90 italic bg-surface-container-high/60 px-2.5 py-1.5 rounded border border-outline-variant/30">
+                        📌 {summaryData.translated_title}
+                      </div>
+                    )}
+
+                    <div className="space-y-2.5 text-text-primary text-xs leading-relaxed">
+                      {(summaryData.summary_bullets || []).map((bullet: string, idx: number) => {
+                        const parts = bullet.split(': ');
+                        const hasPrefix = parts.length > 1;
+                        const prefix = hasPrefix ? parts[0] : '';
+                        const content = hasPrefix ? parts.slice(1).join(': ') : bullet;
+
+                        return (
+                          <div
+                            key={idx}
+                            className="p-2.5 rounded bg-surface-container-high/40 border-l-2 border-primary/70 text-[11.5px] leading-relaxed flex flex-col gap-1"
+                          >
+                            {hasPrefix && (
+                              <span className="font-bold text-primary font-mono text-[11px]">
+                                {prefix}:
+                              </span>
+                            )}
+                            <span className="text-text-primary/95 text-[11px]">
+                              {content}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {summaryData.key_takeaway && (
-                      <div className="pt-1.5 text-[11px] text-primary/95 font-mono italic border-t border-outline-variant/40">
-                        🎯 {summaryData.key_takeaway}
+                      <div className="p-2.5 rounded bg-primary/10 border border-primary/30 text-[11.5px] text-primary font-mono font-medium leading-normal">
+                        {summaryData.key_takeaway}
                       </div>
                     )}
                   </div>
