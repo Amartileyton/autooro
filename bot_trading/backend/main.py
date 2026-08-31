@@ -106,6 +106,16 @@ async def signal_consumer_worker(
             is_slippage_ok, market_price, diff = await risk_engine.check_slippage(
                 event.entry_price, event.side, entry_min=entry_min, entry_max=entry_max
             )
+
+            # En modo Paper (simulación), si el precio simulado está descalibrado del precio real de la señal (>50 USD),
+            # calibrar automáticamente el simulador al precio real del activo para simulación de alta fidelidad.
+            if settings.BROKER_TYPE.lower() == "paper" and hasattr(broker, 'set_market_price') and diff > Decimal("50.0"):
+                logger.info(f"🔄 [PAPER SIMULATION] Calibrando precio de mercado simulado a {event.entry_price} (Desvío previo: {diff:.2f} USD)")
+                broker.set_market_price(event.entry_price)
+                is_slippage_ok, market_price, diff = await risk_engine.check_slippage(
+                    event.entry_price, event.side, entry_min=entry_min, entry_max=entry_max
+                )
+
             if not is_slippage_ok:
                 logger.warning(
                     f"Señal fuera de precio inicial: Entrada={event.entry_price} (Rango: {entry_min}-{entry_max}), "

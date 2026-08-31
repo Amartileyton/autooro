@@ -29,9 +29,7 @@ class LocalPaperBroker(BaseBrokerAdapter):
         self.sync_balance_from_db()
         
         # Precio actual de simulación (sincronizado con mercado real de Oro)
-        self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE
-        if self._current_mid_price < Decimal("4000.00"):
-            self._current_mid_price = Decimal("4604.83")
+        self._current_mid_price: Decimal = settings.INITIAL_XAUUSD_PRICE if settings.INITIAL_XAUUSD_PRICE > Decimal("0.00") else Decimal("2650.00")
         self._current_bid: Decimal = self._current_mid_price - (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         self._current_ask: Decimal = self._current_mid_price + (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
         
@@ -44,6 +42,12 @@ class LocalPaperBroker(BaseBrokerAdapter):
         # Tarea asíncrona del generador de ticks
         self._tick_task: Optional[asyncio.Task] = None
         self._is_running = False
+
+    def set_market_price(self, price: Decimal) -> None:
+        """Permite sincronizar el precio medio simulado con el precio real de mercado."""
+        self._current_mid_price = price
+        self._current_bid = self._current_mid_price - (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
+        self._current_ask = self._current_mid_price + (settings.PAPER_SPREAD_MIN_CENTS / Decimal("2.0"))
 
     def sync_balance_from_db(self):
         """Sincroniza el balance con el capital inicial más la suma de PnL de todos los trades cerrados en SQLite."""
