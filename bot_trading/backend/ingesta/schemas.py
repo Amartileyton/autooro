@@ -2,25 +2,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
-import enum
 
-
-class OrderSide(str, enum.Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-
-
-class SignalType(str, enum.Enum):
-    NEW_ORDER = "NEW_ORDER"
-    MOVE_SL = "MOVE_SL"
-    MOVE_BE = "MOVE_BE"
-    CLOSE_ORDER = "CLOSE_ORDER"
-    CANCEL_ORDER = "CANCEL_ORDER"
-
-
-class ParserType(str, enum.Enum):
-    REGEX = "REGEX"
-    AI_FALLBACK = "AI_FALLBACK"
+from backend.shared.enums import OrderSide, SignalType, ParserType, ExecutionMode
 
 
 class TradingSignalEvent(BaseModel):
@@ -38,7 +21,7 @@ class TradingSignalEvent(BaseModel):
     message_id: Optional[int] = Field(default=None, description="ID del mensaje en Telegram")
     channel_id: Optional[int] = Field(default=None, description="ID del canal de Telegram")
     channel_name: Optional[str] = Field(default="Chartoro FX", description="Nombre del canal emisor")
-    execution_mode: str = Field(default="AUDIT", description="Modo operativo: AUDIT o PRODUCTION")
+    execution_mode: ExecutionMode = Field(default=ExecutionMode.AUDIT, description="Modo operativo: AUDIT o PRODUCTION")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("asset")
@@ -59,6 +42,6 @@ class ModifierSignalEvent(BaseModel):
     message_id: Optional[int] = Field(default=None)
     channel_id: Optional[int] = Field(default=None)
     channel_name: Optional[str] = Field(default="Chartoro FX")
-    execution_mode: str = Field(default="AUDIT")
+    execution_mode: ExecutionMode = Field(default=ExecutionMode.AUDIT)
     reply_to_msg_id: Optional[int] = Field(default=None, description="ID del mensaje padre al que responde")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

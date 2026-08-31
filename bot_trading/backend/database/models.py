@@ -5,30 +5,12 @@ from sqlalchemy import (
     Column, Integer, String, Numeric, DateTime, Boolean, Text, Enum as SQLEnum
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-import enum
+
+from backend.shared.enums import OrderSide, TradeStatus, ExecutionMode
 
 
 class Base(DeclarativeBase):
     pass
-
-
-class OrderSide(str, enum.Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-
-
-class TradeStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    OPEN = "OPEN"
-    TP1_HIT = "TP1_HIT"
-    TP2_HIT = "TP2_HIT"
-    TP3_TRAILING = "TP3_TRAILING"
-    CLOSED_TP = "CLOSED_TP"
-    CLOSED_SL = "CLOSED_SL"
-    CLOSED_MANUAL = "CLOSED_MANUAL"
-    CLOSED_REBOOT_NO_MILESTONE = "CLOSED_REBOOT_NO_MILESTONE"
-    CLOSED_KILL_SWITCH = "CLOSED_KILL_SWITCH"
-    REJECTED = "REJECTED"
 
 
 class RawTelegramMessage(Base):
@@ -84,7 +66,7 @@ class Trade(Base):
     raw_signal_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     channel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     channel_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, default="Chartoro FX", index=True)
-    execution_mode: Mapped[str] = mapped_column(String(30), default="AUDIT", index=True)  # AUDIT / PRODUCTION
+    execution_mode: Mapped[ExecutionMode] = mapped_column(SQLEnum(ExecutionMode), default=ExecutionMode.AUDIT, index=True)  # AUDIT / PRODUCTION
 
 
 class SystemAuditLog(Base):
@@ -117,4 +99,3 @@ class NewsInteraction(Base):
         default=lambda: datetime.now(timezone.utc),
         index=True
     )
-

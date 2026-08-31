@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safePrice, safeNum } from '@/utils/formatters';
 
 export interface PositionCardState {
   slot_id: number;
@@ -19,19 +20,6 @@ export interface PositionCardState {
   channel_name?: string;
   open_time?: string;
 }
-
-// Helpers defensivos ultra-seguros contra valores nulos o tipos inesperados
-const safePrice = (val: any, fallback = '---'): string => {
-  if (val === null || val === undefined || val === '') return fallback;
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  return isNaN(num) ? fallback : num.toFixed(2);
-};
-
-const safeNum = (val: any, fallback = 0): number => {
-  if (val === null || val === undefined || val === '') return fallback;
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  return isNaN(num) ? fallback : num;
-};
 
 // Componente individual de la tarjeta de posición: Fondo Negro con Letras Blancas
 export const PositionCard: React.FC<{

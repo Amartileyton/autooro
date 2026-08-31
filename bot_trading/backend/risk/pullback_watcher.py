@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Dict, Optional, List
 from backend.ingesta.schemas import TradingSignalEvent, OrderSide
+from backend.repository.messages import update_message_error_reason
 from backend.config import settings
 
 logger = logging.getLogger("trading_bot.risk.pullback_watcher")
@@ -206,16 +207,6 @@ class PullbackWatcher:
 
     async def _update_db_error_reason(self, message_id: int, reason: Optional[str]) -> None:
         try:
-            from backend.database.session import AsyncSessionLocal
-            from backend.database.models import RawTelegramMessage
-            from sqlalchemy import update
-            async with AsyncSessionLocal() as session:
-                stmt = (
-                    update(RawTelegramMessage)
-                    .where(RawTelegramMessage.message_id == message_id)
-                    .values(error_reason=reason)
-                )
-                await session.execute(stmt)
-                await session.commit()
+            await update_message_error_reason(message_id, reason)
         except Exception as e:
             logger.debug(f"Aviso actualizando DB en PullbackWatcher: {e}")

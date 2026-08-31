@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useTradingWebSocket } from '@/hooks/useTradingWebSocket';
 import { HeaderTelemetry } from './HeaderTelemetry';
 import { PositionMatrix, type SlotTradeData } from './PositionMatrix';
 import { SignalFeed, type TradeLifecycleCardItem } from './SignalFeed';
@@ -33,17 +34,6 @@ const getApiBaseUrl = () => {
     return `${window.location.protocol}//${window.location.host}`;
   }
   return 'http://localhost:8000';
-};
-
-const getWsUrl = () => {
-  if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    if (window.location.port === '4321') {
-      return `${protocol}//${window.location.hostname}:8000/ws/live`;
-    }
-    return `${protocol}//${window.location.host}/ws/live`;
-  }
-  return 'ws://localhost:8000/ws/live';
 };
 
 const API_KEY = 'sec_xauusd_trading_key_2026';
@@ -96,12 +86,9 @@ export const DashboardApp: React.FC = () => {
   const [selectedChannelFilter, setSelectedChannelFilter] = useState<string>('ALL');
   const [isHealthModalOpen, setIsHealthModalOpen] = useState<boolean>(false);
   const [isControlDropdownOpen, setIsControlDropdownOpen] = useState<boolean>(false);
-  const [latencyMs, setLatencyMs] = useState<number>(12);
-  const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<MarketAsset>(GOLD_ASSET);
   const [desktopRightTab, setDesktopRightTab] = useState<'chart' | 'news'>('chart');
 
-  const wsRef = useRef<WebSocket | null>(null);
 
   const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
     const headers: Record<string, string> = { ...extraHeaders };
@@ -214,105 +201,68 @@ export const DashboardApp: React.FC = () => {
     }
   };
 
-  // 2. Conectar WebSocket con Reconexión Automática y Token de Sesión
+  // 2. Procesar mensajes entrantes del WebSocket en vivo
+  const handleWebSocketMessage = (payload: any) => {
+    if (payload.type === 'TICK_UPDATE' || payload.type === 'INITIAL_SNAPSHOT') {
+      if (payload.tick) {
+        setXauusdPrice(payload.tick.ask);
+      } else if (payload.xauusd_spot) {
+        setXauusdPrice(payload.xauusd_spot.ask);
+      }
+
+      if (payload.has_ctrader_token !== undefined || payload.has_live_balance !== undefined) {
+        setHasLiveBalance(Boolean(payload.has_ctrader_token || payload.has_live_balance));
+      }
+
+      if (payload.account) {
+        if (payload.account.balance !== undefined && payload.account.balance !== null) {
+          setBalance(payload.account.balance);
+          setHasLiveBalance(true);
+        }
+      }
+
+      if (payload.slots) {
+        const updatedSlots: SlotTradeData[] = payload.slots.map((s: any) => ({
+          slot_id: s.slot_id,
+          is_active: s.is_active,
+          ticket_id: s.ticket_id || s.trade?.ticket_id,
+          side: s.side || s.trade?.side,
+          lot_size: s.lot_size !== undefined ? s.lot_size : s.trade?.lot_size,
+          initial_lot_size: s.initial_lot_size !== undefined ? s.initial_lot_size : s.trade?.initial_lot_size,
+          entry_price: s.entry_price || s.trade?.entry_price,
+          current_sl: s.current_sl || s.trade?.current_sl,
+          initial_sl: s.initial_sl || s.trade?.initial_sl,
+          tp1: s.tp1 || s.trade?.tp1,
+          tp2: s.tp2 || s.trade?.tp2,
+          tp3: s.tp3 || s.trade?.tp3,
+          current_price: s.current_price || s.trade?.current_price || xauusdPrice,
+          current_pnl: s.current_pnl !== undefined ? s.current_pnl : s.trade?.current_pnl || 0,
+          realized_cash_pnl: s.realized_cash_pnl !== undefined ? s.realized_cash_pnl : s.trade?.realized_cash_pnl || 0,
+          peak_price: s.peak_price !== undefined ? s.peak_price : s.trade?.peak_price,
+          is_infinite_trailing: s.is_infinite_trailing !== undefined ? s.is_infinite_trailing : Boolean(s.trade?.is_infinite_trailing),
+          status: s.status || s.trade?.status || 'AVAILABLE',
+        }));
+        setSlots(updatedSlots);
+        const totalPnl = updatedSlots.reduce((acc, s) => acc + (s.current_pnl || 0), 0);
+        setFloatingPnl(totalPnl);
+      }
+    }
+
+    // Evento de Trade Recibido / Actualizado
+    if (payload.type === 'TRADE_EVENT' || payload.type === 'SIGNAL_PARSED') {
+      fetchInitialData();
+    }
+  };
+
+  // 3. Conexión WebSocket con reconexión automática (extraída a hook dedicado)
+  const { wsRef, wsConnected, latencyMs } = useTradingWebSocket(authToken, handleWebSocketMessage);
+
+  // 4. Carga inicial y polling periódico del estado REST
   useEffect(() => {
     if (!authToken) return;
-
     fetchInitialData();
-
-    let reconnectTimer: any = null;
-
-    const connectWebSocket = () => {
-      const startTime = Date.now();
-      const wsUrl = `${getWsUrl()}${authToken ? `?token=${encodeURIComponent(authToken)}` : ''}`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setWsConnected(true);
-        setLatencyMs(Math.max(5, Date.now() - startTime));
-        console.log('WebSocket conectado a GOLD-EX Live Stream');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-
-          if (payload.type === 'TICK_UPDATE' || payload.type === 'INITIAL_SNAPSHOT') {
-            if (payload.tick) {
-              setXauusdPrice(payload.tick.ask);
-            } else if (payload.xauusd_spot) {
-              setXauusdPrice(payload.xauusd_spot.ask);
-            }
-
-            if (payload.has_ctrader_token !== undefined || payload.has_live_balance !== undefined) {
-              setHasLiveBalance(Boolean(payload.has_ctrader_token || payload.has_live_balance));
-            }
-
-            if (payload.account) {
-              if (payload.account.balance !== undefined && payload.account.balance !== null) {
-                setBalance(payload.account.balance);
-                setHasLiveBalance(true);
-              }
-            }
-
-            if (payload.slots) {
-              const updatedSlots: SlotTradeData[] = payload.slots.map((s: any) => ({
-                slot_id: s.slot_id,
-                is_active: s.is_active,
-                ticket_id: s.ticket_id || s.trade?.ticket_id,
-                side: s.side || s.trade?.side,
-                lot_size: s.lot_size !== undefined ? s.lot_size : s.trade?.lot_size,
-                initial_lot_size: s.initial_lot_size !== undefined ? s.initial_lot_size : s.trade?.initial_lot_size,
-                entry_price: s.entry_price || s.trade?.entry_price,
-                current_sl: s.current_sl || s.trade?.current_sl,
-                initial_sl: s.initial_sl || s.trade?.initial_sl,
-                tp1: s.tp1 || s.trade?.tp1,
-                tp2: s.tp2 || s.trade?.tp2,
-                tp3: s.tp3 || s.trade?.tp3,
-                current_price: s.current_price || s.trade?.current_price || xauusdPrice,
-                current_pnl: s.current_pnl !== undefined ? s.current_pnl : s.trade?.current_pnl || 0,
-                realized_cash_pnl: s.realized_cash_pnl !== undefined ? s.realized_cash_pnl : s.trade?.realized_cash_pnl || 0,
-                peak_price: s.peak_price !== undefined ? s.peak_price : s.trade?.peak_price,
-                is_infinite_trailing: s.is_infinite_trailing !== undefined ? s.is_infinite_trailing : Boolean(s.trade?.is_infinite_trailing),
-                status: s.status || s.trade?.status || 'AVAILABLE',
-              }));
-              setSlots(updatedSlots);
-              const totalPnl = updatedSlots.reduce((acc, s) => acc + (s.current_pnl || 0), 0);
-              setFloatingPnl(totalPnl);
-            }
-          }
-
-          // Evento de Trade Recibido / Actualizado
-          if (payload.type === 'TRADE_EVENT' || payload.type === 'SIGNAL_PARSED') {
-            fetchInitialData();
-          }
-        } catch (e) {
-          console.error('Error parseando WebSocket payload:', e);
-        }
-      };
-
-      ws.onclose = () => {
-        setWsConnected(false);
-        console.warn('WebSocket desconectado. Reintentando en 3s...');
-        reconnectTimer = setTimeout(connectWebSocket, 3000);
-      };
-
-      ws.onerror = (err) => {
-        console.error('Error en WebSocket Live Stream:', err);
-        ws.close();
-      };
-    };
-
-    connectWebSocket();
-
     const interval = setInterval(fetchInitialData, 5000);
-
-    return () => {
-      if (wsRef.current) wsRef.current.close();
-      clearTimeout(reconnectTimer);
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [authToken]);
 
   // 3. Handlers para el Menú de Controles
@@ -625,8 +575,8 @@ export const DashboardApp: React.FC = () => {
         <AuditLogsModal
           isOpen={isAuditModalOpen}
           onClose={() => setIsAuditModalOpen(false)}
-          auditLogs={auditLogs}
-          tradeHistory={tradeHistory}
+          logs={auditLogs}
+          history={tradeHistory}
         />
 
         <ChannelAuditModal

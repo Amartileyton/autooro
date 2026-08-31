@@ -8,9 +8,11 @@ from pydantic import BaseModel
 
 from backend.broker.base import BaseBrokerAdapter, BrokerTick
 from backend.database.session import AsyncSessionLocal
-from backend.database.models import Trade, TradeStatus, OrderSide, SystemAuditLog
+from backend.database.models import Trade, SystemAuditLog
+from backend.shared.enums import OrderSide, TradeStatus, ExecutionMode
 from backend.ingesta.schemas import ModifierSignalEvent, SignalType
 from sqlalchemy import select, update
+from backend.repository.trades import update_trade
 
 logger = logging.getLogger("trading_bot.state_machine")
 
@@ -23,7 +25,7 @@ class ActiveSlotTrade(BaseModel):
     raw_signal_id: Optional[int] = None
     channel_id: Optional[int] = None
     channel_name: Optional[str] = "Chartoro FX"
-    execution_mode: str = "AUDIT"
+    execution_mode: ExecutionMode = ExecutionMode.AUDIT
     symbol: str = "XAUUSD"
     side: OrderSide
     status: TradeStatus
@@ -90,7 +92,7 @@ class TradeStateMachine:
         raw_signal_id: Optional[int] = None,
         channel_id: Optional[int] = None,
         channel_name: Optional[str] = "Chartoro FX",
-        execution_mode: str = "AUDIT"
+        execution_mode: ExecutionMode = ExecutionMode.AUDIT
     ) -> Optional[ActiveSlotTrade]:
         """
         Ejecuta la orden en el broker, persiste en SQLite y activa el Slot en la máquina de estados.
@@ -247,20 +249,14 @@ class TradeStateMachine:
 
             if modified:
                 try:
-                    async with AsyncSessionLocal() as session:
-                        stmt = (
-                            update(Trade)
-                            .where(Trade.ticket_id == trade.ticket_id)
-                            .values(
-                                current_sl=trade.current_sl,
-                                initial_sl=trade.initial_sl,
-                                tp1=trade.tp1,
-                                tp2=trade.tp2,
-                                tp3=trade.tp3
-                            )
-                        )
-                        await session.execute(stmt)
-                        await session.commit()
+                    await update_trade(
+                        trade.ticket_id,
+                        current_sl=trade.current_sl,
+                        initial_sl=trade.initial_sl,
+                        tp1=trade.tp1,
+                        tp2=trade.tp2,
+                        tp3=trade.tp3
+                    )
                 except Exception as e:
                     logger.error(f"Error al actualizar enriquecimiento en DB: {e}")
 
@@ -504,22 +500,16 @@ class TradeStateMachine:
 
         # 2. Actualizar en DB
         try:
-            async with AsyncSessionLocal() as session:
-                stmt = (
-                    update(Trade)
-                    .where(Trade.ticket_id == trade.ticket_id)
-                    .values(
-                        status=status,
-                        close_price=exec_price,
-                        pnl=total_pnl,
-                        realized_cash_pnl=trade.realized_cash_pnl,
-                        peak_price=trade.peak_price,
-                        close_reason=reason,
-                        close_time=datetime.now(timezone.utc)
-                    )
-                )
-                await session.execute(stmt)
-                await session.commit()
+            await update_trade(
+                trade.ticket_id,
+                status=status,
+                close_price=exec_price,
+                pnl=total_pnl,
+                realized_cash_pnl=trade.realized_cash_pnl,
+                peak_price=trade.peak_price,
+                close_reason=reason,
+                close_time=datetime.now(timezone.utc)
+            )
         except Exception as e:
             logger.error(f"Error al actualizar cierre de trade en DB: {e}")
 
@@ -538,19 +528,13 @@ class TradeStateMachine:
     async def _update_trade_in_db(self, trade: ActiveSlotTrade):
         """Actualiza el estado, volumen, SL, peak_price y realized_cash_pnl de la orden en SQLite."""
         try:
-            async with AsyncSessionLocal() as session:
-                stmt = (
-                    update(Trade)
-                    .where(Trade.ticket_id == trade.ticket_id)
-                    .values(
-                        status=trade.status,
-                        current_sl=trade.current_sl,
-                        lot_size=trade.lot_size,
-                        realized_cash_pnl=trade.realized_cash_pnl,
-                        peak_price=trade.peak_price
-                    )
-                )
-                await session.execute(stmt)
-                await session.commit()
+            await update_trade(
+                trade.ticket_id,
+                status=trade.status,
+                current_sl=trade.current_sl,
+                lot_size=trade.lot_size,
+                realized_cash_pnl=trade.realized_cash_pnl,
+                peak_price=trade.peak_price
+            )
         except Exception as e:
             logger.error(f"Error al actualizar estado en DB: {e}")

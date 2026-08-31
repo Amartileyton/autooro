@@ -16,6 +16,9 @@ from backend.risk.state_machine import TradeStateMachine
 from backend.risk.pullback_watcher import PullbackWatcher
 from backend.ingesta.client import TelegramIngestionClient
 from backend.ingesta.schemas import TradingSignalEvent, ModifierSignalEvent, OrderSide
+from backend.repository.messages import update_message_error_reason
+from backend.services.event_bus import publish_trade_event
+from backend.services.event_bus import publish_trade_event
 from backend.telegram_admin.bot import TelegramAdminBot
 from backend.api.routes import router as api_router
 from backend.api.ws import router as ws_router, broadcast_tick_update
@@ -115,17 +118,10 @@ async def signal_consumer_worker(
                     if added:
                         if event.message_id:
                             try:
-                                from backend.database.session import AsyncSessionLocal
-                                from backend.database.models import RawTelegramMessage
-                                from sqlalchemy import update
-                                async with AsyncSessionLocal() as session:
-                                    stmt = (
-                                        update(RawTelegramMessage)
-                                        .where(RawTelegramMessage.message_id == event.message_id)
-                                        .values(error_reason=f"EN ESPERA PULLBACK (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})")
-                                    )
-                                    await session.execute(stmt)
-                                    await session.commit()
+                                await update_message_error_reason(
+                                    event.message_id,
+                                    f"EN ESPERA PULLBACK (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})"
+                                )
                             except Exception as db_err:
                                 logger.debug(f"Aviso al actualizar error_reason en DB: {db_err}")
 
@@ -142,17 +138,10 @@ async def signal_consumer_worker(
                 # Si no se pudo poner en vigilancia (ej. TP1 ya alcanzado), descartar
                 if event.message_id:
                     try:
-                        from backend.database.session import AsyncSessionLocal
-                        from backend.database.models import RawTelegramMessage
-                        from sqlalchemy import update
-                        async with AsyncSessionLocal() as session:
-                            stmt = (
-                                update(RawTelegramMessage)
-                                .where(RawTelegramMessage.message_id == event.message_id)
-                                .values(error_reason=f"FUERA PRECIO (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})")
-                            )
-                            await session.execute(stmt)
-                            await session.commit()
+                        await update_message_error_reason(
+                            event.message_id,
+                            f"FUERA PRECIO (Mercado: ${float(market_price):.2f} | Desvío: +${float(diff):.2f})"
+                        )
                     except Exception as db_err:
                         logger.debug(f"Aviso al actualizar error_reason en DB: {db_err}")
 
@@ -250,17 +239,7 @@ async def lifespan(app: FastAPI):
 
     # 4.1 Registrar callbacks de alertas para WebSocket y Notificador
     async def on_state_machine_alert(event_type: str, data: dict):
-        try:
-            from backend.api.ws import manager
-            await manager.broadcast({
-                "type": "TRADE_EVENT",
-                "event": event_type,
-                "data": data
-            })
-            from backend.telegram_admin.notifier import dispatch_telegram_alert
-            await dispatch_telegram_alert(event_type, data)
-        except Exception as alert_err:
-            logger.debug(f"Aviso en on_state_machine_alert: {alert_err}")
+        await publish_trade_event(event_type, data)
 
     state_machine.register_alert_callback(on_state_machine_alert)
 

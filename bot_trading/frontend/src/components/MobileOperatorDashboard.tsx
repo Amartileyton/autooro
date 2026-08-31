@@ -375,8 +375,8 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
       <AuditLogsModal
         isOpen={showAuditModal}
         onClose={() => setShowAuditModal(false)}
-        auditLogs={[]}
-        tradeHistory={[]}
+        logs={[]}
+        history={[]}
       />
 
       <SystemHealthModal

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safePrice, safeNum } from '@/utils/formatters';
 
 export interface SlotTradeData {
   slot_id: number;
@@ -28,19 +29,6 @@ interface PositionMatrixProps {
   currentPrice: number;
   onCloseSlot: (slotId: number) => Promise<void> | void;
 }
-
-// Helpers defensivos ultra-seguros contra valores nulos o tipos inesperados
-const safePrice = (val: any, fallback = '---'): string => {
-  if (val === null || val === undefined || val === '') return fallback;
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  return isNaN(num) ? fallback : num.toFixed(2);
-};
-
-const safeNum = (val: any, fallback = 0): number => {
-  if (val === null || val === undefined || val === '') return fallback;
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  return isNaN(num) ? fallback : num;
-};
 
 export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots = [], currentPrice, onCloseSlot }) => {
   const safeSlots = Array.isArray(slots) ? slots : [];
