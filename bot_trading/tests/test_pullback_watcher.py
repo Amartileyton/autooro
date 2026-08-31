@@ -42,11 +42,11 @@ async def test_pullback_watcher_triggers_on_retracement():
 
     # 2. Tick intermedio que sigue fuera de rango (4603.50 -> diff = 1.50 desde 4602)
     # diff = 4603.50 - 4602.00 = 1.50 <= 2.00 -> ¡En este tick ya está dentro de tolerancia de 2.00!
-    # Probemos con un tick a 4605.00 primero (fuera)
+    # Probemos con un tick a 4606.00 primero (fuera: diff = 4.00 > 3.00)
     tick_fuera = BrokerTick(
         symbol="XAUUSD",
-        bid=Decimal("4604.80"),
-        ask=Decimal("4605.00"),
+        bid=Decimal("4605.80"),
+        ask=Decimal("4606.00"),
         timestamp=time.time()
     )
     await watcher.on_market_tick(tick_fuera)

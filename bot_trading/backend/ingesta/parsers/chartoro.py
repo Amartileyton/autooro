@@ -41,6 +41,10 @@ RE_CLOSE = re.compile(
     re.IGNORECASE
 )
 
+RE_ENTRY_RANGE = re.compile(
+    r'(?:BUY|SELL|ENTRY|ENTRADA|PRECIO|PRICE|ZONE|ZONA|@)?\s*[:=@\s]*([0-9]{4}(?:[.,][0-9]+)?)\s*(?:/|-|–|—|TO|\s+A\s+|\s+HASTA\s+|~|->)\s*([0-9]{4}(?:[.,][0-9]+)?)',
+    re.IGNORECASE
+)
 RE_ENTRY_EXPLICIT = re.compile(rf'(?:ENTRY\s*POINT|ENTRY\s*PRICE|ENTRADA|PRECIO|ENTRY|OPEN|@|NOW)[*_~:\s]*[:@\s]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
 RE_SL_EXPLICIT = re.compile(rf'(?:STOP\s*LOSS\s*(?:\(SL\))?|SOP\s*LOSS|STP\s*LOSS|STOP|SOP|STP|S[./\s]*L)[*_~:\s]*[:=@\s\-]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
 RE_TP_NUMBERED = re.compile(rf'(?:TAKE\s*PROFIT|TP|TARGET|OBJETIVO|T)[*_~:\s]*([1-5])[*_~:\s]*[:=@\s\-]*[*_~:\s]*({RE_PRICE_PATTERN})', re.IGNORECASE)
@@ -88,8 +92,8 @@ class ChartoroParser(BaseSignalParser):
         if not side:
             return None
 
-        # 5. Precio de entrada
-        entry_price = self._extract_entry_price(cleaned_text)
+        # 5. Precio de entrada (Soporte para Rango o Precio Único)
+        entry_price, entry_min, entry_max = self._extract_entry(cleaned_text, side)
         if not entry_price:
             return None
 
@@ -124,6 +128,8 @@ class ChartoroParser(BaseSignalParser):
             asset="XAUUSD",
             side=side,
             entry_price=entry_price,
+            entry_min=entry_min,
+            entry_max=entry_max,
             sl_price=sl_price,
             tp_levels=tp_levels,
             requires_dynamic_sl=requires_dynamic_sl,
@@ -199,13 +205,30 @@ class ChartoroParser(BaseSignalParser):
             )
         return None
 
-    def _extract_entry_price(self, text: str) -> Optional[Decimal]:
+    def _extract_entry(self, text: str, side: OrderSide) -> Tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal]]:
+        """
+        Extrae el precio de entrada y los límites inferior y superior del rango si aplica.
+        Retorna (entry_price, entry_min, entry_max).
+        """
+        # 1. Comprobar si es un rango tipo "2650-2652" o "2650 / 2652"
+        range_match = RE_ENTRY_RANGE.search(text)
+        if range_match:
+            p1 = sanitize_price_str(range_match.group(1))
+            p2 = sanitize_price_str(range_match.group(2))
+            if p1 and p2 and p1 >= Decimal("1500") and p2 >= Decimal("1500"):
+                entry_min = min(p1, p2)
+                entry_max = max(p1, p2)
+                avg = ((entry_min + entry_max) / Decimal("2.0")).quantize(Decimal("0.01"))
+                return avg, entry_min, entry_max
+
+        # 2. Entrada explícita (Entry Point / Entry Price / Entrada / @)
         match_exp = RE_ENTRY_EXPLICIT.search(text)
         if match_exp:
             price = sanitize_price_str(match_exp.group(1))
             if price and price >= Decimal("1500"):
-                return price
+                return price, None, None
 
+        # 3. Línea con palabras clave de dirección/entrada
         lines = text.split('\n')
         for line in lines:
             if re.search(r'\b(BUY|SELL|COMPRA|VENTA|ENTRY|ENTRADA)\b', line, re.IGNORECASE):
@@ -213,13 +236,14 @@ class ChartoroParser(BaseSignalParser):
                 for m in matches:
                     price = sanitize_price_str(m)
                     if price and price >= Decimal("1500"):
-                        return price
+                        return price, None, None
 
+        # 4. Primer número válido de 4 dígitos
         all_numbers = [sanitize_price_str(n) for n in RE_ALL_NUMBERS.findall(text)]
         valid_nums = [n for n in all_numbers if n and n >= Decimal("1500")]
         if valid_nums:
-            return valid_nums[0]
-        return None
+            return valid_nums[0], None, None
+        return None, None, None
 
     def _extract_sl(self, text: str) -> Tuple[Optional[Decimal], bool]:
         match = RE_SL_EXPLICIT.search(text)
