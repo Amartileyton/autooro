@@ -66,3 +66,121 @@ async def test_full_trade_lifecycle_trailing_milestones():
 
     # El slot 1 debe quedar libre y cerrado
     assert 1 not in sm.active_slots
+
+
+@pytest.mark.asyncio
+async def test_pip_by_pip_tp1_partial_close_and_breakeven_buy():
+    """
+    Verifica que el bot monitorea tick a tick el mercado y, al tocar TP1 por precio
+    (sin requerir ningún aviso de Telegram), vende el 50% y mueve el SL a Break-Even + Spread.
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    broker = LocalPaperBroker()
+    sm = TradeStateMachine(broker=broker)
+
+    # Abrir BUY: Entrada 2650.00, SL inicial 2640.00, TP1 2653.00 (+30 pips), Lote 0.04
+    trade = await sm.open_new_trade(
+        slot_id=2,
+        side=OrderSide.BUY,
+        lot_size=Decimal("0.04"),
+        entry_price=Decimal("2650.00"),
+        sl=Decimal("2640.00"),
+        tp_levels=[Decimal("2653.00"), Decimal("2660.00")]
+    )
+
+    assert trade.status == TradeStatus.OPEN
+    assert trade.lot_size == Decimal("0.04")
+    assert trade.current_sl == Decimal("2640.00")
+    assert trade.realized_cash_pnl == Decimal("0.00")
+
+    # Tick 1: Precio sube cerca pero no toca TP1 (2652.50)
+    tick1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2652.50"), ask=Decimal("2652.70"), timestamp=10.0)
+    await sm.on_market_tick(tick1)
+    assert sm.active_slots[2].status == TradeStatus.OPEN
+    assert sm.active_slots[2].lot_size == Decimal("0.04")
+
+    # Tick 2: Precio TOCA TP1 (2653.00) -> COBRO 50% (0.02L) Y BLINDAJE SL (2650.30)
+    tick_tp1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2653.00"), ask=Decimal("2653.20"), timestamp=11.0)
+    await sm.on_market_tick(tick_tp1)
+
+    active = sm.active_slots[2]
+    assert active.status == TradeStatus.TP1_HIT
+    assert active.lot_size == Decimal("0.02")  # 50% de 0.04
+    # Ganancia asegurada en caja: (2653 - 2650) * 0.02 * 100 = 6.00 USD
+    assert active.realized_cash_pnl == Decimal("6.00")
+    # SL blindado a Break-Even + Spread (2650.00 + 0.30 = 2650.30)
+    assert active.current_sl == Decimal("2650.30")
+
+    # Tick 3: Precio retrocede hasta tocar el SL blindado (2650.30)
+    tick_sl = BrokerTick(symbol="XAUUSD", bid=Decimal("2650.25"), ask=Decimal("2650.45"), timestamp=12.0)
+    await sm.on_market_tick(tick_sl)
+
+    # El trade debe cerrarse en positivo (CLOSED_TP) con beneficio total > 0
+    assert 2 not in sm.active_slots
+
+
+@pytest.mark.asyncio
+async def test_pip_by_pip_tp1_partial_close_and_breakeven_sell():
+    """
+    Verifica el flujo completo de cobro de TP1 y blindaje para órdenes SELL.
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    broker = LocalPaperBroker()
+    sm = TradeStateMachine(broker=broker)
+
+    # Abrir SELL: Entrada 2650.00, SL inicial 2660.00, TP1 2647.00 (-30 pips), Lote 0.02
+    trade = await sm.open_new_trade(
+        slot_id=3,
+        side=OrderSide.SELL,
+        lot_size=Decimal("0.02"),
+        entry_price=Decimal("2650.00"),
+        sl=Decimal("2660.00"),
+        tp_levels=[Decimal("2647.00"), Decimal("2640.00")]
+    )
+
+    # Tick toca TP1 SELL (2647.00)
+    tick_tp1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2646.80"), ask=Decimal("2647.00"), timestamp=20.0)
+    await sm.on_market_tick(tick_tp1)
+
+    active = sm.active_slots[3]
+    assert active.status == TradeStatus.TP1_HIT
+    assert active.lot_size == Decimal("0.01")  # 50% vendido
+    # Ganancia asegurada en caja: (2650 - 2647) * 0.01 * 100 = 3.00 USD
+    assert active.realized_cash_pnl == Decimal("3.00")
+    # SL blindado SELL a Break-Even - Spread (2650.00 - 0.30 = 2649.70)
+    assert active.current_sl == Decimal("2649.70")
+
+
+@pytest.mark.asyncio
+async def test_tp1_minimum_lot_moves_sl_without_splitting():
+    """
+    Verifica que con un lote mínimo indivisible (0.01), al tocar TP1 por precio,
+    se mantiene el lote de 0.01 pero el Stop Loss se mueve obligatoriamente a Break-Even.
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    broker = LocalPaperBroker()
+    sm = TradeStateMachine(broker=broker)
+
+    # Abrir BUY con 0.01L
+    await sm.open_new_trade(
+        slot_id=4,
+        side=OrderSide.BUY,
+        lot_size=Decimal("0.01"),
+        entry_price=Decimal("2650.00"),
+        sl=Decimal("2640.00"),
+        tp_levels=[Decimal("2653.00")]
+    )
+
+    tick_tp1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2653.00"), ask=Decimal("2653.20"), timestamp=30.0)
+    await sm.on_market_tick(tick_tp1)
+
+    active = sm.active_slots[4]
+    assert active.status == TradeStatus.TP1_HIT
+    assert active.lot_size == Decimal("0.01")
+    assert active.current_sl == Decimal("2650.30")

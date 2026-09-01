@@ -104,7 +104,7 @@ class TradeStateMachine:
 
             tp1 = tp_levels[0]
             tp2 = tp_levels[1] if len(tp_levels) > 1 else None
-            tp3 = tp_levels[2] if len(tp_levels) > 2 else (tp2 or tp1)
+            tp3 = tp_levels[2] if len(tp_levels) > 2 else None
 
             # 1. Ejecución instantánea en el broker
             ticket_id = await self.broker.execute_order(
@@ -364,26 +364,25 @@ class TradeStateMachine:
                     })
 
             # 4. HITO 3: TP3 ALCANZADO & ACTIVACIÓN DE MODO INFINITE RUNNER
-            target_tp3 = trade.tp3 or trade.tp2 or trade.tp1
-            is_tp3_hit = (price >= target_tp3) if trade.side == OrderSide.BUY else (price <= target_tp3)
+            if trade.tp3 and trade.status in (TradeStatus.TP1_HIT, TradeStatus.TP2_HIT) and not trade.is_infinite_trailing:
+                is_tp3_hit = (price >= trade.tp3) if trade.side == OrderSide.BUY else (price <= trade.tp3)
+                if is_tp3_hit:
+                    trade.status = TradeStatus.TP3_TRAILING
+                    trade.is_infinite_trailing = True
+                    trade.peak_price = price
+                    trade.current_sl = trade.tp3.quantize(Decimal("0.01"))
 
-            if is_tp3_hit and not trade.is_infinite_trailing and trade.status in (TradeStatus.OPEN, TradeStatus.TP1_HIT, TradeStatus.TP2_HIT):
-                trade.status = TradeStatus.TP3_TRAILING
-                trade.is_infinite_trailing = True
-                trade.peak_price = price
-                trade.current_sl = target_tp3.quantize(Decimal("0.01"))
+                    await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
+                    await self._update_trade_in_db(trade)
 
-                await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
-                await self._update_trade_in_db(trade)
-
-                logger.info(f"Slot {slot_id} [🚀 MODO INFINITE RUNNER ACTIVADO]: SL inicial asegurado en TP3 (${trade.current_sl}). Trailing persiguiendo pico.")
-                await self.emit_alert("TP3_RUNNER_ACTIVATED", {
-                    "slot_id": slot_id,
-                    "ticket_id": trade.ticket_id,
-                    "new_sl": float(trade.current_sl),
-                    "peak_price": float(trade.peak_price),
-                    "remaining_lots": float(trade.lot_size)
-                })
+                    logger.info(f"Slot {slot_id} [🚀 MODO INFINITE RUNNER ACTIVADO]: SL inicial asegurado en TP3 (${trade.current_sl}). Trailing persiguiendo pico.")
+                    await self.emit_alert("TP3_RUNNER_ACTIVATED", {
+                        "slot_id": slot_id,
+                        "ticket_id": trade.ticket_id,
+                        "new_sl": float(trade.current_sl),
+                        "peak_price": float(trade.peak_price),
+                        "remaining_lots": float(trade.lot_size)
+                    })
 
             # 5. TRAILING STOP CONTINUO PERSIGUIENDO PICOS (MODO INFINITE RUNNER ACTIVO)
             if trade.is_infinite_trailing and trade.peak_price is not None:

@@ -575,6 +575,22 @@ def parse_position(raw_pos: bytes) -> Dict[str, Any]:
     }
 
 
+def parse_order(raw_order: bytes) -> Dict[str, Any]:
+    """Parsea un sub-mensaje ProtoOAOrder."""
+    fields = parse_protobuf_fields(raw_order)
+    order_id = fields.get(1, [(0, 0)])[0][1]
+    client_order_id = None
+    for tag in [18, 14, 13, 11]:
+        if tag in fields:
+            val = fields[tag][0][1]
+            client_order_id = val.decode("utf-8") if isinstance(val, bytes) else str(val)
+            break
+    return {
+        "order_id": order_id,
+        "client_order_id": client_order_id
+    }
+
+
 def parse_reconcile_res(payload: bytes) -> List[Dict[str, Any]]:
     """Parsea ProtoOAReconcileRes (2125)."""
     fields = parse_protobuf_fields(payload)
@@ -589,26 +605,43 @@ def parse_reconcile_res(payload: bytes) -> List[Dict[str, Any]]:
 def parse_execution_event(payload: bytes) -> Dict[str, Any]:
     """Parsea ProtoOAExecutionEvent (2126)."""
     fields = parse_protobuf_fields(payload)
-    exec_type = fields.get(2, [(0, 0)])[0][1] if 2 in fields else fields.get(1, [(0, 0)])[0][1]
+    exec_type = fields.get(3, [(0, 0)])[0][1] if 3 in fields else (fields.get(2, [(0, 0)])[0][1] if 2 in fields else fields.get(1, [(0, 0)])[0][1])
     
     pos_data = None
-    pos_field = fields.get(3, None) or fields.get(2, None)
-    if pos_field:
-        raw_pos = pos_field[0][1]
-        if isinstance(raw_pos, bytes) and raw_pos:
-            pos_data = parse_position(raw_pos)
+    for tag in [4, 3, 2]:
+        if tag in fields:
+            raw_pos = fields[tag][0][1]
+            if isinstance(raw_pos, bytes) and raw_pos:
+                pos_data = parse_position(raw_pos)
+                break
+        
+    order_data = None
+    for tag in [5, 4, 3]:
+        if tag in fields:
+            raw_order = fields[tag][0][1]
+            if isinstance(raw_order, bytes) and raw_order:
+                order_data = parse_order(raw_order)
+                if order_data.get("client_order_id"):
+                    break
         
     error_code = None
-    err_field = fields.get(7, None) or fields.get(6, None)
-    if err_field:
-        raw_err = err_field[0][1]
-        error_code = raw_err.decode("utf-8") if isinstance(raw_err, bytes) else str(raw_err)
+    for tag in [8, 7, 6]:
+        if tag in fields:
+            raw_err = fields[tag][0][1]
+            error_code = raw_err.decode("utf-8") if isinstance(raw_err, bytes) else str(raw_err)
+            break
         
     return {
         "execution_type": exec_type,
         "position": pos_data,
+        "order": order_data,
         "error_code": error_code
     }
+
+
+def parse_trader_update_event(payload: bytes) -> Dict[str, Any]:
+    """Parsea ProtoOATraderUpdatedEvent (2123)."""
+    return parse_trader_res(payload)
 
 
 def parse_error_res(payload: bytes) -> Dict[str, Any]:

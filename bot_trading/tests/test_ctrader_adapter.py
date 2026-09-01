@@ -3,6 +3,7 @@ import asyncio
 from decimal import Decimal
 from backend.broker.ctrader_protocol import *
 from backend.broker.live_adapter import LiveBrokerAdapter
+from backend.broker.base import BrokerPosition
 from backend.database.models import OrderSide
 
 
@@ -115,3 +116,59 @@ async def test_live_adapter_account_info_math():
     assert info.equity == Decimal("10000.00")
     assert info.margin_used == Decimal("0.00")
     assert info.free_margin == Decimal("10000.00")
+
+
+@pytest.mark.asyncio
+async def test_live_adapter_partial_close_pnl_and_balance():
+    """Verifica que el cierre parcial calcula el PnL positivo real y actualiza el balance."""
+    adapter = LiveBrokerAdapter()
+    adapter.balance = Decimal("1000.00")
+    adapter.contract_size = Decimal("100.0")
+    
+    # Registrar posición simulada en memoria
+    adapter._positions["12345"] = BrokerPosition(
+        ticket_id="12345",
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        lot_size=Decimal("0.04"),
+        entry_price=Decimal("2650.00"),
+        current_price=Decimal("2653.00"),
+        sl=Decimal("2640.00"),
+        tp=Decimal("2660.00"),
+        unrealized_pnl=Decimal("12.00"),
+        open_time=1.0
+    )
+
+    # Cierre parcial de 0.02L a precio 2653.00 (+3.00 USD de ganancia por oz)
+    close_px, partial_pnl = await adapter.close_partial_order("12345", lot_size=Decimal("0.02"), close_price=Decimal("2653.00"))
+
+    # PnL parcial = (2653 - 2650) * 0.02 * 100 = 6.00 USD
+    assert partial_pnl == Decimal("6.00")
+    assert adapter.balance == Decimal("1006.00")
+    assert adapter._positions["12345"].lot_size == Decimal("0.02")
+
+
+@pytest.mark.asyncio
+async def test_live_adapter_trader_update_event():
+    """Verifica que el evento ProtoOATraderUpdateEvent actualiza el balance en tiempo real."""
+    adapter = LiveBrokerAdapter()
+    adapter.balance = Decimal("1000.00")
+
+    # Construir ProtoOATraderUpdateEvent con nuevo balance de $1050.00 (105000 centavos)
+    trader_buf = bytearray()
+    trader_buf.extend(encode_int64(1, 48390676))
+    trader_buf.extend(encode_int64(2, 105000))
+    trader_buf.extend(encode_int32(10, 3000))
+
+    wrapped_buf = bytearray()
+    wrapped_buf.extend(encode_int64(1, 48390676))
+    wrapped_buf.extend(encode_bytes(2, bytes(trader_buf)))
+
+    await adapter._handle_incoming_message(
+        payload_type=ProtoPayloadType.PROTO_OA_TRADER_UPDATE_EVENT,
+        payload=bytes(wrapped_buf),
+        client_msg_id=None
+    )
+
+    assert adapter.balance == Decimal("1050.00")
+    assert adapter.leverage == Decimal("30.00")
