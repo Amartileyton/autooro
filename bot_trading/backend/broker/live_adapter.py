@@ -258,7 +258,12 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                     ask=new_ask,
                     timestamp=float(spot["timestamp"] or time.time())
                 )
+                is_first_tick = (self._last_tick is None)
                 self._last_tick = tick
+                if is_first_tick:
+                    logger.info(f"💎 [cTrader Live] Primer tick de mercado recibido en vivo: XAUUSD Bid=${tick.bid} | Ask=${tick.ask}")
+                else:
+                    logger.debug(f"[cTrader Live] Tick spot: Bid=${tick.bid} | Ask=${tick.ask}")
 
                 # Actualizar PnL de posiciones abiertas
                 for pos in self._positions.values():
@@ -473,6 +478,10 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         if self._last_tick:
             return self._last_tick
         default_px = settings.INITIAL_XAUUSD_PRICE if settings.INITIAL_XAUUSD_PRICE > Decimal("0") else Decimal("4450.00")
+        logger.warning(
+            f"⚠️ [cTrader Live] get_current_tick() invocado antes de recibir el primer tick en vivo de cTrader. "
+            f"Usando referencia de inicio: ${default_px:.2f}"
+        )
         return BrokerTick(
             symbol=symbol,
             bid=default_px,

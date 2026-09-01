@@ -37,18 +37,35 @@ def test_protobuf_new_market_order():
 
 
 def test_protobuf_spot_event_parsing():
-    # Simular payload de ProtoOASpotEvent con PayloadType 2131, Symbol ID 1, Bid 265050 (digits=2 -> 2650.50), Ask 265070 (2650.70)
+    # Simular payload oficial de ProtoOASpotEvent (PayloadType 2131):
+    # Tag 2: accountId (48390676), Tag 3: symbolId (41), Tag 4: Bid 445198000 (4451.98), Tag 5: Ask 445218000 (4452.18)
     buf = bytearray()
     buf.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_SPOT_EVENT))
-    buf.extend(encode_int64(2, 1))  # symbolId = 1
-    buf.extend(encode_int64(3, 265050))  # bid = 265050
-    buf.extend(encode_int64(4, 265070))  # ask = 265070
-    buf.extend(encode_int64(7, 1724920000000))  # timestamp
+    buf.extend(encode_int64(2, 48390676))  # ctidTraderAccountId
+    buf.extend(encode_int64(3, 41))        # symbolId = 41
+    buf.extend(encode_int64(4, 445198000)) # bid = 4451.98 * 100,000
+    buf.extend(encode_int64(5, 445218000)) # ask = 4452.18 * 100,000
+    buf.extend(encode_int64(8, 1724920000000))  # timestamp
 
     spot = parse_spot_event(bytes(buf), digits=2)
-    assert spot["symbol_id"] == 1
-    assert spot["bid"] == Decimal("2650.50")
-    assert spot["ask"] == Decimal("2650.70")
+    assert spot["account_id"] == 48390676
+    assert spot["symbol_id"] == 41
+    assert spot["bid"] == Decimal("4451.98")
+    assert spot["ask"] == Decimal("4452.18")
+
+
+def test_protobuf_spot_event_delta_parsing():
+    # Simular tick delta de cTrader donde solo cambia Bid
+    buf = bytearray()
+    buf.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_SPOT_EVENT))
+    buf.extend(encode_int64(2, 48390676))
+    buf.extend(encode_int64(3, 41))
+    buf.extend(encode_int64(4, 445350000))  # bid = 4453.50 * 100,000
+
+    spot = parse_spot_event(bytes(buf), digits=2)
+    assert spot["symbol_id"] == 41
+    assert spot["bid"] == Decimal("4453.50")
+    assert spot["ask"] is None
 
 
 def test_protobuf_trader_info_parsing():
