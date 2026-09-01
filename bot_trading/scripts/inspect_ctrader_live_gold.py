@@ -1,7 +1,13 @@
 import asyncio
 import logging
 import time
+import os
+import sys
 from decimal import Decimal
+
+# Garantizar que el directorio raíz de bot_trading esté en el path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from backend.config import settings
 from backend.broker.ctrader_protocol import (
     decode_proto_message,
