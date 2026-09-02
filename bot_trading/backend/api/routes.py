@@ -32,6 +32,7 @@ class TestSignalRequest(BaseModel):
     tp2: Optional[Decimal] = None
     tp3: Optional[Decimal] = None
     channel_name: Optional[str] = "Chartoro FX"
+    execution_mode: Optional[str] = "PRODUCTION"
 
 
 @router.get("/state")
@@ -549,10 +550,11 @@ async def inject_test_signal(req: TestSignalRequest):
         requires_dynamic_sl=False,
         raw_text=raw_text,
         message_id=msg_id,
-        channel_id=-1002763662248 if "Chartoro" in target_ch_name else 0,
+        channel_id=-1002763662248 if "Chartoro" in target_ch_name else -1003674180002,
         channel_name=target_ch_name,
-        execution_mode="AUDIT"
+        execution_mode=req.execution_mode or "PRODUCTION"
     )
+
 
     await queue.put(event)
 
