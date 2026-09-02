@@ -347,7 +347,13 @@ def build_new_market_order_req(
     label: str = "AUTOORO",
     client_order_id: Optional[str] = None
 ) -> bytes:
-    """Construye ProtoOANewOrderReq (2106) para orden a mercado."""
+    """
+    Construye ProtoOANewOrderReq (2106) para orden a mercado.
+    Según protocolo oficial cTrader Open API v2:
+      - Para MARKET orders: slippageInPoints NO es admitido (error: 'illegal value of slippageInPoints for MARKET order').
+      - stopLoss y takeProfit absolutos en MARKET orders directas no están soportados en apertura;
+        se aplican inmediatamente después vía ProtoOAAmendPositionSLTPReq (2110).
+    """
     buf = bytearray()
     buf.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_NEW_ORDER_REQ))
     buf.extend(encode_int64(2, account_id))
@@ -355,20 +361,15 @@ def build_new_market_order_req(
     buf.extend(encode_int32(4, ProtoOAOrderType.MARKET))
     buf.extend(encode_int32(5, int(trade_side)))
     buf.extend(encode_int64(6, volume))
-    if stop_loss is not None:
-        buf.extend(encode_double(11, float(stop_loss)))
-    if take_profit is not None:
-        buf.extend(encode_double(12, float(take_profit)))
     if comment:
         buf.extend(encode_string(13, comment))
-    if slippage_in_points is not None:
-        buf.extend(encode_int32(15, slippage_in_points))
     if label:
         buf.extend(encode_string(16, label))
     if client_order_id:
         buf.extend(encode_string(18, client_order_id))
         
     return encode_proto_message(ProtoPayloadType.PROTO_OA_NEW_ORDER_REQ, bytes(buf), client_msg_id=client_order_id)
+
 
 
 def build_amend_position_sltp_req(
@@ -543,7 +544,18 @@ def parse_trader_res(payload: bytes) -> Dict[str, Any]:
 
 
 def parse_position(raw_pos: bytes) -> Dict[str, Any]:
-    """Parsea un sub-mensaje ProtoOAPosition."""
+    """
+    Parsea un sub-mensaje ProtoOAPosition según proto oficial cTrader Open API v2:
+      campo 1: positionId (int64)
+      campo 2: tradeData (ProtoOATradeData)
+      campo 3: positionStatus (enum: 1=OPEN, 2=CLOSED)
+      campo 4: swap (int64)
+      campo 5: price (double, precio VWAP de entrada) — campo CORRECTO
+      campo 6: stopLoss (double, stop loss actual) — campo CORRECTO
+      campo 7: takeProfit (double, take profit actual) — campo CORRECTO
+      campo 8: utcLastUpdateTimestamp (int64)
+      campo 9: commission (int64)
+    """
     pos_fields = parse_protobuf_fields(raw_pos)
     pos_id = pos_fields.get(1, [(0, 0)])[0][1]
     
@@ -555,53 +567,70 @@ def parse_position(raw_pos: bytes) -> Dict[str, Any]:
     trade_side = trade_fields.get(3, [(0, 1)])[0][1]
     open_time = trade_fields.get(4, [(0, 0)])[0][1]
     
-    entry_price = pos_fields.get(3, [(1, 0.0)])[0][1]
-    sl = pos_fields.get(4, [(1, None)])[0][1] if 4 in pos_fields else None
-    tp = pos_fields.get(5, [(1, None)])[0][1] if 5 in pos_fields else None
-    current_price = pos_fields.get(6, [(1, entry_price)])[0][1]
-    pnl = pos_fields.get(8, [(0, 0)])[0][1]
+    # Campo 5: price (VWAP de entrada)
+    entry_price = pos_fields.get(5, [(1, 0.0)])[0][1]
+    if not entry_price and 3 in pos_fields and pos_fields[3][0][0] == WIRE_64BIT:
+        entry_price = pos_fields[3][0][1]
+
+    # Campo 6: stopLoss
+    sl = pos_fields.get(6, [(1, None)])[0][1] if 6 in pos_fields else None
+    
+    # Campo 7: takeProfit
+    tp = pos_fields.get(7, [(1, None)])[0][1] if 7 in pos_fields else None
+    
+    # Campo 9: commission
+    comm_cents = pos_fields.get(9, [(0, 0)])[0][1]
+    commission = Decimal(comm_cents) / Decimal("100.0") if comm_cents else Decimal("0.00")
     
     return {
         "position_id": pos_id,
         "symbol_id": symbol_id,
         "volume": volume,
         "trade_side": ProtoOATradeSide.BUY if trade_side == 1 else ProtoOATradeSide.SELL,
-        "entry_price": Decimal(str(round(entry_price, 2))),
-        "current_price": Decimal(str(round(current_price, 2))),
+        "entry_price": Decimal(str(round(entry_price, 2))) if entry_price else Decimal("0.00"),
+        "current_price": Decimal(str(round(entry_price, 2))) if entry_price else Decimal("0.00"),
         "sl": Decimal(str(round(sl, 2))) if sl is not None else None,
         "tp": Decimal(str(round(tp, 2))) if tp is not None else None,
-        "pnl": Decimal(pnl) / Decimal("100.0"),
+        "pnl": Decimal("0.00"),
+        "commission": commission,
         "open_time": open_time
     }
 
 
 def parse_order(raw_order: bytes) -> Dict[str, Any]:
     """
-    Parsea un sub-mensaje ProtoOAOrder.
-    Según especificación cTrader Open API v2:
+    Parsea un sub-mensaje ProtoOAOrder según proto oficial cTrader Open API v2:
       campo 1: orderId (int64)
-      campo 2: tradeData (ProtoOATradeData, bytes)
-      campo 3: orderStatus (enum)
-      campo 8: clientOrderId (string) — campo CORRECTO
+      campo 2: tradeData (ProtoOATradeData)
+      campo 3: orderType (enum)
+      campo 4: orderStatus (enum)
+      campo 7: executionPrice (double)
+      campo 8: executedVolume (int64)
+      campo 15: stopLoss (double)
+      campo 16: takeProfit (double)
+      campo 17: clientOrderId (string) — campo OFICIAL
+      campo 19: positionId (int64)
     """
     fields = parse_protobuf_fields(raw_order)
     order_id = fields.get(1, [(WIRE_VARINT, 0)])[0][1]
     client_order_id = None
-    # Campo 8: clientOrderId según proto oficial cTrader Open API v2
-    if 8 in fields:
-        val = fields[8][0][1]
+    
+    # Campo 17: clientOrderId oficial en ProtoOAOrder
+    if 17 in fields:
+        val = fields[17][0][1]
         client_order_id = val.decode("utf-8") if isinstance(val, bytes) else str(val)
-    # Fallback a campos alternativos por compatibilidad con versiones antiguas del broker
+        
+    # Fallback para compatibilidad con distintas versiones del protocolo
     if not client_order_id:
-        for tag in [18, 14, 13, 11, 9]:
+        for tag in [8, 18, 14, 13, 11, 9]:
             if tag in fields:
                 val = fields[tag][0][1]
                 if isinstance(val, bytes) and val:
-                    candidate = val.decode("utf-8")
-                    # Validar que parece un clientOrderId (no un número puro de baja entropía)
+                    candidate = val.decode("utf-8", errors="ignore")
                     if len(candidate) > 3:
                         client_order_id = candidate
                         break
+                        
     return {
         "order_id": order_id,
         "client_order_id": client_order_id
@@ -625,10 +654,10 @@ def parse_execution_event(payload: bytes) -> Dict[str, Any]:
       campo 1: payloadType (uint32)
       campo 2: ctidTraderAccountId (int64)
       campo 3: executionType (ProtoOAExecutionType, varint)
-      campo 4: order (ProtoOAOrder, bytes) — la ORDEN
-      campo 5: position (ProtoOAPosition, bytes) — la POSICION abierta/modificada
-      campo 6: errorCode (string)
-      campo 7: isServerSide (bool)
+      campo 4: position (ProtoOAPosition, bytes) — campo OFICIAL
+      campo 5: order (ProtoOAOrder, bytes) — campo OFICIAL
+      campo 6: deal (ProtoOADeal, bytes)
+      campo 9: errorCode (string) — campo OFICIAL
     """
     fields = parse_protobuf_fields(payload)
 
@@ -636,31 +665,42 @@ def parse_execution_event(payload: bytes) -> Dict[str, Any]:
     exec_type_raw = fields.get(3, [(WIRE_VARINT, 0)])[0][1]
     exec_type = int(exec_type_raw) if isinstance(exec_type_raw, int) else 0
 
-    # Campo 5: position (ProtoOAPosition) — campo CORRECTO según proto oficial
+    # Posición: tag 4 oficial, con fallback a tag 5
     pos_data = None
-    if 5 in fields:
-        raw_pos = fields[5][0][1]
-        if isinstance(raw_pos, bytes) and raw_pos:
-            try:
-                pos_data = parse_position(raw_pos)
-            except Exception:
-                pos_data = None
+    for tag in [4, 5]:
+        if tag in fields:
+            raw_pos = fields[tag][0][1]
+            if isinstance(raw_pos, bytes) and raw_pos:
+                try:
+                    pos_data = parse_position(raw_pos)
+                    if pos_data and pos_data.get("position_id"):
+                        break
+                except Exception:
+                    pass
 
-    # Campo 4: order (ProtoOAOrder)
+    # Orden: tag 5 oficial, con fallback a tag 4
     order_data = None
-    if 4 in fields:
-        raw_order = fields[4][0][1]
-        if isinstance(raw_order, bytes) and raw_order:
-            try:
-                order_data = parse_order(raw_order)
-            except Exception:
-                order_data = None
+    for tag in [5, 4]:
+        if tag in fields:
+            raw_order = fields[tag][0][1]
+            if isinstance(raw_order, bytes) and raw_order:
+                try:
+                    order_data = parse_order(raw_order)
+                    if order_data and order_data.get("order_id"):
+                        break
+                except Exception:
+                    pass
 
-    # Campo 6: errorCode (string)
+    # Error code: tag 9 oficial, con fallback a tag 6 o tag 2
     error_code = None
-    if 6 in fields:
-        raw_err = fields[6][0][1]
-        error_code = raw_err.decode("utf-8") if isinstance(raw_err, bytes) else str(raw_err)
+    for tag in [9, 6, 2]:
+        if tag in fields:
+            raw_err = fields[tag][0][1]
+            if isinstance(raw_err, bytes) and raw_err:
+                candidate = raw_err.decode("utf-8", errors="ignore")
+                if len(candidate) > 2 and not candidate.isdigit():
+                    error_code = candidate
+                    break
 
     return {
         "execution_type": exec_type,
@@ -668,6 +708,7 @@ def parse_execution_event(payload: bytes) -> Dict[str, Any]:
         "order": order_data,
         "error_code": error_code
     }
+
 
 
 def parse_trader_update_event(payload: bytes) -> Dict[str, Any]:

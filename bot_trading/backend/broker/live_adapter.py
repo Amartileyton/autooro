@@ -559,25 +559,23 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         """
         Envía una orden a mercado directa a cTrader Open API 2.0 (ProtoOANewOrderReq).
         Retorna el positionId único asignado por cTrader.
+        Aplica SL/TP inmediatamente después de la apertura vía ProtoOAAmendPositionSLTPReq.
         """
         client_order_id = f"ORD-{uuid.uuid4().hex[:8].upper()}"
         cside = ProtoOATradeSide.BUY if side == OrderSide.BUY else ProtoOATradeSide.SELL
         vol = self._convert_lot_to_ctrader_volume(lot_size)
-        slippage_points = int(settings.SLIPPAGE_TOLERANCE_USD * Decimal(10 ** self.symbol_digits))
 
         logger.info(
             f"[cTrader Live] Enviando Orden de Mercado: {side.value} {lot_size} lotes ({vol} unidades) | "
-            f"SL: {sl} | TP: {tp} | Slippage: {slippage_points} pts | ClientID: {client_order_id}"
+            f"SL objetivo: {sl} | TP objetivo: {tp} | ClientID: {client_order_id}"
         )
 
+        # Construir solicitud a mercado limpia (sin slippageInPoints ni SL/TP directos no admitidos para MARKET)
         req = build_new_market_order_req(
             account_id=self.account_id,
             symbol_id=self.symbol_id,
             trade_side=cside,
             volume=vol,
-            stop_loss=float(sl) if sl else None,
-            take_profit=float(tp) if tp else None,
-            slippage_in_points=slippage_points,
             comment=comment or "AUTOORO XAUUSD",
             label="AUTOORO",
             client_order_id=client_order_id
@@ -591,28 +589,55 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
 
         try:
             ptype, payload = await asyncio.wait_for(fut, timeout=8.0)
+            
             if ptype == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
                 ev = parse_execution_event(payload)
                 if ev.get("position"):
                     pos_id = str(ev["position"]["position_id"])
-                    logger.info(f"[cTrader Live] Orden EJECUTADA exitosamente en cTrader. Position ID: {pos_id}")
+                    logger.info(f"[cTrader Live] ✅ Orden EJECUTADA exitosamente en cTrader. Position ID: {pos_id}")
+                    # Si la señal incluía SL o TP, aplicarlos inmediatamente a la posición abierta
+                    if sl or tp:
+                        logger.info(f"[cTrader Live] Asignando SL={sl} y TP={tp} a posición {pos_id}...")
+                        asyncio.create_task(self.modify_order(pos_id, new_sl=sl, new_tp=tp))
                     return pos_id
+                elif ev.get("error_code"):
+                    logger.error(f"[cTrader Live] ❌ Orden RECHAZADA por cTrader en ExecutionEvent: {ev['error_code']}")
+                    return f"REJECTED-{ev['error_code']}"
+                    
+            elif ptype == ProtoPayloadType.PROTO_OA_ORDER_ERROR_EVENT:
+                from backend.broker.ctrader_protocol import parse_protobuf_fields
+                err_fields = parse_protobuf_fields(payload)
+                err_code = err_fields.get(2, [(0, b"UNKNOWN")])[0][1]
+                err_desc = err_fields.get(7, [(0, b"")])[0][1]
+                err_str = err_code.decode("utf-8", errors="ignore") if isinstance(err_code, bytes) else str(err_code)
+                desc_str = err_desc.decode("utf-8", errors="ignore") if isinstance(err_desc, bytes) else str(err_desc)
+                logger.error(f"[cTrader Live] ❌ Orden RECHAZADA por cTrader: {err_str} - {desc_str}")
+                return f"REJECTED-{err_str}"
+                
+            elif ptype == ProtoPayloadType.PROTO_OA_ERROR_RES:
+                from backend.broker.ctrader_protocol import parse_error_res
+                err = parse_error_res(payload)
+                logger.error(f"[cTrader Live] ❌ Error del broker al enviar orden: {err.get('description', 'Error desconocido')}")
+                return "REJECTED-ERROR_RES"
+                
         except asyncio.TimeoutError:
-            logger.warning(f"[cTrader Live] Timeout esperando confirmación de orden {client_order_id}. Verificando posiciones...")
+            logger.warning(f"[cTrader Live] Timeout esperando confirmación directa de orden {client_order_id}. Verificando posiciones vivas...")
         finally:
             self._pending_responses.pop(client_order_id, None)
 
         # Si no se capturó directamente en el futuro, buscar en las posiciones vivas registradas
         if self._positions:
-            # Buscar la posición más reciente que coincida con el lado
             for p_id in reversed(list(self._positions.keys())):
                 p = self._positions[p_id]
                 if p.side == side:
                     logger.info(f"[cTrader Live] Posición detectada en memoria tras orden: Position ID: {p_id}")
+                    if sl or tp:
+                        asyncio.create_task(self.modify_order(str(p_id), new_sl=sl, new_tp=tp))
                     return str(p_id)
 
-        # Fallback de ticket provisional si la confirmación tardó más de lo esperado
+        # Fallback si la confirmación no fue capturada pero tampoco hubo rechazo explícito
         return f"CTR-{int(time.time() * 1000)}"
+
 
     async def modify_order(
         self,

@@ -47,7 +47,7 @@ def get_channel_metadata(channel_id: Optional[int] = None, channel_name: Optiona
             "id": channel_id or -1003674180002,
             "name": channel_name or "XAU(USD) GREEN PIPS",
             "parser": "green_pips",
-            "mode": "AUDIT",
+            "mode": "PRODUCTION",
             "enabled": True
         }
 
@@ -55,9 +55,10 @@ def get_channel_metadata(channel_id: Optional[int] = None, channel_name: Optiona
         "id": channel_id or -1002763662248,
         "name": channel_name or "Chartoro FX",
         "parser": "chartoro",
-        "mode": "AUDIT",
+        "mode": "PRODUCTION",
         "enabled": True
     }
+
 
 
 def parse_signal_by_channel(
