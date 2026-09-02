@@ -67,8 +67,19 @@ class PullbackWatcher:
             market_price = current_tick.ask if event.side == OrderSide.BUY else current_tick.bid
             tp1 = event.tp_levels[0] if event.tp_levels else None
 
-            # Si el mercado ya alcanzó o superó el TP1 en el segundo de llegada, descartar inmediatamente
+            # Validar coherencia matemática del TP1 con la dirección ANTES de usarlo como filtro.
+            # Si el parser confundió SL con TP1 (e.g. TP1 < entry_price en un BUY),
+            # el TP1 es incoherente y NO debe usarse para cancelar el pullback.
+            tp1_is_coherent = False
             if tp1:
+                if event.side == OrderSide.BUY:
+                    tp1_is_coherent = tp1 > event.entry_price
+                else:  # SELL
+                    tp1_is_coherent = tp1 < event.entry_price
+
+            # Solo cancelar si el TP1 es válido Y el mercado ya lo ha alcanzado
+            # (el movimiento ya ocurrió sin nosotros — no tiene sentido entrar ahora)
+            if tp1 and tp1_is_coherent:
                 if event.side == OrderSide.BUY and market_price >= tp1:
                     logger.info(
                         f"🚫 [PULLBACK WATCHER] Señal {event.message_id} descartada: "
@@ -81,6 +92,13 @@ class PullbackWatcher:
                         f"mercado ({market_price}) ya alcanzó TP1 ({tp1}) sin dar opción a pullback."
                     )
                     return False
+            elif tp1 and not tp1_is_coherent:
+                logger.warning(
+                    f"⚠️ [PULLBACK WATCHER] Señal {event.message_id}: TP1={tp1} incoherente "
+                    f"con dirección {event.side.value} (entry={event.entry_price}). "
+                    f"Ignorando filtro de TP1 — posible confusión SL/TP1 en el parser."
+                )
+                tp1 = None  # No usar TP1 incoherente para ningún filtro
 
             async with self._lock:
                 pending = PendingSignal(
@@ -126,27 +144,33 @@ class PullbackWatcher:
                     continue
 
                 # 2. Comprobar Invalidación por TP1 alcanzado sin retroceder
+                # Solo aplica si el TP1 es coherente con la dirección de la señal.
                 if pending.tp1:
-                    if pending.side == OrderSide.BUY and tick.bid >= pending.tp1:
-                        logger.info(f"🎯 [PULLBACK WATCHER] Señal {msg_id} cancelada: TP1 ({pending.tp1}) alcanzado sin retroceso previo.")
-                        await self._update_db_error_reason(msg_id, "FUERA PRECIO (TP ALCANZADO)")
-                        await self.state_machine.emit_alert("PULLBACK_CANCELLED_TP", {
-                            "message_id": msg_id,
-                            "channel": pending.channel_name,
-                            "tp1": float(pending.tp1)
-                        })
-                        to_remove.append(msg_id)
-                        continue
-                    elif pending.side == OrderSide.SELL and tick.ask <= pending.tp1:
-                        logger.info(f"🎯 [PULLBACK WATCHER] Señal {msg_id} cancelada: TP1 ({pending.tp1}) alcanzado sin retroceso previo.")
-                        await self._update_db_error_reason(msg_id, "FUERA PRECIO (TP ALCANZADO)")
-                        await self.state_machine.emit_alert("PULLBACK_CANCELLED_TP", {
-                            "message_id": msg_id,
-                            "channel": pending.channel_name,
-                            "tp1": float(pending.tp1)
-                        })
-                        to_remove.append(msg_id)
-                        continue
+                    tp1_coherent = (
+                        (pending.side == OrderSide.BUY and pending.tp1 > pending.entry_price) or
+                        (pending.side == OrderSide.SELL and pending.tp1 < pending.entry_price)
+                    )
+                    if tp1_coherent:
+                        if pending.side == OrderSide.BUY and tick.bid >= pending.tp1:
+                            logger.info(f"🎯 [PULLBACK WATCHER] Señal {msg_id} cancelada: TP1 ({pending.tp1}) alcanzado sin retroceso previo.")
+                            await self._update_db_error_reason(msg_id, "FUERA PRECIO (TP ALCANZADO)")
+                            await self.state_machine.emit_alert("PULLBACK_CANCELLED_TP", {
+                                "message_id": msg_id,
+                                "channel": pending.channel_name,
+                                "tp1": float(pending.tp1)
+                            })
+                            to_remove.append(msg_id)
+                            continue
+                        elif pending.side == OrderSide.SELL and tick.ask <= pending.tp1:
+                            logger.info(f"🎯 [PULLBACK WATCHER] Señal {msg_id} cancelada: TP1 ({pending.tp1}) alcanzado sin retroceso previo.")
+                            await self._update_db_error_reason(msg_id, "FUERA PRECIO (TP ALCANZADO)")
+                            await self.state_machine.emit_alert("PULLBACK_CANCELLED_TP", {
+                                "message_id": msg_id,
+                                "channel": pending.channel_name,
+                                "tp1": float(pending.tp1)
+                            })
+                            to_remove.append(msg_id)
+                            continue
 
                 # 3. Comprobar si el precio ha retrocedido a la zona segura (Slippage <= 2.00 USD)
                 is_slippage_ok, market_price, diff = await self.risk_engine.check_slippage(

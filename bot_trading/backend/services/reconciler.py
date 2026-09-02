@@ -246,6 +246,16 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             if card_dt != datetime.min.replace(tzinfo=timezone.utc):
                 is_expired = (now_utc - card_dt) > timedelta(minutes=timeout_mins)
 
+            # Un ticket asignado (CTR-... o AUDIT-...) indica ejecución real aunque no haya match en BD.
+            # En ese caso preservamos el PnL calculado — no borramos datos de operaciones ejecutadas.
+            has_real_ticket = bool(
+                card.ticket_id and (
+                    str(card.ticket_id).startswith("CTR-") or
+                    str(card.ticket_id).startswith("AUDIT-") or
+                    str(card.ticket_id).isdigit()  # position_id numérico de cTrader
+                )
+            )
+
             if is_pb and not is_expired:
                 card.status = "PENDING_PULLBACK"
                 card.outcome_text = card.error_reason or "EN ESPERA (PULLBACK)"
@@ -253,19 +263,27 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             elif is_pb and is_expired:
                 card.status = "REJECTED"
                 card.outcome_text = "FUERA PRECIO (TIMEOUT PULLBACK)"
-                card.pnl_usd = None
-                card.gross_pnl_usd = None
-                card.net_pnl_usd = None
+                if not has_real_ticket:
+                    card.pnl_usd = None
+                    card.gross_pnl_usd = None
+                    card.net_pnl_usd = None
                 card.modifications = [f"Timeout de retroceso ({timeout_mins} min) expirado sin volver a rango"]
+            elif has_real_ticket:
+                # La orden fue ejecutada (tiene ticket) pero aún no hay fila en BD o está en curso.
+                # No marcar como REJECTED ni borrar su PnL.
+                if card.status not in ("WIN", "LOSS", "OPEN"):
+                    card.status = "OPEN"
+                    card.outcome_text = "EN CURSO"
             else:
                 card.status = "REJECTED"
                 card.outcome_text = card.error_reason or "FUERA PRECIO"
-                # Limpiar cualquier PnL teórico para garantizar que no se confunda con balance real
+                # Limpiar PnL teórico solo si la orden nunca fue ejecutada (sin ticket)
                 card.pnl_usd = None
                 card.gross_pnl_usd = None
                 card.net_pnl_usd = None
                 if not card.modifications:
                     card.modifications = [f"Orden no ejecutada: {card.outcome_text}"]
+
 
     # 5. Ordenación cronológica estricta: los trades más recientes van SIEMPRE al inicio
     trades.sort(key=get_card_timestamp, reverse=True)

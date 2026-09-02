@@ -239,6 +239,15 @@ async def lifespan(app: FastAPI):
     app_state["broker"] = broker
     await broker.connect()
 
+    # 3.1 Lanzar reconexión automática si el broker es cTrader (Live)
+    reconnect_task = None
+    if settings.BROKER_TYPE.lower() == "ctrader":
+        from backend.broker.live_adapter import LiveBrokerAdapter as _LiveAdapterClass
+        if isinstance(broker, _LiveAdapterClass):
+            reconnect_task = asyncio.create_task(broker._reconnect_loop())
+            app_state["reconnect_task"] = reconnect_task
+            logger.info("[MAIN] Tarea de reconexión automática cTrader iniciada.")
+
     # 4. Inicializar Risk Engine, State Machine y Pullback Watcher
     risk_engine = RiskEngine(broker=broker)
     state_machine = TradeStateMachine(broker=broker)
@@ -314,9 +323,19 @@ async def lifespan(app: FastAPI):
     logger.info("Deteniendo servicios...")
     consumer_task.cancel()
     news_task.cancel()
+
+    # Detener reconexión automática antes de desconectar el broker
+    reconnect_task = app_state.get("reconnect_task")
+    if reconnect_task and not reconnect_task.done():
+        from backend.broker.live_adapter import LiveBrokerAdapter as _LiveAdapterClass
+        if isinstance(broker, _LiveAdapterClass):
+            broker._reconnect_enabled = False
+        reconnect_task.cancel()
+
     await telegram_client.stop()
     await telegram_bot.stop()
     await broker.disconnect()
+
     
     # Consolidar SQLite WAL al disco antes de cerrar
     try:

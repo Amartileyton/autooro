@@ -106,16 +106,25 @@ class TradeStateMachine:
             tp2 = tp_levels[1] if len(tp_levels) > 1 else None
             tp3 = tp_levels[2] if len(tp_levels) > 2 else None
 
-            # 1. Ejecución instantánea en el broker
-            ticket_id = await self.broker.execute_order(
-                symbol="XAUUSD",
-                side=side,
-                lot_size=lot_size,
-                entry_price=entry_price,
-                sl=sl,
-                tp=tp3,
-                comment=f"Slot-{slot_id}"
-            )
+            # 1. Ejecución en el broker (solo en modo PRODUCTION)
+            # En modo AUDIT se genera un ticket simulado sin enviar ninguna orden real.
+            if execution_mode == ExecutionMode.PRODUCTION:
+                ticket_id = await self.broker.execute_order(
+                    symbol="XAUUSD",
+                    side=side,
+                    lot_size=lot_size,
+                    entry_price=entry_price,
+                    sl=sl,
+                    tp=tp3,
+                    comment=f"Slot-{slot_id}"
+                )
+                logger.info(f"🚀 [PRODUCTION] Orden enviada a cTrader: Slot {slot_id} | {side.value} {lot_size}L @ {entry_price} → Ticket: {ticket_id}")
+            else:
+                # AUDIT: ticket simulado, se anota en DB y muestra en dashboard pero no toca el broker real
+                import uuid as _uuid
+                ticket_id = f"AUDIT-{_uuid.uuid4().hex[:12].upper()}"
+                logger.info(f"📋 [AUDIT] Trade simulado: Slot {slot_id} | {side.value} {lot_size}L @ {entry_price} → Ticket: {ticket_id}")
+
 
             # 2. Persistencia en SQLite (WAL)
             db_trade_id = 0
@@ -493,8 +502,19 @@ class TradeStateMachine:
 
         trade = self.active_slots.pop(slot_id)
         
-        # 1. Cerrar remanente en Broker
-        exec_price, remaining_pnl = await self.broker.close_order(trade.ticket_id, close_price=close_price, reason=reason)
+        # 1. Cerrar remanente en Broker (solo si es un ticket PRODUCTION real, no AUDIT simulado)
+        is_audit_ticket = str(trade.ticket_id).startswith("AUDIT-")
+        if not is_audit_ticket and trade.execution_mode == ExecutionMode.PRODUCTION:
+            exec_price, remaining_pnl = await self.broker.close_order(trade.ticket_id, close_price=close_price, reason=reason)
+        else:
+            # AUDIT: simular el cierre localmente con el precio de mercado actual
+            exec_price = close_price
+            if trade.side == OrderSide.BUY:
+                remaining_pnl = (close_price - trade.entry_price) * trade.lot_size * Decimal("100.0")
+            else:
+                remaining_pnl = (trade.entry_price - close_price) * trade.lot_size * Decimal("100.0")
+            remaining_pnl = remaining_pnl.quantize(Decimal("0.01"))
+
         total_pnl = (trade.realized_cash_pnl + remaining_pnl).quantize(Decimal("0.01"))
 
         # 2. Actualizar en DB

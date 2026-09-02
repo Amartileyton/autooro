@@ -82,8 +82,19 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         self.leverage: Decimal = settings.LEVERAGE
         self.contract_size: Decimal = settings.CONTRACT_SIZE
         self._last_tick: Optional[BrokerTick] = None
+        self._last_spread_usd: Decimal = Decimal("0.15")  # Spread real (ask - bid) del último tick
         self._positions: Dict[str, BrokerPosition] = {}
         self._tick_callbacks: List[Callable[[BrokerTick], Any]] = []
+
+        # Control de reconexión automática
+        self._reconnect_enabled: bool = False
+        self._reconnect_task: Optional[asyncio.Task] = None
+
+    def get_current_spread(self) -> Decimal:
+        """Retorna el spread más reciente recibido de cTrader (ask - bid) en USD por onza."""
+        return self._last_spread_usd
+
+
 
     async def connect(self) -> bool:
         """Conecta con el servidor cTrader Open API vía TLS TCP e inicializa la sesión."""
@@ -263,10 +274,19 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                 )
                 is_first_tick = (self._last_tick is None)
                 self._last_tick = tick
+
+                # Calcular y actualizar el spread real de mercado (ask - bid en USD)
+                # Solo cuando el tick contiene ambos lados (no ticks parciales de bid o ask únicamente)
+                if spot["bid"] is not None and spot["ask"] is not None:
+                    raw_spread = new_ask - new_bid
+                    if raw_spread > Decimal("0.01"):  # Sanity check: spread debe ser positivo y razonable
+                        self._last_spread_usd = raw_spread.quantize(Decimal("0.01"))
+
                 if is_first_tick:
-                    logger.info(f"💎 [cTrader Live] Primer tick de mercado recibido en vivo: XAUUSD Bid=${tick.bid} | Ask=${tick.ask}")
+                    logger.info(f"💎 [cTrader Live] Primer tick de mercado recibido en vivo: XAUUSD Bid=${tick.bid} | Ask=${tick.ask} | Spread=${self._last_spread_usd}")
                 else:
-                    logger.debug(f"[cTrader Live] Tick spot: Bid=${tick.bid} | Ask=${tick.ask}")
+                    logger.debug(f"[cTrader Live] Tick spot: Bid=${tick.bid} | Ask=${tick.ask} | Spread=${self._last_spread_usd}")
+
 
                 # Actualizar PnL de posiciones abiertas
                 for pos in self._positions.values():
@@ -751,3 +771,55 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
     async def get_open_positions(self) -> List[BrokerPosition]:
         """Retorna la lista de posiciones vivas en cTrader."""
         return list(self._positions.values())
+
+    async def _reconnect_loop(self) -> None:
+        """
+        Bucle de reconexión automática con backoff exponencial.
+        Se activa cuando _reconnect_enabled=True y la conexión cae inesperadamente.
+        Reintentos: 5s → 15s → 30s → 30s (tope).
+        """
+        self._reconnect_enabled = True
+        backoff_sequence = [5, 15, 30, 30]  # Segundos entre reintentos
+        attempt = 0
+
+        while self._reconnect_enabled:
+            # Esperar a que la conexión caiga (si está activa, no hacer nada)
+            await asyncio.sleep(5.0)
+            if self._connected and self._authenticated:
+                attempt = 0  # Reset del contador si la conexión está OK
+                continue
+
+            if not self._reconnect_enabled:
+                break
+
+            wait_secs = backoff_sequence[min(attempt, len(backoff_sequence) - 1)]
+            logger.warning(
+                f"[cTrader Live] ⚠️ Conexión perdida. Intento de reconexión #{attempt + 1} "
+                f"en {wait_secs}s..."
+            )
+            await asyncio.sleep(wait_secs)
+
+            if not self._reconnect_enabled:
+                break
+
+            logger.info(f"[cTrader Live] 🔄 Reconectando a {self.host}:{self.port}...")
+            callbacks_backup = list(self._tick_callbacks)
+            try:
+                success = await self.connect()
+                if success:
+                    # Re-registrar callbacks que existían antes de la caída
+                    for cb in callbacks_backup:
+                        if cb not in self._tick_callbacks:
+                            self._tick_callbacks.append(cb)
+                    logger.info(f"[cTrader Live] ✅ Reconexión exitosa. {len(callbacks_backup)} callbacks restaurados.")
+                    attempt = 0
+                else:
+                    logger.error(f"[cTrader Live] ❌ Fallo en reconexión #{attempt + 1}.")
+                    attempt += 1
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[cTrader Live] ❌ Error en reconexión #{attempt + 1}: {e}")
+                attempt += 1
+
+        logger.info("[cTrader Live] Bucle de reconexión automática finalizado.")

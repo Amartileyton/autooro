@@ -55,7 +55,7 @@ class Settings(BaseSettings):
                 "name": "Chartoro FX",
                 "link": "https://t.me/chartoro",
                 "parser": "chartoro",
-                "mode": "AUDIT",
+                "mode": "PRODUCTION",
                 "enabled": True
             },
             {
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
                 "name": "XAU(USD) GREEN PIPS",
                 "link": "https://t.me/accesschannellink",
                 "parser": "green_pips",
-                "mode": "AUDIT",
+                "mode": "PRODUCTION",
                 "enabled": True
             }
         ],

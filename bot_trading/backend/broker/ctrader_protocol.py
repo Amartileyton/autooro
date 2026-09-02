@@ -576,15 +576,32 @@ def parse_position(raw_pos: bytes) -> Dict[str, Any]:
 
 
 def parse_order(raw_order: bytes) -> Dict[str, Any]:
-    """Parsea un sub-mensaje ProtoOAOrder."""
+    """
+    Parsea un sub-mensaje ProtoOAOrder.
+    Según especificación cTrader Open API v2:
+      campo 1: orderId (int64)
+      campo 2: tradeData (ProtoOATradeData, bytes)
+      campo 3: orderStatus (enum)
+      campo 8: clientOrderId (string) — campo CORRECTO
+    """
     fields = parse_protobuf_fields(raw_order)
-    order_id = fields.get(1, [(0, 0)])[0][1]
+    order_id = fields.get(1, [(WIRE_VARINT, 0)])[0][1]
     client_order_id = None
-    for tag in [18, 14, 13, 11]:
-        if tag in fields:
-            val = fields[tag][0][1]
-            client_order_id = val.decode("utf-8") if isinstance(val, bytes) else str(val)
-            break
+    # Campo 8: clientOrderId según proto oficial cTrader Open API v2
+    if 8 in fields:
+        val = fields[8][0][1]
+        client_order_id = val.decode("utf-8") if isinstance(val, bytes) else str(val)
+    # Fallback a campos alternativos por compatibilidad con versiones antiguas del broker
+    if not client_order_id:
+        for tag in [18, 14, 13, 11, 9]:
+            if tag in fields:
+                val = fields[tag][0][1]
+                if isinstance(val, bytes) and val:
+                    candidate = val.decode("utf-8")
+                    # Validar que parece un clientOrderId (no un número puro de baja entropía)
+                    if len(candidate) > 3:
+                        client_order_id = candidate
+                        break
     return {
         "order_id": order_id,
         "client_order_id": client_order_id
@@ -603,34 +620,48 @@ def parse_reconcile_res(payload: bytes) -> List[Dict[str, Any]]:
 
 
 def parse_execution_event(payload: bytes) -> Dict[str, Any]:
-    """Parsea ProtoOAExecutionEvent (2126)."""
+    """
+    Parsea ProtoOAExecutionEvent (2126) según especificación oficial cTrader Open API v2:
+      campo 1: payloadType (uint32)
+      campo 2: ctidTraderAccountId (int64)
+      campo 3: executionType (ProtoOAExecutionType, varint)
+      campo 4: order (ProtoOAOrder, bytes) — la ORDEN
+      campo 5: position (ProtoOAPosition, bytes) — la POSICION abierta/modificada
+      campo 6: errorCode (string)
+      campo 7: isServerSide (bool)
+    """
     fields = parse_protobuf_fields(payload)
-    exec_type = fields.get(3, [(0, 0)])[0][1] if 3 in fields else (fields.get(2, [(0, 0)])[0][1] if 2 in fields else fields.get(1, [(0, 0)])[0][1])
-    
+
+    # Campo 3: executionType
+    exec_type_raw = fields.get(3, [(WIRE_VARINT, 0)])[0][1]
+    exec_type = int(exec_type_raw) if isinstance(exec_type_raw, int) else 0
+
+    # Campo 5: position (ProtoOAPosition) — campo CORRECTO según proto oficial
     pos_data = None
-    for tag in [4, 3, 2]:
-        if tag in fields:
-            raw_pos = fields[tag][0][1]
-            if isinstance(raw_pos, bytes) and raw_pos:
+    if 5 in fields:
+        raw_pos = fields[5][0][1]
+        if isinstance(raw_pos, bytes) and raw_pos:
+            try:
                 pos_data = parse_position(raw_pos)
-                break
-        
+            except Exception:
+                pos_data = None
+
+    # Campo 4: order (ProtoOAOrder)
     order_data = None
-    for tag in [5, 4, 3]:
-        if tag in fields:
-            raw_order = fields[tag][0][1]
-            if isinstance(raw_order, bytes) and raw_order:
+    if 4 in fields:
+        raw_order = fields[4][0][1]
+        if isinstance(raw_order, bytes) and raw_order:
+            try:
                 order_data = parse_order(raw_order)
-                if order_data.get("client_order_id"):
-                    break
-        
+            except Exception:
+                order_data = None
+
+    # Campo 6: errorCode (string)
     error_code = None
-    for tag in [8, 7, 6]:
-        if tag in fields:
-            raw_err = fields[tag][0][1]
-            error_code = raw_err.decode("utf-8") if isinstance(raw_err, bytes) else str(raw_err)
-            break
-        
+    if 6 in fields:
+        raw_err = fields[6][0][1]
+        error_code = raw_err.decode("utf-8") if isinstance(raw_err, bytes) else str(raw_err)
+
     return {
         "execution_type": exec_type,
         "position": pos_data,
