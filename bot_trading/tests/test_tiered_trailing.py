@@ -8,6 +8,8 @@ from backend.database.models import OrderSide, TradeStatus
 from backend.risk.state_machine import TradeStateMachine, ActiveSlotTrade
 from backend.config import settings
 
+be_buf = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.80"))
+
 
 @pytest.mark.asyncio
 async def test_tiered_buy_full_lifecycle():
@@ -43,8 +45,8 @@ async def test_tiered_buy_full_lifecycle():
     assert trade.lot_size == Decimal("0.10")
     # PnL cobrado en caja: (2005.50 - 2000.00) * 0.10 * 100 = $55.00
     assert trade.realized_cash_pnl == Decimal("55.00")
-    # SL debe subir a Entrada + Spread Buffer ($2000.00 + $0.30 = $2000.30)
-    assert trade.current_sl == Decimal("2000.30")
+    # SL debe subir a Entrada + Spread Buffer ($2000.00 + be_buf)
+    assert trade.current_sl == (Decimal("2000.00") + be_buf)
 
     # 3. Enviar tick TP2 (2015.50 >= 2015.00)
     tick_tp2 = BrokerTick(symbol="XAUUSD", bid=Decimal("2015.50"), ask=Decimal("2015.70"), timestamp=time.time())
@@ -115,8 +117,8 @@ async def test_tiered_sell_full_lifecycle():
 
     assert trade.status == TradeStatus.TP1_HIT
     assert trade.lot_size == Decimal("0.10")
-    # SL SELL sube a Entrada - Spread Buffer ($2000.00 - $0.30 = $1999.70)
-    assert trade.current_sl == Decimal("1999.70")
+    # SL SELL sube a Entrada - Spread Buffer ($2000.00 - be_buf)
+    assert trade.current_sl == (Decimal("2000.00") - be_buf)
     assert trade.realized_cash_pnl > Decimal("0.00")
 
     # 3. TP2 SELL (1984.50 <= 1985.00)

@@ -33,28 +33,36 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
     const tp2Num = safeNum(t.tp2, 0);
     const tp3Num = safeNum(t.tp3, 0);
 
-    // Identificar con precisión institucional qué niveles de Take Profit se alcanzaron
+    // Identificar con precisión institucional qué niveles de Take Profit se alcanzaron EN CUENTA
     const isTp3Triggered = Boolean(
-      t.tp3_hit ||
-      (t.highest_tp && t.highest_tp >= 3) ||
-      (t.modifications && t.modifications.some(m => m.includes('TP3') || m.includes('Infinite Runner'))) ||
+      t.account_tp3_hit ||
+      (!t.security_exit_before_tp && t.tp3_hit) ||
+      (!t.security_exit_before_tp && t.highest_tp && t.highest_tp >= 3) ||
       (isWin && tp3Num > 0 && ((isBuy && exitPriceNum >= tp3Num - 1.0) || (!isBuy && exitPriceNum <= tp3Num + 1.0)))
     );
 
     const isTp2Triggered = Boolean(
       isTp3Triggered ||
-      t.tp2_hit ||
-      (t.highest_tp && t.highest_tp >= 2) ||
-      (t.modifications && t.modifications.some(m => m.includes('TP2') || m.includes('Runner') || m.includes('75%'))) ||
+      t.account_tp2_hit ||
+      (!t.security_exit_before_tp && t.tp2_hit) ||
+      (!t.security_exit_before_tp && t.highest_tp && t.highest_tp >= 2) ||
       (isWin && tp2Num > 0 && ((isBuy && exitPriceNum >= tp2Num - 1.0) || (!isBuy && exitPriceNum <= tp2Num + 1.0)))
     );
 
     const isTp1Triggered = Boolean(
       isTp2Triggered ||
+      t.account_tp1_hit ||
       t.tp1_hit ||
       (t.highest_tp && t.highest_tp >= 1) ||
-      (t.modifications && t.modifications.some(m => m.includes('TP1') || m.includes('TP2') || m.includes('TP3') || m.includes('Cobro parcial') || m.includes('50%'))) ||
       (isWin && tp1Num > 0 && ((isBuy && exitPriceNum >= tp1Num - 1.0) || (!isBuy && exitPriceNum <= tp1Num + 1.0)))
+    );
+
+    // Hitos alcanzados únicamente por el canal de Telegram tras la salida defensiva de la cuenta
+    const isChannelOnlyTp3 = Boolean(
+      !isTp3Triggered && (t.channel_tp3_hit || (t.highest_channel_tp && t.highest_channel_tp >= 3) || (t.security_exit_before_tp && (t.highest_channel_tp || 0) >= 3))
+    );
+    const isChannelOnlyTp2 = Boolean(
+      !isTp2Triggered && (t.channel_tp2_hit || (t.highest_channel_tp && t.highest_channel_tp >= 2) || (t.security_exit_before_tp && (t.highest_channel_tp || 0) >= 2))
     );
     
     const isSlTriggered = isLoss;
@@ -184,6 +192,19 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
           </div>
         )}
 
+        {/* Banner de Salida de Seguridad antes de TPs del Canal */}
+        {t.security_exit_before_tp && (
+          <div className="pl-1.5 py-1 px-2 rounded bg-amber-950/40 border border-amber-500/40 flex items-center justify-between text-[9px] font-mono text-amber-200 gap-1.5">
+            <span className="flex items-center gap-1 font-semibold text-amber-400 shrink-0">
+              <span className="material-symbols-outlined text-[12px]">security</span>
+              BLINDAJE BE:
+            </span>
+            <span className="text-right truncate text-[8.5px]">
+              {t.security_exit_reason || `Posición cerrada en BE ($${safePrice(t.exit_price)}). El canal continuó hacia TP.`}
+            </span>
+          </div>
+        )}
+
         <div className="pl-1.5 grid grid-cols-4 gap-1.5">
           <div className={`p-1 rounded flex flex-col transition-all border ${isSlTriggered ? 'bg-crimson-red/30 border-crimson-red' : 'bg-black/30 border-white/5'}`}>
             <span className="text-[8px] font-mono uppercase text-outline">SL</span>
@@ -193,13 +214,41 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
             <span className="text-[8px] font-mono uppercase text-outline">TP1</span>
             <span className={`text-[10px] font-mono font-bold ${isTp1Triggered ? 'text-white' : 'text-emerald-400'}`}>{t.tp1 ? `$${safePrice(t.tp1)}` : '---'}</span>
           </div>
-          <div className={`p-1 rounded flex flex-col transition-all border ${isTp2Triggered ? 'bg-emerald-500/30 border-emerald-400' : 'bg-black/30 border-white/5'}`}>
-            <span className="text-[8px] font-mono uppercase text-outline">TP2</span>
-            <span className={`text-[10px] font-mono font-bold ${isTp2Triggered ? 'text-white' : 'text-emerald-400'}`}>{t.tp2 ? `$${safePrice(t.tp2)}` : '---'}</span>
+          <div className={`p-1 rounded flex flex-col transition-all border ${
+            isTp2Triggered
+              ? 'bg-emerald-500/30 border-emerald-400'
+              : isChannelOnlyTp2
+              ? 'bg-amber-500/15 border-dashed border-amber-400/60'
+              : 'bg-black/30 border-white/5'
+          }`}>
+            <span className="text-[8px] font-mono uppercase text-outline flex items-center justify-between">
+              TP2 {isChannelOnlyTp2 && <span className="text-[7px] text-amber-400 font-bold ml-0.5">CANAL</span>}
+            </span>
+            <span className={`text-[10px] font-mono font-bold ${
+              isTp2Triggered
+                ? 'text-white'
+                : isChannelOnlyTp2
+                ? 'text-amber-300'
+                : 'text-emerald-400'
+            }`}>{t.tp2 ? `$${safePrice(t.tp2)}` : '---'}</span>
           </div>
-          <div className={`p-1 rounded flex flex-col transition-all border ${isTp3Triggered ? 'bg-emerald-500/30 border-emerald-400' : 'bg-black/30 border-white/5'}`}>
-            <span className="text-[8px] font-mono uppercase text-outline">TP3</span>
-            <span className={`text-[10px] font-mono font-bold ${isTp3Triggered ? 'text-white' : 'text-emerald-400'}`}>{t.tp3 ? `$${safePrice(t.tp3)}` : '---'}</span>
+          <div className={`p-1 rounded flex flex-col transition-all border ${
+            isTp3Triggered
+              ? 'bg-emerald-500/30 border-emerald-400'
+              : isChannelOnlyTp3
+              ? 'bg-amber-500/15 border-dashed border-amber-400/60'
+              : 'bg-black/30 border-white/5'
+          }`}>
+            <span className="text-[8px] font-mono uppercase text-outline flex items-center justify-between">
+              TP3 {isChannelOnlyTp3 && <span className="text-[7px] text-amber-400 font-bold ml-0.5">CANAL</span>}
+            </span>
+            <span className={`text-[10px] font-mono font-bold ${
+              isTp3Triggered
+                ? 'text-white'
+                : isChannelOnlyTp3
+                ? 'text-amber-300'
+                : 'text-emerald-400'
+            }`}>{t.tp3 ? `$${safePrice(t.tp3)}` : '---'}</span>
           </div>
         </div>
 

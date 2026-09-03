@@ -73,17 +73,34 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # 1. Comprobar si es la plantilla formal de una orden rápida ya abierta (Enriquecimiento)
-            matching_trade = await state_machine.find_matching_active_trade(event.side, event.entry_price)
-            if matching_trade:
-                match_slot_id, _ = matching_trade
-                logger.info(f"Plantilla formal recibida para posición previa en Slot {match_slot_id}. Enriqueciendo SL y TPs...")
-                await state_machine.enrich_active_trade(
-                    slot_id=match_slot_id,
-                    sl=event.sl_price,
-                    tp_levels=event.tp_levels,
-                    raw_signal_id=event.message_id
-                )
+            # 1. Comprobar si es la plantilla formal de una orden previa (Enriquecimiento o Anti-Reapertura)
+            matching = await state_machine.find_matching_active_trade(
+                event.side,
+                event.entry_price,
+                channel_name=getattr(event, 'channel_name', None)
+            )
+            if matching:
+                match_slot_id, match_trade, is_recently_closed = matching
+                if not is_recently_closed and match_slot_id is not None:
+                    logger.info(f"Plantilla formal recibida para posición activa en Slot {match_slot_id}. Enriqueciendo SL y TPs...")
+                    await state_machine.enrich_active_trade(
+                        slot_id=match_slot_id,
+                        sl=event.sl_price,
+                        tp_levels=event.tp_levels,
+                        raw_signal_id=event.message_id
+                    )
+                else:
+                    ticket_closed = match_trade.get("ticket_id") if isinstance(match_trade, dict) else getattr(match_trade, "ticket_id", "")
+                    logger.info(
+                        f"🛡️ [ANTI-REAPERTURA] Plantilla formal recibida para setup ya cerrado recientemente ({ticket_closed}). "
+                        f"Enriqueciendo registro histórico en BD sin abrir nueva orden en broker."
+                    )
+                    await state_machine.enrich_closed_trade(
+                        ticket_id=ticket_closed,
+                        sl=event.sl_price,
+                        tp_levels=event.tp_levels,
+                        raw_signal_id=event.message_id
+                    )
                 queue.task_done()
                 continue
 

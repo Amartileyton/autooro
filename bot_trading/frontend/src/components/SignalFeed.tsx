@@ -26,6 +26,16 @@ export interface TradeLifecycleCardItem {
   tp2_hit?: boolean;
   tp3_hit?: boolean;
   highest_tp?: number;
+  account_tp1_hit?: boolean;
+  account_tp2_hit?: boolean;
+  account_tp3_hit?: boolean;
+  highest_account_tp?: number;
+  channel_tp1_hit?: boolean;
+  channel_tp2_hit?: boolean;
+  channel_tp3_hit?: boolean;
+  highest_channel_tp?: number;
+  security_exit_before_tp?: boolean;
+  security_exit_reason?: string | null;
   status: 'OPEN' | 'WIN' | 'LOSS' | 'PENDING_PULLBACK' | 'REJECTED';
   outcome_text: string;
   created_at: string;

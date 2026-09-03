@@ -96,6 +96,17 @@ class TradeLifecycleCard:
         self.tp2_hit = False
         self.tp3_hit = False
         self.highest_tp = 0
+        self.account_tp1_hit = False
+        self.account_tp2_hit = False
+        self.account_tp3_hit = False
+        self.highest_account_tp = 0
+        self.channel_tp1_hit = False
+        self.channel_tp2_hit = False
+        self.channel_tp3_hit = False
+        self.highest_channel_tp = 0
+        self.security_exit_before_tp = False
+        self.security_exit_reason: Optional[str] = None
+        self.is_closed_in_broker = False
         self.status = "OPEN"  # "OPEN", "WIN", "LOSS", "PENDING_PULLBACK", "REJECTED"
         self.outcome_text = "EN CURSO"
         self.created_at = str(created_at or "")
@@ -143,14 +154,47 @@ class TradeLifecycleCard:
             self.modifications.append(f"SL modificado a ${parsed_sl:.2f}")
 
     def mark_tp_hit(self, tp_num: int, pips_text: str = "", timestamp: str = ""):
-        """Registra el alcance de un Take Profit (TP1, TP2, TP3...) y actualiza el estado."""
+        """Registra el alcance de un Take Profit distinguiendo hitos de canal vs ejecución real en cuenta."""
+        # 1. Registrar siempre el hito alcanzado por el canal de Telegram
+        if tp_num >= 1:
+            self.channel_tp1_hit = True
+        if tp_num >= 2:
+            self.channel_tp2_hit = True
+        if tp_num >= 3:
+            self.channel_tp3_hit = True
+        self.highest_channel_tp = max(self.highest_channel_tp, tp_num)
+
+        # 2. Si la orden ya estaba cerrada en el broker previamente:
+        # No sobreescribir la ejecución real ni marcar como cobrado por la cuenta si salió en SL o BE
+        if self.is_closed_in_broker or self.closed_at:
+            exit_px = self.exit_price or self.entry_price
+            target_tp_px = self.tp1 if tp_num == 1 else (self.tp2 if tp_num == 2 else self.tp3)
+            was_stopped_early = False
+            if self.side == "BUY" and target_tp_px and exit_px < (target_tp_px - 0.50):
+                was_stopped_early = True
+            elif self.side == "SELL" and target_tp_px and exit_px > (target_tp_px + 0.50):
+                was_stopped_early = True
+
+            if was_stopped_early:
+                self.security_exit_before_tp = True
+                self.security_exit_reason = f"Canal reportó TP{tp_num}, pero la posición fue cerrada previamente por seguridad en ${exit_px:.2f}"
+                msg = f"ℹ️ Canal reporta TP{tp_num} ({pips_text or 'HIT'}) [Posición cerrada en ${exit_px:.2f}]"
+                if msg not in self.modifications:
+                    self.modifications.append(msg)
+                return
+
+        # 3. La posición estaba abierta y capturó el Take Profit
         if tp_num >= 1:
             self.tp1_hit = True
+            self.account_tp1_hit = True
         if tp_num >= 2:
             self.tp2_hit = True
+            self.account_tp2_hit = True
         if tp_num >= 3:
             self.tp3_hit = True
+            self.account_tp3_hit = True
         self.highest_tp = max(self.highest_tp, tp_num)
+        self.highest_account_tp = max(self.highest_account_tp, tp_num)
         self.status = "WIN"
         self.outcome_text = "GANADA"
 
@@ -237,82 +281,93 @@ class TradeLifecycleCard:
         tp2_px = float(self.tp2 or 0.0)
         tp3_px = float(self.tp3 or 0.0)
 
-        # Detección exhaustiva de TP1, TP2 y TP3
+        # Detección exhaustiva de TP1, TP2 y TP3 reales alcanzados por la cuenta mientras estuvo abierta
         if "TP1" in st_str or "TP2" in st_str or "TP3" in st_str or "TRAILING" in st_str or realized_cash > 0:
-            self.tp1_hit = True
+            self.account_tp1_hit = True
         if "TP1" in close_reason_str or "TP2" in close_reason_str or "TP3" in close_reason_str or "TRAILING" in close_reason_str:
-            self.tp1_hit = True
+            self.account_tp1_hit = True
 
         if "TP2" in st_str or "TP3" in st_str:
-            self.tp1_hit = True
-            self.tp2_hit = True
+            self.account_tp1_hit = True
+            self.account_tp2_hit = True
         if "TP2" in close_reason_str or "TP3" in close_reason_str:
-            self.tp1_hit = True
-            self.tp2_hit = True
+            self.account_tp1_hit = True
+            self.account_tp2_hit = True
 
         if "TP3" in st_str or "TP3" in close_reason_str:
-            self.tp1_hit = True
-            self.tp2_hit = True
-            self.tp3_hit = True
+            self.account_tp1_hit = True
+            self.account_tp2_hit = True
+            self.account_tp3_hit = True
 
-        # Comprobación por niveles de precio (Peak Price y Close Price)
+        # Comprobación por niveles de precio alcanzados (Peak Price y Close Price)
         if self.side == "BUY":
             if peak_px > 0:
                 if tp1_px > 0 and peak_px >= tp1_px - 0.20:
-                    self.tp1_hit = True
+                    self.account_tp1_hit = True
                 if tp2_px > 0 and peak_px >= tp2_px - 0.20:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
                 if tp3_px > 0 and peak_px >= tp3_px - 0.20:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
-                    self.tp3_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
+                    self.account_tp3_hit = True
             if close_px > 0:
                 if tp1_px > 0 and close_px >= tp1_px - 0.50:
-                    self.tp1_hit = True
+                    self.account_tp1_hit = True
                 if tp2_px > 0 and close_px >= tp2_px - 0.50:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
                 if tp3_px > 0 and close_px >= tp3_px - 0.50:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
-                    self.tp3_hit = True
-            if curr_sl > 0 and tp1_px > 0 and curr_sl >= tp1_px - 0.50:
-                self.tp1_hit = True
-                self.tp2_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
+                    self.account_tp3_hit = True
+            if curr_sl > 0 and tp2_px > 0 and curr_sl >= tp2_px - 0.50:
+                self.account_tp1_hit = True
+                self.account_tp2_hit = True
+            elif curr_sl > 0 and tp1_px > 0 and curr_sl >= tp1_px - 0.50:
+                self.account_tp1_hit = True
         else:  # SELL
             if peak_px > 0:
                 if tp1_px > 0 and peak_px <= tp1_px + 0.20:
-                    self.tp1_hit = True
+                    self.account_tp1_hit = True
                 if tp2_px > 0 and peak_px <= tp2_px + 0.20:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
                 if tp3_px > 0 and peak_px <= tp3_px + 0.20:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
-                    self.tp3_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
+                    self.account_tp3_hit = True
             if close_px > 0:
                 if tp1_px > 0 and close_px <= tp1_px + 0.50:
-                    self.tp1_hit = True
+                    self.account_tp1_hit = True
                 if tp2_px > 0 and close_px <= tp2_px + 0.50:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
                 if tp3_px > 0 and close_px <= tp3_px + 0.50:
-                    self.tp1_hit = True
-                    self.tp2_hit = True
-                    self.tp3_hit = True
-            if curr_sl > 0 and tp1_px > 0 and curr_sl <= tp1_px + 0.50:
-                self.tp1_hit = True
-                self.tp2_hit = True
+                    self.account_tp1_hit = True
+                    self.account_tp2_hit = True
+                    self.account_tp3_hit = True
+            if curr_sl > 0 and tp2_px > 0 and curr_sl <= tp2_px + 0.50:
+                self.account_tp1_hit = True
+                self.account_tp2_hit = True
+            elif curr_sl > 0 and tp1_px > 0 and curr_sl <= tp1_px + 0.50:
+                self.account_tp1_hit = True
 
-        if self.tp3_hit:
-            self.highest_tp = 3
-        elif self.tp2_hit:
-            self.highest_tp = 2
-        elif self.tp1_hit:
-            self.highest_tp = 1
+        if self.account_tp3_hit:
+            self.highest_account_tp = 3
+        elif self.account_tp2_hit:
+            self.highest_account_tp = 2
+        elif self.account_tp1_hit:
+            self.highest_account_tp = 1
+
+        # Sincronizar tpX_hit como account_tpX_hit para reflejar fielmente la ejecución de la cuenta
+        self.tp1_hit = self.account_tp1_hit
+        self.tp2_hit = self.account_tp2_hit
+        self.tp3_hit = self.account_tp3_hit
+        self.highest_tp = self.highest_account_tp
 
         if is_closed:
+            self.is_closed_in_broker = True
             pnl_val = float(getattr(db_t, 'pnl', 0.0) or 0.0)
             self.pnl_usd = round(pnl_val, 2)
             if pnl_val > 0:
@@ -331,14 +386,23 @@ class TradeLifecycleCard:
                 self.closed_at = close_time_val.isoformat() if hasattr(close_time_val, 'isoformat') else str(close_time_val)
                 self.formatted_closed_at = format_full_datetime(close_time_val)
 
+            # Detectar si el canal reportó TPs que la cuenta no llegó a cobrar por haberse cerrado por seguridad
+            if self.highest_channel_tp > self.highest_account_tp:
+                self.security_exit_before_tp = True
+                self.security_exit_reason = f"Posición cerrada por seguridad en ${float(self.exit_price or 0.0):.2f} antes de TP{self.highest_channel_tp}"
+
             # Historial de modificaciones e hitos documentados del trade
             mods = []
-            if self.tp3_hit:
-                mods.append(f"🏆 TP1, TP2 y TP3 alcanzados (Runner completado)")
-            elif self.tp2_hit:
-                mods.append(f"🏆 TP1 y TP2 alcanzados (+75% asegurado)")
-            elif self.tp1_hit:
-                mods.append(f"🏆 TP1 alcanzado (+50% asegurado)")
+            if self.account_tp3_hit:
+                mods.append("🏆 TP1, TP2 y TP3 alcanzados (Runner completado)")
+            elif self.account_tp2_hit:
+                mods.append("🏆 TP1 y TP2 alcanzados (+75% asegurado)")
+            elif self.account_tp1_hit:
+                mods.append("🏆 TP1 alcanzado (+50% asegurado)")
+
+            if self.security_exit_before_tp and self.highest_channel_tp > self.highest_account_tp:
+                mods.append(f"🛡️ Salida defensiva en ${float(self.exit_price or 0.0):.2f} antes de TP{self.highest_channel_tp}")
+                mods.append(f"ℹ️ El canal alcanzó hasta TP{self.highest_channel_tp} tras el cierre de seguridad")
 
             if realized_cash > 0:
                 mods.append(f"Cobro parcial en TP (+${realized_cash:.2f} USD)")
@@ -412,6 +476,16 @@ class TradeLifecycleCard:
             "tp2_hit": self.tp2_hit,
             "tp3_hit": self.tp3_hit,
             "highest_tp": self.highest_tp,
+            "account_tp1_hit": self.account_tp1_hit,
+            "account_tp2_hit": self.account_tp2_hit,
+            "account_tp3_hit": self.account_tp3_hit,
+            "highest_account_tp": self.highest_account_tp,
+            "channel_tp1_hit": self.channel_tp1_hit,
+            "channel_tp2_hit": self.channel_tp2_hit,
+            "channel_tp3_hit": self.channel_tp3_hit,
+            "highest_channel_tp": self.highest_channel_tp,
+            "security_exit_before_tp": self.security_exit_before_tp,
+            "security_exit_reason": self.security_exit_reason,
             "status": self.status,
             "outcome_text": self.outcome_text,
             "created_at": self.created_at,

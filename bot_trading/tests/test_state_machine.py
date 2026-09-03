@@ -5,6 +5,9 @@ from backend.broker.paper import LocalPaperBroker
 from backend.broker.base import BrokerTick
 from backend.database.models import OrderSide, TradeStatus, Base
 from backend.database.session import engine
+from backend.config import settings
+
+be_buffer = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.80"))
 
 
 @pytest.mark.asyncio
@@ -37,7 +40,7 @@ async def test_full_trade_lifecycle_trailing_milestones():
     await sm.on_market_tick(tick_tp1)
 
     assert sm.active_slots[1].status == TradeStatus.TP1_HIT
-    assert sm.active_slots[1].current_sl == Decimal("2340.30")
+    assert sm.active_slots[1].current_sl == (Decimal("2340.00") + be_buffer)
     assert sm.active_slots[1].lot_size == Decimal("0.25")
 
     # 3. Tick alcanza TP2 (2361.00) -> Cierra 25% del total (0.13L) y SL debe moverse a TP1 (2350.00)
@@ -110,11 +113,11 @@ async def test_pip_by_pip_tp1_partial_close_and_breakeven_buy():
     assert active.lot_size == Decimal("0.02")  # 50% de 0.04
     # Ganancia asegurada en caja: (2653 - 2650) * 0.02 * 100 = 6.00 USD
     assert active.realized_cash_pnl == Decimal("6.00")
-    # SL blindado a Break-Even + Spread (2650.00 + 0.30 = 2650.30)
-    assert active.current_sl == Decimal("2650.30")
+    # SL blindado a Break-Even + Spread (2650.00 + be_buffer)
+    assert active.current_sl == (Decimal("2650.00") + be_buffer)
 
-    # Tick 3: Precio retrocede hasta tocar el SL blindado (2650.30)
-    tick_sl = BrokerTick(symbol="XAUUSD", bid=Decimal("2650.25"), ask=Decimal("2650.45"), timestamp=12.0)
+    # Tick 3: Precio retrocede hasta tocar el SL blindado
+    tick_sl = BrokerTick(symbol="XAUUSD", bid=active.current_sl - Decimal("0.05"), ask=active.current_sl + Decimal("0.15"), timestamp=12.0)
     await sm.on_market_tick(tick_sl)
 
     # El trade debe cerrarse en positivo (CLOSED_TP) con beneficio total > 0
@@ -151,8 +154,8 @@ async def test_pip_by_pip_tp1_partial_close_and_breakeven_sell():
     assert active.lot_size == Decimal("0.01")  # 50% vendido
     # Ganancia asegurada en caja: (2650 - 2647) * 0.01 * 100 = 3.00 USD
     assert active.realized_cash_pnl == Decimal("3.00")
-    # SL blindado SELL a Break-Even - Spread (2650.00 - 0.30 = 2649.70)
-    assert active.current_sl == Decimal("2649.70")
+    # SL blindado SELL a Break-Even - Spread (2650.00 - be_buffer)
+    assert active.current_sl == (Decimal("2650.00") - be_buffer)
 
 
 @pytest.mark.asyncio
@@ -183,4 +186,4 @@ async def test_tp1_minimum_lot_moves_sl_without_splitting():
     active = sm.active_slots[4]
     assert active.status == TradeStatus.TP1_HIT
     assert active.lot_size == Decimal("0.01")
-    assert active.current_sl == Decimal("2650.30")
+    assert active.current_sl == (Decimal("2650.00") + be_buffer)

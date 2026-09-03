@@ -13,6 +13,7 @@ from backend.shared.enums import OrderSide, TradeStatus, ExecutionMode
 from backend.ingesta.schemas import ModifierSignalEvent, SignalType
 from sqlalchemy import select, update
 from backend.repository.trades import update_trade
+from backend.config import settings
 
 logger = logging.getLogger("trading_bot.state_machine")
 
@@ -61,6 +62,8 @@ class TradeStateMachine:
         self.broker = broker
         # Slots activos en memoria: {slot_id: ActiveSlotTrade}
         self.active_slots: Dict[int, ActiveSlotTrade] = {}
+        # Memoria de setups cerrados recientemente para anti-reapertura y enriquecimiento tardío
+        self.recent_closed_setups: List[dict] = []
         # Callback para notificaciones (ej. Bot de Telegram o WebSocket)
         self.alert_callbacks: List[Callable[[str, dict], Any]] = []
         self._lock = asyncio.Lock()
@@ -106,9 +109,12 @@ class TradeStateMachine:
             tp2 = tp_levels[1] if len(tp_levels) > 1 else None
             tp3 = tp_levels[2] if len(tp_levels) > 2 else None
 
-            # 1. Ejecución en el broker (solo en modo PRODUCTION)
-            # En modo AUDIT se genera un ticket simulado sin enviar ninguna orden real.
-            if execution_mode == ExecutionMode.PRODUCTION:
+            # 1. Ejecución en el broker:
+            # En PRODUCTION o cuando el broker es de simulación local (PaperBroker), registrar en broker.
+            # En AUDIT sobre cTrader real se genera ticket simulado para no arriesgar fondos en broker.
+            from backend.config import settings
+            is_paper = self.broker.__class__.__name__ == "LocalPaperBroker" or getattr(settings, 'BROKER_TYPE', '').lower() == "paper"
+            if execution_mode == ExecutionMode.PRODUCTION or is_paper:
                 ticket_id = await self.broker.execute_order(
                     symbol="XAUUSD",
                     side=side,
@@ -118,7 +124,7 @@ class TradeStateMachine:
                     tp=tp3,
                     comment=f"Slot-{slot_id}"
                 )
-                logger.info(f"🚀 [PRODUCTION] Orden enviada a cTrader: Slot {slot_id} | {side.value} {lot_size}L @ {entry_price} → Ticket: {ticket_id}")
+                logger.info(f"🚀 [{'PAPER' if is_paper else 'PRODUCTION'}] Orden registrada: Slot {slot_id} | {side.value} {lot_size}L @ {entry_price} → Ticket: {ticket_id}")
             else:
                 # AUDIT: ticket simulado, se anota en DB y muestra en dashboard pero no toca el broker real
                 import uuid as _uuid
@@ -203,22 +209,60 @@ class TradeStateMachine:
         self,
         side: OrderSide,
         entry_price: Decimal,
-        max_price_delta: Decimal = Decimal("2.00"),
-        max_age_seconds: float = 300.0
-    ) -> Optional[Tuple[int, ActiveSlotTrade]]:
+        max_price_delta: Decimal = Decimal("3.00"),
+        max_age_seconds: float = 600.0,
+        channel_name: Optional[str] = None
+    ) -> Optional[Tuple[Optional[int], Any, bool]]:
         """
-        Busca si ya existe una orden activa reciente en la misma dirección y precio similar.
-        Permite enriquecer órdenes abiertas por alertas rápidas (BUY NOW) cuando llega la plantilla formal (SIGNAL ALERT).
+        Busca si ya existe una orden activa o recientemente cerrada en la misma dirección y precio similar.
+        Retorna:
+          (slot_id, active_trade, False) -> Orden activa encontrada (para enriquecer en broker/memoria).
+          (None, closed_dict, True)       -> Setup cerrado recientemente (para enriquecer en BD sin reabrir en broker).
+          None                           -> Setup nuevo no visto antes.
         """
         now = time.time()
         async with self._lock:
+            # 1. Buscar primero en slots activos
             for slot_id, trade in self.active_slots.items():
                 if trade.side == side:
                     price_diff = abs(trade.entry_price - entry_price)
                     age = now - trade.open_time
                     if price_diff <= max_price_delta and age <= max_age_seconds:
-                        return slot_id, trade
+                        return slot_id, trade, False
+
+            # 2. Buscar en setups cerrados recientemente (cooldown anti-reapertura)
+            for closed in reversed(self.recent_closed_setups):
+                if closed["side"] == side:
+                    price_diff = abs(closed["entry_price"] - entry_price)
+                    age = now - closed["closed_at"]
+                    if price_diff <= max_price_delta and age <= max_age_seconds:
+                        return None, closed, True
+
         return None
+
+    async def enrich_closed_trade(
+        self,
+        ticket_id: str,
+        sl: Optional[Decimal],
+        tp_levels: List[Decimal],
+        raw_signal_id: Optional[int] = None
+    ):
+        """Actualiza los niveles oficiales (SL y TPs) en la BD para una orden que ya fue cerrada, sin enviar nada al broker."""
+        tp1 = tp_levels[0] if len(tp_levels) > 0 else None
+        tp2 = tp_levels[1] if len(tp_levels) > 1 else None
+        tp3 = tp_levels[2] if len(tp_levels) > 2 else None
+        try:
+            await update_trade(
+                ticket_id,
+                initial_sl=sl,
+                current_sl=sl,
+                tp1=tp1,
+                tp2=tp2,
+                tp3=tp3
+            )
+            logger.info(f"Trade cerrado ({ticket_id}) enriquecido en BD con niveles oficiales: SL={sl}, TP1={tp1}, TP2={tp2}, TP3={tp3}")
+        except Exception as e:
+            logger.error(f"Error al enriquecer trade cerrado en DB: {e}")
 
     async def enrich_active_trade(
         self,
@@ -321,22 +365,24 @@ class TradeStateMachine:
                         trade.lot_size = (trade.lot_size - half_lot).quantize(Decimal("0.01"))
                         trade.realized_cash_pnl += partial_pnl
                         logger.info(f"Slot {slot_id} [HITO 1 - COBRO 50%]: Cerrados {half_lot}L @ {price}. Caja asegurada: +${partial_pnl:.2f} USD")
+                    else:
+                        logger.info(f"Slot {slot_id} [HITO 1]: Lote {trade.lot_size}L indivisible para 50%. Se mantiene volumen completo con protección defensiva.")
 
-                    # Mover Stop Loss a Break-Even + Spread Buffer (+3 pips = $0.30)
-                    spread_buffer = Decimal("0.30")
+                    # Mover Stop Loss a Break-Even con buffer de protección (por defecto $0.80 USD = 8 pips)
+                    spread_buffer = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.80"))
                     new_sl = (trade.entry_price + spread_buffer) if trade.side == OrderSide.BUY else (trade.entry_price - spread_buffer)
                     trade.current_sl = new_sl.quantize(Decimal("0.01"))
 
                     await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)
 
-                    logger.info(f"Slot {slot_id} [BLINDAJE BE+]: SL movido a Break-Even con Spread (${trade.current_sl}). Riesgo 0% garantizado.")
+                    logger.info(f"Slot {slot_id} [BLINDAJE BE+]: SL movido a Break-Even con Spread Buffer (${trade.current_sl}). Riesgo 0% garantizado.")
                     await self.emit_alert("TP1_PARTIAL_CLOSE", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,
                         "new_sl": float(trade.current_sl),
                         "market_price": float(price),
-                        "closed_lots": float(half_lot),
+                        "closed_lots": float(half_lot) if (half_lot >= Decimal("0.01") and trade.lot_size > half_lot) else 0.0,
                         "remaining_lots": float(trade.lot_size),
                         "realized_cash": float(trade.realized_cash_pnl)
                     })
@@ -533,6 +579,21 @@ class TradeStateMachine:
             logger.error(f"Error al actualizar cierre de trade en DB: {e}")
 
         logger.info(f"Slot {slot_id} CERRADO [{status.value}] @ {exec_price} | PnL Total: ${total_pnl:+.2f} USD (Caja Parcial: ${trade.realized_cash_pnl:.2f}) | Motivo: {reason}")
+
+        # Guardar en memoria de setups cerrados recientemente para anti-reapertura
+        self.recent_closed_setups.append({
+            "side": trade.side,
+            "entry_price": trade.entry_price,
+            "channel_name": trade.channel_name,
+            "ticket_id": trade.ticket_id,
+            "db_trade_id": trade.db_trade_id,
+            "closed_at": time.time(),
+            "close_reason": reason,
+            "close_price": exec_price,
+            "raw_signal_id": trade.raw_signal_id
+        })
+        if len(self.recent_closed_setups) > 50:
+            self.recent_closed_setups = self.recent_closed_setups[-50:]
 
         await self.emit_alert("ORDER_CLOSED", {
             "slot_id": slot_id,

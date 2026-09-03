@@ -81,8 +81,9 @@ Entry Point: 4615.00
     await state_machine.on_market_tick(tick_tp1)
 
     assert state_machine.active_slots[1].status == TradeStatus.TP1_HIT
-    # Stop Loss debe haberse blindado a Entrada + Spread Buffer (4615.00 + 0.30 = 4615.30)
-    assert state_machine.active_slots[1].current_sl == Decimal("4615.30")
+    from backend.config import settings
+    be_buf = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.80"))
+    assert state_machine.active_slots[1].current_sl == (Decimal("4615.00") + be_buf)
     assert state_machine.active_slots[1].realized_cash_pnl > Decimal("0.00")
 
     # 5. Simular Tick alcanzando TP2 (4625.50 >= 4625.00)

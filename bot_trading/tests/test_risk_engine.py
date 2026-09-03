@@ -10,6 +10,7 @@ from backend.ingesta.schemas import TradingSignalEvent, OrderSide
 async def test_slot_allocation_max_4():
     broker = LocalPaperBroker()
     engine = RiskEngine(broker=broker)
+    engine.max_slots = 4
 
     occupied = {}
     signal = TradingSignalEvent(
@@ -40,6 +41,7 @@ async def test_exact_lot_sizing_calculation():
     broker = LocalPaperBroker()
     engine = RiskEngine(broker=broker)
     engine.leverage = Decimal("100.0")
+    engine.slot_margin_pct = Decimal("0.25")
 
     # Balance/Margen Libre = 10,000 USD
     # Slot Margin (25%) = 2,500 USD
@@ -56,6 +58,11 @@ async def test_exact_lot_sizing_calculation():
 
     lot = await engine.calculate_lot_size(entry_price=Decimal("2500.00"), account_info=account_info)
     assert lot == Decimal("1.00")
+
+    # Con 50% de margen (configuración actual para 2 slots con saldo de $1,000):
+    engine.slot_margin_pct = Decimal("0.50")
+    lot_50 = await engine.calculate_lot_size(entry_price=Decimal("2500.00"), account_info=account_info)
+    assert lot_50 == Decimal("2.00")
 
 
 @pytest.mark.asyncio

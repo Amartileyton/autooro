@@ -75,8 +75,8 @@ class Settings(BaseSettings):
     ADMIN_TELEGRAM_USER_ID: int = Field(default=0, description="ID numérico del usuario administrador")
 
     # Motor de Riesgo y Slots
-    MAX_CONCURRENT_SLOTS: int = Field(default=4, description="Número máximo de slots concurrentes")
-    SLOT_MARGIN_PERCENT: Decimal = Field(default=Decimal("0.25"), description="Porcentaje de margen libre por slot (25%)")
+    MAX_CONCURRENT_SLOTS: int = Field(default=2, description="Número máximo de slots concurrentes (2 slots de 50% en cuentas de 1000$ para lotes divisibles)")
+    SLOT_MARGIN_PERCENT: Decimal = Field(default=Decimal("0.50"), description="Porcentaje de margen libre por slot (50% = ~500$ para lote 0.02-0.03L)")
     LEVERAGE: Decimal = Field(default=Decimal("30.0"), description="Apalancamiento de la cuenta (ej. 1:30 regulación europea / IC Markets)")
     CONTRACT_SIZE: Decimal = Field(default=Decimal("100.0"), description="Tamaño de contrato XAUUSD (100 oz troy)")
     MIN_LOT_SIZE: Decimal = Field(default=Decimal("0.01"), description="Lote mínimo permitido por el broker")
@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     DEFAULT_DYNAMIC_SL_DELTA_USD: Decimal = Field(
         default=Decimal("8.50"),
         description="Delta en USD para SL dinámico si la señal no especifica SL"
+    )
+    DEFAULT_BE_BUFFER_USD: Decimal = Field(
+        default=Decimal("0.80"),
+        description="Buffer en USD para Break-Even (8 pips en oro, cubriendo spread y comisiones sin asfixiar la orden)"
+    )
+    ANTI_REENTRY_COOLDOWN_SECONDS: int = Field(
+        default=600,
+        description="Ventana de tiempo en segundos (10 min) para no reabrir un setup si ya se ejecutó o cerró recientemente"
     )
     MAX_ALLOWED_SL_DELTA_USD: Decimal = Field(
         default=Decimal("15.00"),

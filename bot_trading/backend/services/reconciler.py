@@ -145,7 +145,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                     pips_m = RE_PIPS_EXTRACT.search(raw_text)
                     pips_txt = pips_m.group(1) if pips_m else ""
                     for t in reversed(trades):
-                        if t.channel_name == channel and (t.status == "OPEN" or t.status == "WIN"):
+                        if t.channel_name == channel:
                             t.mark_tp_hit(tp_num, pips_txt, time_str)
                             break
 
