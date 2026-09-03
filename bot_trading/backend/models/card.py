@@ -92,6 +92,7 @@ class TradeLifecycleCard:
         self.tp1 = safe_num(tp1)
         self.tp2 = safe_num(tp2)
         self.tp3 = safe_num(tp3)
+        self.signal_price: Optional[float] = None
         self.tp1_hit = False
         self.tp2_hit = False
         self.tp3_hit = False
@@ -248,6 +249,8 @@ class TradeLifecycleCard:
         db_entry = getattr(db_t, 'entry_price', None)
         if db_entry is not None:
             self.entry_price = float(db_entry)
+            if self.signal_price is None:
+                self.signal_price = self.entry_price
 
         self.lot_size = safe_num(getattr(db_t, 'lot_size', None), self.lot_size) or self.lot_size
         self.margin_usd = round(self.lot_size * self.entry_price * 100.0 / 100.0, 2)
@@ -459,6 +462,7 @@ class TradeLifecycleCard:
             "channel_name": self.channel_name,
             "side": self.side,
             "entry_price": float(self.entry_price),
+            "signal_price": float(self.signal_price) if self.signal_price is not None else None,
             "exit_price": float(self.exit_price) if self.exit_price is not None else None,
             "margin_usd": float(self.margin_usd),
             "lot_size": float(self.lot_size),

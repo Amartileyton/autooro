@@ -124,15 +124,21 @@ class TradeStateMachine:
                     tp=tp3,
                     comment=f"Slot-{slot_id}"
                 )
-                logger.info(f"🚀 [{'PAPER' if is_paper else 'PRODUCTION'}] Orden registrada: Slot {slot_id} | {side.value} {lot_size}L @ {entry_price} → Ticket: {ticket_id}")
+                broker_fill = getattr(self.broker, 'last_fill_price', None)
+                if broker_fill and Decimal(str(broker_fill)) > Decimal("0.00"):
+                    real_entry = Decimal(str(broker_fill)).quantize(Decimal("0.01"))
+                else:
+                    real_entry = entry_price.quantize(Decimal("0.01"))
+                logger.info(f"🚀 [{'PAPER' if is_paper else 'PRODUCTION'}] Orden registrada: Slot {slot_id} | {side.value} {lot_size}L @ {real_entry} (Señal teórica: {entry_price}) → Ticket: {ticket_id}")
             else:
                 # AUDIT: ticket simulado, se anota en DB y muestra en dashboard pero no toca el broker real
                 import uuid as _uuid
                 ticket_id = f"AUDIT-{_uuid.uuid4().hex[:12].upper()}"
-                logger.info(f"📋 [AUDIT] Trade simulado: Slot {slot_id} | {side.value} {lot_size}L @ {entry_price} → Ticket: {ticket_id}")
+                real_entry = entry_price.quantize(Decimal("0.01"))
+                logger.info(f"📋 [AUDIT] Trade simulado: Slot {slot_id} | {side.value} {lot_size}L @ {real_entry} → Ticket: {ticket_id}")
 
 
-            # 2. Persistencia en SQLite (WAL)
+            # 2. Persistencia en SQLite (WAL) con precio real de llenado
             db_trade_id = 0
             try:
                 async with AsyncSessionLocal() as session:
@@ -142,7 +148,7 @@ class TradeStateMachine:
                         symbol="XAUUSD",
                         side=side,
                         status=TradeStatus.OPEN,
-                        entry_price=entry_price,
+                        entry_price=real_entry,
                         current_sl=sl,
                         initial_sl=sl,
                         tp1=tp1,
@@ -175,7 +181,7 @@ class TradeStateMachine:
                 symbol="XAUUSD",
                 side=side,
                 status=TradeStatus.OPEN,
-                entry_price=entry_price,
+                entry_price=real_entry,
                 current_sl=sl,
                 initial_sl=sl,
                 tp1=tp1,
@@ -184,19 +190,20 @@ class TradeStateMachine:
                 lot_size=lot_size,
                 initial_lot_size=lot_size,
                 open_time=time.time(),
-                current_price=entry_price
+                current_price=real_entry
             )
 
             self.active_slots[slot_id] = active_trade
 
-            logger.info(f"Slot {slot_id} ABIERTO: {ticket_id} | {side.value} {lot_size}L @ {entry_price} | SL: {sl} | TP1: {tp1}")
+            logger.info(f"Slot {slot_id} ABIERTO: {ticket_id} | {side.value} {lot_size}L @ {real_entry} | SL: {sl} | TP1: {tp1}")
             
             await self.emit_alert("ORDER_OPENED", {
                 "slot_id": slot_id,
                 "ticket_id": ticket_id,
                 "side": side.value,
                 "lot_size": float(lot_size),
-                "entry_price": float(entry_price),
+                "entry_price": float(real_entry),
+                "signal_price": float(entry_price),
                 "sl": float(sl),
                 "tp1": float(tp1),
                 "tp2": float(tp2) if tp2 else None,
@@ -370,8 +377,14 @@ class TradeStateMachine:
 
                     # Mover Stop Loss a Break-Even con buffer de protección (por defecto $0.80 USD = 8 pips)
                     spread_buffer = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.80"))
-                    new_sl = (trade.entry_price + spread_buffer) if trade.side == OrderSide.BUY else (trade.entry_price - spread_buffer)
-                    trade.current_sl = new_sl.quantize(Decimal("0.01"))
+                    if trade.side == OrderSide.BUY:
+                        calc_sl = trade.entry_price + spread_buffer
+                        # En BUY el SL defensivo NUNCA debe estar por debajo del precio real de entrada
+                        trade.current_sl = max(calc_sl, trade.entry_price).quantize(Decimal("0.01"))
+                    else:
+                        calc_sl = trade.entry_price - spread_buffer
+                        # En SELL el SL defensivo NUNCA debe estar por encima del precio real de entrada
+                        trade.current_sl = min(calc_sl, trade.entry_price).quantize(Decimal("0.01"))
 
                     await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)

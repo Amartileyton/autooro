@@ -594,7 +594,16 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                 ev = parse_execution_event(payload)
                 if ev.get("position"):
                     pos_id = str(ev["position"]["position_id"])
-                    logger.info(f"[cTrader Live] ✅ Orden EJECUTADA exitosamente en cTrader. Position ID: {pos_id}")
+                    raw_fill = ev["position"].get("entry_price")
+                    if raw_fill and Decimal(str(raw_fill)) > Decimal("0.00"):
+                        fill_px = Decimal(str(raw_fill)).quantize(Decimal("0.01"))
+                    elif self._last_market_tick:
+                        fill_px = (self._last_market_tick.bid if side == OrderSide.SELL else self._last_market_tick.ask).quantize(Decimal("0.01"))
+                    else:
+                        fill_px = entry_price.quantize(Decimal("0.01"))
+
+                    self.last_fill_price = fill_px
+                    logger.info(f"[cTrader Live] ✅ Orden EJECUTADA exitosamente en cTrader. Position ID: {pos_id} | Fill Price Real: {fill_px}")
                     # Si la señal incluía SL o TP, aplicarlos inmediatamente a la posición abierta
                     if sl or tp:
                         logger.info(f"[cTrader Live] Asignando SL={sl} y TP={tp} a posición {pos_id}...")

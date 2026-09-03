@@ -160,9 +160,14 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
             </span>
           </div>
           <div className="flex justify-between items-center text-[11px] font-mono pt-1 border-t border-white/5">
-            <div className="flex items-center">
-              <span className="text-outline text-[10px] mr-1">ENTRADA:</span>
+            <div className="flex items-center flex-wrap gap-1">
+              <span className="text-outline text-[10px]">ENTRADA:</span>
               <strong className="text-on-surface font-bold">${safePrice(t.entry_price, '2650.00')}</strong>
+              {t.signal_price && Math.abs(t.entry_price - t.signal_price) >= 0.10 && (
+                <span className="text-[9px] text-slate-400 bg-white/5 px-1 py-0.5 rounded border border-white/5" title="Precio teórico indicado en la señal de Telegram">
+                  Señal: ${safePrice(t.signal_price)}
+                </span>
+              )}
             </div>
             <div className="flex items-center">
               <span className="text-outline text-[10px] mr-1">SALIDA:</span>

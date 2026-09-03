@@ -122,6 +122,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                         lot_size=0.09,
                         message_id=msg_id
                     )
+                    new_card.signal_price = float(entry)
                     new_card.error_reason = getattr(m, 'error_reason', None)
                     trades.append(new_card)
 

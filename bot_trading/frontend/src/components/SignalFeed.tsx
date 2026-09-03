@@ -9,6 +9,7 @@ export interface TradeLifecycleCardItem {
   channel_name: string;
   side: 'BUY' | 'SELL';
   entry_price: number;
+  signal_price?: number | null;
   exit_price?: number | null;
   margin_usd?: number;
   lot_size?: number;

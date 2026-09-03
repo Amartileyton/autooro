@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     MIN_LOT_SIZE: Decimal = Field(default=Decimal("0.01"), description="Lote mínimo permitido por el broker")
     LOT_STEP: Decimal = Field(default=Decimal("0.01"), description="Incremento de lote permitido")
     SLIPPAGE_TOLERANCE_USD: Decimal = Field(default=Decimal("3.00"), description="Tolerancia máxima de deslizamiento en USD (30 pips)")
+    MAX_CHASE_SLIPPAGE_USD: Decimal = Field(default=Decimal("1.50"), description="Tolerancia máxima en USD para persecución desfavorable hacia TP (15 pips)")
     DEFAULT_DYNAMIC_SL_DELTA_USD: Decimal = Field(
         default=Decimal("8.50"),
         description="Delta en USD para SL dinámico si la señal no especifica SL"

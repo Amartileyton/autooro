@@ -182,8 +182,8 @@ async def signal_consumer_worker(
                 queue.task_done()
                 continue
 
-            # Precio real de entrada (si el mercado está dentro del rango seguro, entra a precio de mercado)
-            actual_entry = market_price if (entry_min and entry_max and entry_min <= market_price <= entry_max) else event.entry_price
+            # Precio de cotización actual de mercado al momento del envío de la orden
+            actual_entry = market_price
 
             # 4. Calcular Stop Loss (explícito sanitizado con Circuit Breaker máx $15 USD o dinámico)
             sl = risk_engine.sanitize_sl(event.side, actual_entry, event.sl_price)

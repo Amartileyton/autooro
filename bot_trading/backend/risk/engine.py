@@ -103,13 +103,26 @@ class RiskEngine:
                 return True, market_price, Decimal("0.00")
             elif market_price < entry_min:
                 diff = entry_min - market_price
-                return diff <= self.slippage_tolerance, market_price, diff
+                # En BUY, entrar por debajo es precio con descuento (favorable).
+                # En SELL, entrar por debajo es PERSEGUIR hacia TP (desfavorable).
+                chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("0.80"))
+                allowed_tol = chase_tol if side == OrderSide.SELL else self.slippage_tolerance
+                return diff <= allowed_tol, market_price, diff
             else:
                 diff = market_price - entry_max
-                return diff <= self.slippage_tolerance, market_price, diff
+                # En BUY, entrar por encima es PERSEGUIR hacia TP (desfavorable).
+                # En SELL, entrar por encima es precio con prima (favorable).
+                chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("0.80"))
+                allowed_tol = chase_tol if side == OrderSide.BUY else self.slippage_tolerance
+                return diff <= allowed_tol, market_price, diff
 
         diff = abs(market_price - signal_entry)
-        is_valid = diff <= self.slippage_tolerance
+        # Sin rango explícito, verificar si es persecución hacia la dirección de ganancia
+        if (side == OrderSide.SELL and market_price < signal_entry) or (side == OrderSide.BUY and market_price > signal_entry):
+            chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("0.80"))
+            is_valid = diff <= chase_tol
+        else:
+            is_valid = diff <= self.slippage_tolerance
         return is_valid, market_price, diff
 
     async def calculate_lot_size(self, entry_price: Decimal, account_info: AccountInfo) -> Decimal:

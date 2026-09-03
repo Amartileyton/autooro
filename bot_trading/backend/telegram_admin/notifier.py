@@ -141,13 +141,19 @@ def build_alert_message(event_type: str, data: Optional[Dict[str, Any]] = None) 
         ticket = data.get("ticket_id", "")
         side = data.get("side", "")
         entry = data.get("entry_price", 0.0)
+        signal_entry = data.get("signal_price", entry)
         lot = data.get("lot_size", 0.0)
         sl = data.get("sl", 0.0)
+
+        entry_text = f"${entry:.2f}"
+        if signal_entry and abs(entry - signal_entry) >= 0.10:
+            entry_text += f" _(Señal: ${signal_entry:.2f})_"
+
         return (
             f"🚀 *ALERTA GOLD-EX: ORDEN EJECUTADA ({side} XAUUSD)*\n"
             "══════════════════════════════════════\n"
             f"• *Ticket:* `{ticket}`\n"
-            f"• *Entrada Ejecutada:* `${entry:.2f}`\n"
+            f"• *Entrada Real (cTrader):* `{entry_text}`\n"
             f"• *Volumen:* `{lot} Lotes`\n"
             f"• *Stop Loss:* `${sl:.2f}`\n"
             f"• *Hora (Madrid):* `{now_str}`"

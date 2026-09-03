@@ -37,6 +37,9 @@ class BrokerPosition(BaseModel):
 class BaseBrokerAdapter(ABC):
     """Interfaz abstracta estándar para cualquier broker (Paper, cTrader, MetaApi)."""
 
+    def __init__(self):
+        self.last_fill_price: Optional[Decimal] = None
+
     @abstractmethod
     async def connect(self) -> bool:
         """Establece conexión con el broker."""

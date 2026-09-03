@@ -171,6 +171,7 @@ class LocalPaperBroker(BaseBrokerAdapter):
         )
 
         self.positions[ticket_id] = position
+        self.last_fill_price = position.entry_price
         logger.info(f"[PAPER BROKER] Orden Ejecutada: {ticket_id} | {side.value} {lot_size} lotes @ {exec_price:.2f} | SL: {sl} | TP: {tp}")
         return ticket_id
 
