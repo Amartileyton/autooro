@@ -578,12 +578,17 @@ def parse_position(raw_pos: bytes) -> Dict[str, Any]:
     # Campo 7: takeProfit
     tp = pos_fields.get(7, [(1, None)])[0][1] if 7 in pos_fields else None
     
+    # Campo 3: positionStatus (1=OPEN, 2=CLOSED)
+    pos_status_raw = pos_fields.get(3, [(0, 1)])[0][1]
+    position_status = int(pos_status_raw) if isinstance(pos_status_raw, int) else 1
+
     # Campo 9: commission
     comm_cents = pos_fields.get(9, [(0, 0)])[0][1]
     commission = Decimal(comm_cents) / Decimal("100.0") if comm_cents else Decimal("0.00")
     
     return {
         "position_id": pos_id,
+        "position_status": position_status,
         "symbol_id": symbol_id,
         "volume": volume,
         "trade_side": ProtoOATradeSide.BUY if trade_side == 1 else ProtoOATradeSide.SELL,

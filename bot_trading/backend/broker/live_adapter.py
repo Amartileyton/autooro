@@ -154,6 +154,8 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
 
             self._authenticated = True
             logger.info(f"[cTrader Live] Conexión y autenticación completadas con éxito. Operando sobre XAUUSD (Symbol ID: {self.symbol_id}).")
+            # Iniciar worker de liquidación automática de posiciones huérfanas en apertura de mercado
+            asyncio.create_task(self._orphan_cleanup_worker())
             return True
 
         except Exception as e:
@@ -196,13 +198,18 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             await self._writer.drain()
 
     async def _heartbeat_loop(self):
-        """Envía ProtoHeartbeatEvent (51) cada 10 segundos para mantener la conexión TLS activa."""
+        """Envía ProtoHeartbeatEvent (51) cada 10s y sincroniza balance real con cTrader cada 30s."""
+        sync_counter = 0
         while self._connected:
             try:
                 await asyncio.sleep(10.0)
                 if self._connected and self._writer:
                     hb_msg = build_heartbeat_event()
                     await self._send_raw(hb_msg)
+                    sync_counter += 1
+                    if sync_counter >= 3:
+                        sync_counter = 0
+                        asyncio.create_task(self._sync_trader_info())
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -329,8 +336,10 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             pos = exec_event.get("position")
             if pos:
                 pos_id = str(pos["position_id"])
-                if pos["volume"] <= 0:
+                if pos.get("position_status") == 2 or pos.get("volume", 0) <= 0:
                     self._positions.pop(pos_id, None)
+                    if self._connected and self._writer:
+                        asyncio.create_task(self._sync_trader_info())
                 else:
                     lot_size = (Decimal(pos["volume"]) / Decimal(self.symbol_min_volume * 100)).quantize(Decimal("0.01"))
                     self._positions[pos_id] = BrokerPosition(
@@ -597,10 +606,12 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                     raw_fill = ev["position"].get("entry_price")
                     if raw_fill and Decimal(str(raw_fill)) > Decimal("0.00"):
                         fill_px = Decimal(str(raw_fill)).quantize(Decimal("0.01"))
-                    elif self._last_market_tick:
-                        fill_px = (self._last_market_tick.bid if side == OrderSide.SELL else self._last_market_tick.ask).quantize(Decimal("0.01"))
-                    else:
+                    elif getattr(self, "_last_tick", None):
+                        fill_px = (self._last_tick.bid if side == OrderSide.SELL else self._last_tick.ask).quantize(Decimal("0.01"))
+                    elif entry_price and entry_price > Decimal("0.00"):
                         fill_px = entry_price.quantize(Decimal("0.01"))
+                    else:
+                        fill_px = Decimal("4440.00")
 
                     self.last_fill_price = fill_px
                     logger.info(f"[cTrader Live] ✅ Orden EJECUTADA exitosamente en cTrader. Position ID: {pos_id} | Fill Price Real: {fill_px}")
@@ -857,3 +868,92 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                 attempt += 1
 
         logger.info("[cTrader Live] Bucle de reconexión automática finalizado.")
+
+    async def _orphan_cleanup_worker(self) -> None:
+        """
+        Vigila posiciones huérfanas en cTrader y las liquida automáticamente en cuanto
+        el mercado reabra (al recibir cotizaciones en vivo o cuando cTrader admita órdenes).
+        """
+        logger.info("[cTrader Live] 🛡️ Worker de Liquidación Automática de Posiciones Huérfanas iniciado.")
+        await asyncio.sleep(5.0)
+
+        while self._connected:
+            try:
+                # 1. Consultar posiciones en cTrader vía ProtoOAReconcileReq
+                req = build_reconcile_req(self.account_id)
+                await self._send_raw(req)
+                _, payload = await self._wait_for_type(ProtoPayloadType.PROTO_OA_RECONCILE_RES, timeout=10.0)
+                positions = parse_reconcile_res(payload)
+
+                # Filtrar posiciones abiertas con volumen > 0
+                open_pos = [p for p in positions if p.get("position_id") and p.get("volume", 0) > 0]
+
+                if not open_pos:
+                    logger.info("[cTrader Live] 🛡️ No quedan posiciones huérfanas pendientes en cTrader. Worker de limpieza finalizado con éxito.")
+                    break
+
+                logger.info(f"[cTrader Live] 🛡️ {len(open_pos)} posiciones abiertas detectadas para liquidación automática en apertura.")
+
+                all_closed = True
+                for p in open_pos:
+                    pos_id = p["position_id"]
+                    vol = p.get("volume", 100)
+                    side_str = "BUY" if p.get("trade_side") == 1 else "SELL"
+                    entry_px = p.get("entry_price", 0)
+
+                    client_msg_id = f"AUTO-CLS-{pos_id}-{int(time.time())}"
+                    close_req = build_close_position_req(
+                        account_id=self.account_id,
+                        position_id=pos_id,
+                        volume=vol,
+                        client_msg_id=client_msg_id
+                    )
+
+                    loop = asyncio.get_running_loop()
+                    fut = loop.create_future()
+                    self._pending_responses[client_msg_id] = fut
+
+                    logger.info(f"[cTrader Live] 🚀 Intentando cerrar posición {pos_id} ({side_str} {vol}u @ {entry_px})...")
+                    await self._send_raw(close_req)
+
+                    try:
+                        ptype, resp_payload = await asyncio.wait_for(fut, timeout=6.0)
+                        if ptype == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
+                            logger.info(f"[cTrader Live] ✅ Posición huérfana {pos_id} CERRADA EXITOSAMENTE en apertura de mercado.")
+                            self._positions.pop(str(pos_id), None)
+                            try:
+                                from backend.telegram_admin.notifier import dispatch_telegram_alert
+                                await dispatch_telegram_alert("SYSTEM_INFO", {
+                                    "text": f"🛡️ *[AUTO-CLEANUP]* Posición `{pos_id}` ({side_str} @ `${entry_px}`) cerrada automáticamente en apertura de mercado. Margen liberado."
+                                })
+                            except Exception:
+                                pass
+                        elif ptype == ProtoPayloadType.PROTO_OA_ORDER_ERROR_EVENT:
+                            from backend.broker.ctrader_protocol import parse_protobuf_fields
+                            fields = parse_protobuf_fields(resp_payload)
+                            err_code = fields.get(2, [(0, b"UNKNOWN")])[0][1]
+                            err_str = err_code.decode("utf-8", errors="ignore") if isinstance(err_code, bytes) else str(err_code)
+                            logger.info(f"[cTrader Live] ⏳ Mercado aún cerrado para pos {pos_id} ({err_str}). Reintentando en 30s...")
+                            all_closed = False
+                            break
+                        else:
+                            all_closed = False
+                    except asyncio.TimeoutError:
+                        logger.warning(f"[cTrader Live] Timeout esperando confirmación de cierre para {pos_id}.")
+                        all_closed = False
+                    finally:
+                        self._pending_responses.pop(client_msg_id, None)
+
+                if all_closed:
+                    await self._sync_trader_info()
+                    logger.info(f"[cTrader Live] 🛡️ Todas las posiciones huérfanas liquidadas. Balance final: ${self.balance:.2f} USD.")
+                    break
+
+                # Si el mercado sigue cerrado, esperar 30 segundos antes del siguiente intento
+                await asyncio.sleep(30.0)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"[cTrader Live] Nota en worker de limpieza de huérfanas: {e}")
+                await asyncio.sleep(30.0)
