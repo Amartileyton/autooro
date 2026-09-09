@@ -545,8 +545,12 @@ class TradeStateMachine:
             trade = self.active_slots[slot_id]
             tick = await self.broker.get_current_tick("XAUUSD")
             price = tick.bid if trade.side == OrderSide.BUY else tick.ask
-            await self._close_slot(slot_id, close_price=price, status=TradeStatus.CLOSED_MANUAL, reason="MANUAL_DASHBOARD_CLOSE")
-            return True
+            try:
+                await self._close_slot(slot_id, close_price=price, status=TradeStatus.CLOSED_MANUAL, reason="MANUAL_DASHBOARD_CLOSE")
+                return True
+            except Exception as e:
+                logger.error(f"Fallo al cerrar manualmente el slot {slot_id}: {e}", exc_info=True)
+                return False
 
     async def _close_slot(
         self,
@@ -559,12 +563,16 @@ class TradeStateMachine:
         if slot_id not in self.active_slots:
             return
 
-        trade = self.active_slots.pop(slot_id)
+        trade = self.active_slots[slot_id]
         
         # 1. Cerrar remanente en Broker (solo si es un ticket PRODUCTION real, no AUDIT simulado)
         is_audit_ticket = str(trade.ticket_id).startswith("AUDIT-")
         if not is_audit_ticket and trade.execution_mode == ExecutionMode.PRODUCTION:
-            exec_price, remaining_pnl = await self.broker.close_order(trade.ticket_id, close_price=close_price, reason=reason)
+            try:
+                exec_price, remaining_pnl = await self.broker.close_order(trade.ticket_id, close_price=close_price, reason=reason)
+            except Exception as e:
+                logger.error(f"Error al cerrar orden en broker para slot {slot_id} (ticket {trade.ticket_id}): {e}")
+                raise
         else:
             # AUDIT: simular el cierre localmente con el precio de mercado actual
             exec_price = close_price
@@ -573,6 +581,9 @@ class TradeStateMachine:
             else:
                 remaining_pnl = (trade.entry_price - close_price) * trade.lot_size * Decimal("100.0")
             remaining_pnl = remaining_pnl.quantize(Decimal("0.01"))
+
+        # Una vez confirmado el cierre por el broker, liberar el slot
+        self.active_slots.pop(slot_id, None)
 
         total_pnl = (trade.realized_cash_pnl + remaining_pnl).quantize(Decimal("0.01"))
 

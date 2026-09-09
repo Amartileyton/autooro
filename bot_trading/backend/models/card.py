@@ -7,6 +7,7 @@ El cálculo financiero se delega en ``backend.services.cost_calculator``.
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 
+from backend.config import settings
 from backend.services.cost_calculator import calculate_trade_costs as _calculate_trade_costs
 
 try:
@@ -82,11 +83,17 @@ class TradeLifecycleCard:
         self.exit_price: Optional[float] = None
         self.margin_usd = safe_num(margin_usd, 250.0) or 250.0
         self.lot_size = safe_num(lot_size, 0.09) or 0.09
+        self.currency: str = getattr(settings, "ACCOUNT_CURRENCY", "EUR")
+        self.fx_rate: float = float(getattr(settings, "ACCOUNT_FX_RATE", 0.861))
         self.pnl_usd: Optional[float] = None
         self.gross_pnl_usd: Optional[float] = None
         self.spread_cost_usd: float = 0.15
         self.commission_usd: float = 0.16
         self.net_pnl_usd: Optional[float] = None
+        self.gross_pnl_acc: Optional[float] = None
+        self.commission_acc: float = 0.56
+        self.spread_cost_acc: float = 0.13
+        self.net_pnl_acc: Optional[float] = None
         self.sl_price = safe_num(sl_price)
         self.initial_sl = safe_num(sl_price)
         self.tp1 = safe_num(tp1)
@@ -135,6 +142,19 @@ class TradeLifecycleCard:
         self.commission_usd = commission
         self.gross_pnl_usd = gross
         self.net_pnl_usd = net
+
+        if self.currency == "EUR":
+            self.gross_pnl_acc = round(gross * self.fx_rate, 2) if gross is not None else None
+            # En cTrader IC Markets: para lote estándar o parcial cerrado en cuenta EUR
+            self.commission_acc = round(commission * self.fx_rate, 2) if commission else 0.56
+            self.spread_cost_acc = round(spread_cost * self.fx_rate, 2) if spread_cost else 0.13
+            self.net_pnl_acc = round(self.gross_pnl_acc - self.commission_acc, 2) if self.gross_pnl_acc is not None else None
+        else:
+            self.gross_pnl_acc = gross
+            self.commission_acc = commission
+            self.spread_cost_acc = spread_cost
+            self.net_pnl_acc = net
+
         return self.gross_pnl_usd, self.spread_cost_usd, self.commission_usd, self.net_pnl_usd
 
     def update_levels(self, sl_price: Optional[float] = None, tp1: Optional[float] = None, tp2: Optional[float] = None, tp3: Optional[float] = None):
@@ -471,6 +491,12 @@ class TradeLifecycleCard:
             "spread_cost_usd": float(spread),
             "commission_usd": float(commission),
             "net_pnl_usd": float(net) if net is not None else None,
+            "currency": self.currency,
+            "fx_rate": self.fx_rate,
+            "gross_pnl_acc": float(self.gross_pnl_acc) if self.gross_pnl_acc is not None else None,
+            "commission_acc": float(self.commission_acc),
+            "spread_cost_acc": float(self.spread_cost_acc),
+            "net_pnl_acc": float(self.net_pnl_acc) if self.net_pnl_acc is not None else None,
             "sl_price": float(self.sl_price) if self.sl_price is not None else None,
             "initial_sl": float(self.initial_sl) if self.initial_sl is not None else None,
             "tp1": float(self.tp1) if self.tp1 is not None else None,

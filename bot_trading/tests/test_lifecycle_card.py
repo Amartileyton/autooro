@@ -81,3 +81,20 @@ def test_safe_num_coercion():
     assert safe_num("", 0.0) == 0.0
     assert safe_num(2650) == 2650.0
     assert safe_num("no-es-numero", 1.0) == 1.0
+
+
+def test_card_currency_and_conversion():
+    card = TradeLifecycleCard(
+        "t6", "XAU(USD) GREEN PIPS", "BUY", 4396.97,
+        "2026-09-08T10:09:43+00:00", lot_size=0.03
+    )
+    card.pnl_usd = 11.87
+    card.exit_price = 4399.94
+    d = card.to_dict()
+    assert d["currency"] == "EUR"
+    assert d["gross_pnl_usd"] == pytest.approx(11.87)
+    assert d["gross_pnl_acc"] == pytest.approx(10.22, rel=1e-2)
+    assert d["commission_acc"] > 0
+    assert d["net_pnl_acc"] is not None
+    assert d["net_pnl_acc"] == pytest.approx(9.66, abs=0.2)
+

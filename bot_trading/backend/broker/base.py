@@ -11,7 +11,7 @@ class AccountInfo(BaseModel):
     margin_used: Decimal
     free_margin: Decimal
     margin_level_pct: Decimal
-    currency: str = "USD"
+    currency: str = "EUR"
 
 
 class BrokerTick(BaseModel):

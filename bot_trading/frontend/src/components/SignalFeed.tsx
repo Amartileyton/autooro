@@ -18,6 +18,12 @@ export interface TradeLifecycleCardItem {
   spread_cost_usd?: number;
   commission_usd?: number;
   net_pnl_usd?: number | null;
+  currency?: string;
+  fx_rate?: number;
+  gross_pnl_acc?: number | null;
+  commission_acc?: number;
+  spread_cost_acc?: number;
+  net_pnl_acc?: number | null;
   sl_price?: number | null;
   initial_sl?: number | null;
   tp1?: number | null;

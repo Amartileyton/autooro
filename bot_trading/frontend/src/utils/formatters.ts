@@ -23,14 +23,17 @@ export const safeNum = (val: any, fallback = 0): number => {
 };
 
 /**
- * Formatea un PnL como cadena con signo explícito: '+$12.34' o '-$5.00'.
+ * Formatea un PnL como cadena con signo explícito: '+9.66 €' o '+$12.34'.
+ * Soporta divisa por parámetro (por defecto 'EUR').
  */
-export const safePnlStr = (val: any): string => {
-  if (val === null || val === undefined || val === '') return '$0.00';
+export const safePnlStr = (val: any, currency = 'EUR'): string => {
+  const isEur = currency === 'EUR' || currency === '€';
+  if (val === null || val === undefined || val === '') return isEur ? '0.00 €' : '$0.00';
   const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  if (isNaN(num)) return '$0.00';
+  if (isNaN(num)) return isEur ? '0.00 €' : '$0.00';
   const sign = num >= 0 ? '+' : '-';
-  return `${sign}$${Math.abs(num).toFixed(2)}`;
+  const formatted = Math.abs(num).toFixed(2);
+  return isEur ? `${sign}${formatted} €` : `${sign}$${formatted}`;
 };
 
 /**

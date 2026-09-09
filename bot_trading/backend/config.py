@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     CONTRACT_SIZE: Decimal = Field(default=Decimal("100.0"), description="Tamaño de contrato XAUUSD (100 oz troy)")
     MIN_LOT_SIZE: Decimal = Field(default=Decimal("0.01"), description="Lote mínimo permitido por el broker")
     LOT_STEP: Decimal = Field(default=Decimal("0.01"), description="Incremento de lote permitido")
-    SLIPPAGE_TOLERANCE_USD: Decimal = Field(default=Decimal("3.00"), description="Tolerancia máxima de deslizamiento en USD (30 pips)")
+    SLIPPAGE_TOLERANCE_USD: Decimal = Field(default=Decimal("2.50"), description="Tolerancia máxima de deslizamiento favorable en USD (25 pips)")
     MAX_CHASE_SLIPPAGE_USD: Decimal = Field(default=Decimal("1.50"), description="Tolerancia máxima en USD para persecución desfavorable hacia TP (15 pips)")
     DEFAULT_DYNAMIC_SL_DELTA_USD: Decimal = Field(
         default=Decimal("8.50"),
@@ -104,12 +104,14 @@ class Settings(BaseSettings):
         description="Habilita la vigilancia de retroceso para señales fuera de precio inicial"
     )
     PULLBACK_TIMEOUT_MINUTES: int = Field(
-        default=15,
+        default=60,
         description="Tiempo límite en minutos para esperar que el precio retroceda a la zona segura"
     )
     AUTO_EXECUTION_ENABLED: bool = Field(default=True, description="Flag maestro para habilitar/pausar auto-ejecución")
 
-    # Capa de Broker
+    # Capa de Broker y Divisa de Cuenta
+    ACCOUNT_CURRENCY: str = Field(default="EUR", description="Divisa base de la cuenta (EUR o USD)")
+    ACCOUNT_FX_RATE: Decimal = Field(default=Decimal("0.861"), description="Tasa de conversión USD a divisa de cuenta (EUR/USD)")
     BROKER_TYPE: str = Field(default="paper", description="'paper' para simulación local, 'ctrader' para live")
     INITIAL_PAPER_BALANCE: Decimal = Field(default=Decimal("1000.00"), description="Balance inicial para Paper Broker")
     PAPER_SPREAD_MIN_CENTS: Decimal = Field(default=Decimal("0.10"), description="Spread mínimo simulado en USD")
@@ -145,7 +147,7 @@ class Settings(BaseSettings):
         except (ValueError, TypeError):
             return 0
 
-    @field_validator("SLOT_MARGIN_PERCENT", "LEVERAGE", "CONTRACT_SIZE", "MIN_LOT_SIZE", "LOT_STEP", "SLIPPAGE_TOLERANCE_USD", "DEFAULT_DYNAMIC_SL_DELTA_USD", "INITIAL_PAPER_BALANCE", "PAPER_SPREAD_MIN_CENTS", "PAPER_SPREAD_MAX_CENTS", "INITIAL_XAUUSD_PRICE", mode="before")
+    @field_validator("SLOT_MARGIN_PERCENT", "LEVERAGE", "CONTRACT_SIZE", "MIN_LOT_SIZE", "LOT_STEP", "SLIPPAGE_TOLERANCE_USD", "DEFAULT_DYNAMIC_SL_DELTA_USD", "INITIAL_PAPER_BALANCE", "PAPER_SPREAD_MIN_CENTS", "PAPER_SPREAD_MAX_CENTS", "INITIAL_XAUUSD_PRICE", "ACCOUNT_FX_RATE", mode="before")
     @classmethod
     def parse_optional_decimal(cls, v: Any) -> Decimal:
         if v is None or v == "":

@@ -70,6 +70,7 @@ export const DashboardApp: React.FC = () => {
 
   const [xauusdPrice, setXauusdPrice] = useState<number>(4587.50);
   const [balance, setBalance] = useState<number | null>(null);
+  const [accountCurrency, setAccountCurrency] = useState<string>('EUR');
   const [hasLiveBalance, setHasLiveBalance] = useState<boolean>(false);
   const [floatingPnl, setFloatingPnl] = useState<number>(0.00);
   const [botActive, setBotActive] = useState<boolean>(true);
@@ -157,6 +158,9 @@ export const DashboardApp: React.FC = () => {
         const hasLiveBal = Boolean(stateData.has_live_balance || stateData.has_ctrader_token || stateData.broker_type === 'paper' || (stateData.account?.balance !== null && stateData.account?.balance !== undefined));
         setHasLiveBalance(hasLiveBal);
         setBalance(stateData.account?.balance !== undefined && stateData.account?.balance !== null ? stateData.account?.balance : 1000.00);
+        if (stateData.account?.currency) {
+          setAccountCurrency(stateData.account.currency);
+        }
         setIngestionEnabled(stateData.ingestion_enabled);
         setAutoExecutionEnabled(stateData.auto_execution_enabled);
         setBotActive(stateData.ingestion_enabled);
@@ -218,6 +222,9 @@ export const DashboardApp: React.FC = () => {
         if (payload.account.balance !== undefined && payload.account.balance !== null) {
           setBalance(payload.account.balance);
           setHasLiveBalance(true);
+        }
+        if (payload.account.currency) {
+          setAccountCurrency(payload.account.currency);
         }
       }
 
@@ -434,6 +441,7 @@ export const DashboardApp: React.FC = () => {
       <div className="block md:hidden h-screen w-screen overflow-hidden">
         <MobileOperatorDashboard
           balance={balance}
+          currency={accountCurrency}
           hasLiveBalance={hasLiveBalance}
           currentPrice={xauusdPrice}
           slots={slots}
@@ -457,6 +465,7 @@ export const DashboardApp: React.FC = () => {
         <HeaderTelemetry
           xauusdPrice={xauusdPrice}
           balance={balance}
+          currency={accountCurrency}
           hasLiveBalance={hasLiveBalance}
           botActive={botActive}
           authUser={authUser}

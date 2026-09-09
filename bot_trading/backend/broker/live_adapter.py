@@ -68,6 +68,7 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
 
         # Futuros pendientes para solicitudes RPC sincrónicas/asincrónicas por clientMsgId o payloadType
         self._pending_responses: Dict[str, asyncio.Future] = {}
+        self._pending_close_responses: Dict[int, asyncio.Future] = {}
         self._type_waiters: Dict[int, List[asyncio.Future]] = {}
 
         # Mapeo y especificaciones del símbolo (XAUUSD)
@@ -78,6 +79,7 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         self.symbol_max_volume: int = 10000000
 
         # Estado financiero y de mercado
+        self.currency: str = getattr(settings, "ACCOUNT_CURRENCY", "EUR")
         self.balance: Decimal = Decimal("10000.00")
         self.leverage: Decimal = settings.LEVERAGE
         self.contract_size: Decimal = settings.CONTRACT_SIZE
@@ -154,8 +156,6 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
 
             self._authenticated = True
             logger.info(f"[cTrader Live] Conexión y autenticación completadas con éxito. Operando sobre XAUUSD (Symbol ID: {self.symbol_id}).")
-            # Iniciar worker de liquidación automática de posiciones huérfanas en apertura de mercado
-            asyncio.create_task(self._orphan_cleanup_worker())
             return True
 
         except Exception as e:
@@ -318,6 +318,19 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             exec_event = parse_execution_event(payload)
             logger.info(f"[cTrader Live] Execution Event recibido: Type={exec_event['execution_type']}")
             
+            # Correlacionar con futuros de cierre pendientes por position_id
+            pos_data = exec_event.get("position")
+            if pos_data and pos_data.get("position_id") in self._pending_close_responses:
+                fut = self._pending_close_responses.pop(pos_data["position_id"])
+                if not fut.done():
+                    fut.set_result((payload_type, payload))
+
+            deal_data = exec_event.get("deal")
+            if deal_data and deal_data.get("position_id") in self._pending_close_responses:
+                fut = self._pending_close_responses.pop(deal_data["position_id"])
+                if not fut.done():
+                    fut.set_result((payload_type, payload))
+
             # Correlacionar con futuros pendientes por clientOrderId del sub-mensaje order
             order_info = exec_event.get("order")
             if order_info and order_info.get("client_order_id"):
@@ -455,6 +468,8 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
 
     async def _sync_trader_info(self) -> None:
         """Consulta el balance y apalancamiento de la cuenta con ProtoOATraderReq (2121)."""
+        if not self._connected or not self._writer:
+            return
         try:
             req = build_trader_req(self.account_id)
             await self._send_raw(req)
@@ -463,12 +478,14 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             self.balance = info["balance"]
             if info["leverage"] > Decimal("0"):
                 self.leverage = info["leverage"]
-            logger.info(f"[cTrader Live] Estado de Cuenta: Balance=${self.balance:.2f} USD | Apalancamiento={self.leverage:.0f}:1")
+            logger.info(f"[cTrader Live] Estado de Cuenta: Balance={self.balance:.2f} {self.currency} | Apalancamiento={self.leverage:.0f}:1")
         except Exception as e:
             logger.warning(f"[cTrader Live] No se pudo obtener trader info inicial: {e}")
 
     async def _sync_open_positions(self) -> None:
         """Sincroniza las posiciones abiertas existentes en cTrader con ProtoOAReconcileReq (2124)."""
+        if not self._connected or not self._writer:
+            return
         try:
             req = build_reconcile_req(self.account_id)
             await self._send_raw(req)
@@ -531,7 +548,7 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             margin_used=margin_used.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             free_margin=free_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             margin_level_pct=margin_level.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-            currency="USD"
+            currency=self.currency
         )
 
     async def get_current_tick(self, symbol: str = "XAUUSD") -> BrokerTick:
@@ -641,22 +658,31 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                 return "REJECTED-ERROR_RES"
                 
         except asyncio.TimeoutError:
-            logger.warning(f"[cTrader Live] Timeout esperando confirmación directa de orden {client_order_id}. Verificando posiciones vivas...")
+            logger.warning(f"[cTrader Live] Timeout esperando confirmación directa de orden {client_order_id}. Sincronizando posiciones con cTrader...")
         finally:
             self._pending_responses.pop(client_order_id, None)
 
-        # Si no se capturó directamente en el futuro, buscar en las posiciones vivas registradas
+        # Forzar sincronización inmediata con cTrader antes de cualquier decisión
+        try:
+            await self._sync_open_positions()
+        except Exception as sync_err:
+            logger.warning(f"[cTrader Live] Error al sincronizar posiciones tras timeout de orden: {sync_err}")
+
+        # Buscar en las posiciones vivas registradas la recién abierta
         if self._positions:
             for p_id in reversed(list(self._positions.keys())):
                 p = self._positions[p_id]
                 if p.side == side:
-                    logger.info(f"[cTrader Live] Posición detectada en memoria tras orden: Position ID: {p_id}")
+                    logger.info(f"[cTrader Live] ✅ Posición confirmada en cTrader tras sincronización: Position ID: {p_id} | Fill Price: {p.entry_price}")
+                    self.last_fill_price = p.entry_price
                     if sl or tp:
                         asyncio.create_task(self.modify_order(str(p_id), new_sl=sl, new_tp=tp))
                     return str(p_id)
 
-        # Fallback si la confirmación no fue capturada pero tampoco hubo rechazo explícito
-        return f"CTR-{int(time.time() * 1000)}"
+        # Fallback si verdaderamente cTrader no registró la posición
+        fallback_ticket = f"CTR-{int(time.time() * 1000)}"
+        logger.error(f"[cTrader Live] ⚠️ No se detectó posición viva en cTrader tras orden. Asignando fallback {fallback_ticket}")
+        return fallback_ticket
 
 
     async def modify_order(
@@ -668,7 +694,35 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         """Modifica SL/TP de una posición existente en cTrader (ProtoOAAmendPositionSLTPReq)."""
         logger.info(f"[cTrader Live] Modificando Posición {ticket_id}: Nuevo SL={new_sl}, Nuevo TP={new_tp}")
         try:
-            clean_ticket = ticket_id.replace("CTR-", "").replace("TKT-", "")
+            clean_ticket = str(ticket_id).replace("CTR-", "").replace("TKT-", "").strip()
+            pos = self._positions.get(clean_ticket)
+
+            # 1. Si no coincide por clave exacta, verificar en posiciones actuales (ej. ticket sintético CTR-...)
+            if not pos and self._positions:
+                xau_positions = [p for p in self._positions.values() if p.symbol == "XAUUSD"]
+                if len(xau_positions) == 1:
+                    pos = xau_positions[0]
+                    clean_ticket = str(pos.ticket_id)
+                    logger.warning(f"[cTrader Live] Ticket {ticket_id} resuelto a posición viva cTrader ID: {clean_ticket}")
+                elif len(self._positions) == 1:
+                    pos = next(iter(self._positions.values()))
+                    clean_ticket = str(pos.ticket_id)
+                    logger.warning(f"[cTrader Live] Ticket {ticket_id} resuelto a la única posición viva ID: {clean_ticket}")
+
+            # 2. Si aún no se encuentra y el broker está conectado, sincronizar con cTrader
+            if not pos and self._connected and self._writer:
+                await self._sync_open_positions()
+                pos = self._positions.get(clean_ticket)
+                if not pos and self._positions:
+                    xau_positions = [p for p in self._positions.values() if p.symbol == "XAUUSD"]
+                    if len(xau_positions) == 1:
+                        pos = xau_positions[0]
+                        clean_ticket = str(pos.ticket_id)
+
+            if not pos and not clean_ticket.isdigit():
+                logger.warning(f"[cTrader Live] No se encontró posición abierta para modificar SL/TP de {ticket_id}")
+                return False
+
             pos_id = int(clean_ticket)
             client_msg_id = f"AMD-{uuid.uuid4().hex[:6].upper()}"
 
@@ -681,7 +735,6 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             )
 
             # Actualizar en memoria local de posiciones
-            pos = self._positions.get(str(pos_id))
             if pos:
                 if new_sl is not None:
                     pos.sl = new_sl.quantize(Decimal("0.01"))
@@ -700,11 +753,11 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             finally:
                 self._pending_responses.pop(client_msg_id, None)
 
-            logger.info(f"[cTrader Live] Modificación de SL/TP confirmada para posición {ticket_id}.")
+            logger.info(f"[cTrader Live] Modificación de SL/TP enviada para posición {clean_ticket} (SL={new_sl}, TP={new_tp}).")
             return True
         except Exception as e:
             logger.warning(f"[cTrader Live] Nota al modificar posición {ticket_id}: {e}")
-            return True
+            return False
 
     async def close_order(
         self,
@@ -715,9 +768,39 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         """Cierra completamente una posición en cTrader (ProtoOAClosePositionReq) y liquida el PnL."""
         logger.info(f"[cTrader Live] Cerrando Posición {ticket_id} | Motivo: {reason}")
         try:
-            clean_ticket = ticket_id.replace("CTR-", "").replace("TKT-", "")
+            clean_ticket = str(ticket_id).replace("CTR-", "").replace("TKT-", "").strip()
+            pos = self._positions.get(clean_ticket)
+
+            # 1. Si no coincide por clave exacta, verificar en posiciones actuales (ej. ticket sintético CTR-...)
+            if not pos and self._positions:
+                xau_positions = [p for p in self._positions.values() if p.symbol == "XAUUSD"]
+                if len(xau_positions) == 1:
+                    pos = xau_positions[0]
+                    clean_ticket = str(pos.ticket_id)
+                    logger.warning(f"[cTrader Live] Ticket {ticket_id} resuelto a posición viva cTrader ID: {clean_ticket}")
+                elif len(self._positions) == 1:
+                    pos = next(iter(self._positions.values()))
+                    clean_ticket = str(pos.ticket_id)
+                    logger.warning(f"[cTrader Live] Ticket {ticket_id} resuelto a la única posición viva ID: {clean_ticket}")
+
+            # 2. Si aún no se encuentra y el broker está conectado, sincronizar con cTrader
+            if not pos and self._connected and self._writer:
+                await self._sync_open_positions()
+                pos = self._positions.get(clean_ticket)
+                if not pos and self._positions:
+                    xau_positions = [p for p in self._positions.values() if p.symbol == "XAUUSD"]
+                    if len(xau_positions) == 1:
+                        pos = xau_positions[0]
+                        clean_ticket = str(pos.ticket_id)
+                        logger.warning(f"[cTrader Live] Ticket {ticket_id} resuelto a posición viva cTrader ID tras sync: {clean_ticket}")
+
+            if not pos:
+                # No existe en cTrader (ya estaba cerrada previamente en el broker)
+                logger.info(f"[cTrader Live] Posición {ticket_id} ya no está abierta en cTrader. Marcando como cerrada en sistema local.")
+                px = close_price or (self._last_tick.bid if self._last_tick else Decimal("2650.00"))
+                return px, Decimal("0.00")
+
             pos_id = int(clean_ticket)
-            pos = self._positions.get(str(pos_id))
             vol = pos.lot_size if pos else Decimal("0.01")
             c_vol = self._convert_lot_to_ctrader_volume(vol)
             client_msg_id = f"CLS-{uuid.uuid4().hex[:6].upper()}"
@@ -728,16 +811,11 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                 else:
                     close_price = pos.entry_price if pos else Decimal("2650.00")
 
-            # Calcular PnL realizado de la posición restante
-            if pos:
-                if pos.side == OrderSide.BUY:
-                    realized_pnl = (close_price - pos.entry_price) * pos.lot_size * self.contract_size
-                else:
-                    realized_pnl = (pos.entry_price - close_price) * pos.lot_size * self.contract_size
-                realized_pnl = realized_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                self.balance += realized_pnl
-            else:
-                realized_pnl = Decimal("0.00")
+            # Configurar futuros para esperar confirmación de cTrader
+            loop = asyncio.get_running_loop()
+            fut = loop.create_future()
+            self._pending_close_responses[pos_id] = fut
+            self._pending_responses[client_msg_id] = fut
 
             req = build_close_position_req(
                 account_id=self.account_id,
@@ -746,19 +824,50 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                 client_msg_id=client_msg_id
             )
 
+            logger.info(f"[cTrader Live] 🚀 Enviando orden de cierre a cTrader para pos {pos_id} (vol: {c_vol})...")
             await self._send_raw(req)
+
+            # Esperar confirmación de cTrader
+            exec_fill_px = close_price
+            try:
+                ptype, payload = await asyncio.wait_for(fut, timeout=8.0)
+                if ptype == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
+                    ev = parse_execution_event(payload)
+                    deal = ev.get("deal")
+                    if deal and deal.get("execution_price"):
+                        exec_fill_px = deal["execution_price"]
+            except asyncio.TimeoutError:
+                logger.warning(f"[cTrader Live] Timeout esperando confirmación de cierre para {pos_id}. Verificando estado en cTrader...")
+                await self._sync_open_positions()
+                if str(pos_id) in self._positions:
+                    logger.error(f"[cTrader Live] ❌ ERROR: Posición {pos_id} NO se ha cerrado en cTrader!")
+                    raise RuntimeError(f"cTrader no pudo cerrar la posición {pos_id}")
+                else:
+                    logger.info(f"[cTrader Live] ✅ Posición {pos_id} confirmada cerrada tras verificación.")
+            finally:
+                self._pending_close_responses.pop(pos_id, None)
+                self._pending_responses.pop(client_msg_id, None)
+
+            # Calcular PnL realizado con el precio real de ejecución
+            close_price = exec_fill_px
+            if pos.side == OrderSide.BUY:
+                realized_pnl = (close_price - pos.entry_price) * pos.lot_size * self.contract_size
+            else:
+                realized_pnl = (pos.entry_price - close_price) * pos.lot_size * self.contract_size
+            realized_pnl = realized_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            self.balance += realized_pnl
+
             self._positions.pop(str(pos_id), None)
 
             # Sincronizar balance oficial con el broker si está conectado
             if self._connected and self._writer:
                 asyncio.create_task(self._sync_trader_info())
 
-            logger.info(f"[cTrader Live] Posición {pos_id} CERRADA @ {close_price:.2f} | PnL Remanente: ${realized_pnl:+.2f} USD | Nuevo Balance: ${self.balance:.2f} USD | Motivo: {reason}")
+            logger.info(f"[cTrader Live] ✅ Posición {pos_id} CERRADA CONFIRMADA @ {close_price:.2f} | PnL: ${realized_pnl:+.2f} USD | Nuevo Balance: {self.balance:.2f} {self.currency} | Motivo: {reason}")
             return close_price, realized_pnl
         except Exception as e:
-            logger.warning(f"[cTrader Live] Nota al cerrar posición {ticket_id}: {e}")
-            px = close_price or (self._last_tick.bid if self._last_tick else Decimal("2650.00"))
-            return px, Decimal("0.00")
+            logger.error(f"[cTrader Live] Error al cerrar posición {ticket_id}: {e}", exc_info=True)
+            raise
 
     async def close_partial_order(
         self,
@@ -769,29 +878,39 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         """Cierra parcialmente una posición reduciendo su volumen en cTrader (ProtoOAClosePositionReq) y liquida el PnL parcial."""
         logger.info(f"[cTrader Live] Cierre Parcial Posición {ticket_id}: Volumen a cerrar {lot_size}L")
         try:
-            clean_ticket = ticket_id.replace("CTR-", "").replace("TKT-", "")
+            clean_ticket = str(ticket_id).replace("CTR-", "").replace("TKT-", "").strip()
+            pos = self._positions.get(clean_ticket)
+
+            if not pos:
+                await self._sync_open_positions()
+                pos = self._positions.get(clean_ticket)
+
+            if not pos and self._positions:
+                xau_positions = [p for p in self._positions.values() if p.symbol == "XAUUSD"]
+                if len(xau_positions) == 1:
+                    pos = xau_positions[0]
+                    clean_ticket = str(pos.ticket_id)
+
+            if not pos:
+                logger.warning(f"[cTrader Live] No se encontró posición abierta para cierre parcial de {ticket_id}.")
+                px = close_price or (self._last_tick.bid if self._last_tick else Decimal("2650.00"))
+                return px, Decimal("0.00")
+
             pos_id = int(clean_ticket)
             c_vol = self._convert_lot_to_ctrader_volume(lot_size)
             client_msg_id = f"CLP-{uuid.uuid4().hex[:6].upper()}"
 
-            pos = self._positions.get(str(pos_id))
             if close_price is None:
                 if self._last_tick:
                     close_price = self._last_tick.bid if (pos and pos.side == OrderSide.BUY) else self._last_tick.ask
                 else:
                     close_price = pos.entry_price if pos else Decimal("2650.00")
 
-            # Calcular PnL de la porción cerrada
-            if pos:
-                if pos.side == OrderSide.BUY:
-                    partial_pnl = (close_price - pos.entry_price) * lot_size * self.contract_size
-                else:
-                    partial_pnl = (pos.entry_price - close_price) * lot_size * self.contract_size
-                partial_pnl = partial_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                self.balance += partial_pnl
-                pos.lot_size = max(Decimal("0.01"), pos.lot_size - lot_size)
-            else:
-                partial_pnl = Decimal("0.00")
+            # Configurar futuros para esperar confirmación de cTrader
+            loop = asyncio.get_running_loop()
+            fut = loop.create_future()
+            self._pending_close_responses[pos_id] = fut
+            self._pending_responses[client_msg_id] = fut
 
             req = build_close_position_req(
                 account_id=self.account_id,
@@ -802,16 +921,39 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
 
             await self._send_raw(req)
 
+            exec_fill_px = close_price
+            try:
+                ptype, payload = await asyncio.wait_for(fut, timeout=8.0)
+                if ptype == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
+                    ev = parse_execution_event(payload)
+                    deal = ev.get("deal")
+                    if deal and deal.get("execution_price"):
+                        exec_fill_px = deal["execution_price"]
+            except asyncio.TimeoutError:
+                logger.warning(f"[cTrader Live] Timeout esperando confirmación de cierre parcial para {pos_id}.")
+            finally:
+                self._pending_close_responses.pop(pos_id, None)
+                self._pending_responses.pop(client_msg_id, None)
+
+            close_price = exec_fill_px
+            # Calcular PnL de la porción cerrada
+            if pos.side == OrderSide.BUY:
+                partial_pnl = (close_price - pos.entry_price) * lot_size * self.contract_size
+            else:
+                partial_pnl = (pos.entry_price - close_price) * lot_size * self.contract_size
+            partial_pnl = partial_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            self.balance += partial_pnl
+            pos.lot_size = max(Decimal("0.01"), pos.lot_size - lot_size)
+
             # Sincronizar balance oficial con el broker si está conectado
             if self._connected and self._writer:
                 asyncio.create_task(self._sync_trader_info())
 
-            logger.info(f"[cTrader Live] Cierre Parcial ejecutado: Pos {pos_id} | Cobrados {lot_size}L @ {close_price:.2f} | PnL Cobrado en Caja: +${partial_pnl:.2f} USD | Nuevo Balance: ${self.balance:.2f} USD")
+            logger.info(f"[cTrader Live] ✅ Cierre Parcial ejecutado: Pos {pos_id} | Cobrados {lot_size}L @ {close_price:.2f} | PnL Cobrado en Caja: +${partial_pnl:.2f} USD | Nuevo Balance: {self.balance:.2f} {self.currency}")
             return close_price, partial_pnl
         except Exception as e:
-            logger.warning(f"[cTrader Live] Nota al ejecutar cierre parcial {ticket_id}: {e}")
-            px = close_price or (self._last_tick.bid if self._last_tick else Decimal("2650.00"))
-            return px, Decimal("0.00")
+            logger.error(f"[cTrader Live] Error al ejecutar cierre parcial {ticket_id}: {e}", exc_info=True)
+            raise
 
     async def get_open_positions(self) -> List[BrokerPosition]:
         """Retorna la lista de posiciones vivas en cTrader."""
@@ -873,6 +1015,7 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         """
         Vigila posiciones huérfanas en cTrader y las liquida automáticamente en cuanto
         el mercado reabra (al recibir cotizaciones en vivo o cuando cTrader admita órdenes).
+        Verifica siempre con ProtoOAReconcileReq antes de declarar completada la liquidación.
         """
         logger.info("[cTrader Live] 🛡️ Worker de Liquidación Automática de Posiciones Huérfanas iniciado.")
         await asyncio.sleep(5.0)
@@ -892,9 +1035,8 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                     logger.info("[cTrader Live] 🛡️ No quedan posiciones huérfanas pendientes en cTrader. Worker de limpieza finalizado con éxito.")
                     break
 
-                logger.info(f"[cTrader Live] 🛡️ {len(open_pos)} posiciones abiertas detectadas para liquidación automática en apertura.")
+                logger.info(f"[cTrader Live] 🛡️ {len(open_pos)} posiciones abiertas detectadas para liquidación automática.")
 
-                all_closed = True
                 for p in open_pos:
                     pos_id = p["position_id"]
                     vol = p.get("volume", 100)
@@ -909,51 +1051,36 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                         client_msg_id=client_msg_id
                     )
 
-                    loop = asyncio.get_running_loop()
-                    fut = loop.create_future()
-                    self._pending_responses[client_msg_id] = fut
-
-                    logger.info(f"[cTrader Live] 🚀 Intentando cerrar posición {pos_id} ({side_str} {vol}u @ {entry_px})...")
+                    logger.info(f"[cTrader Live] 🚀 Enviando orden de cierre para posición {pos_id} ({side_str} {vol}u @ {entry_px})...")
                     await self._send_raw(close_req)
+                    await asyncio.sleep(1.0)
 
-                    try:
-                        ptype, resp_payload = await asyncio.wait_for(fut, timeout=6.0)
-                        if ptype == ProtoPayloadType.PROTO_OA_EXECUTION_EVENT:
-                            logger.info(f"[cTrader Live] ✅ Posición huérfana {pos_id} CERRADA EXITOSAMENTE en apertura de mercado.")
-                            self._positions.pop(str(pos_id), None)
-                            try:
-                                from backend.telegram_admin.notifier import dispatch_telegram_alert
-                                await dispatch_telegram_alert("SYSTEM_INFO", {
-                                    "text": f"🛡️ *[AUTO-CLEANUP]* Posición `{pos_id}` ({side_str} @ `${entry_px}`) cerrada automáticamente en apertura de mercado. Margen liberado."
-                                })
-                            except Exception:
-                                pass
-                        elif ptype == ProtoPayloadType.PROTO_OA_ORDER_ERROR_EVENT:
-                            from backend.broker.ctrader_protocol import parse_protobuf_fields
-                            fields = parse_protobuf_fields(resp_payload)
-                            err_code = fields.get(2, [(0, b"UNKNOWN")])[0][1]
-                            err_str = err_code.decode("utf-8", errors="ignore") if isinstance(err_code, bytes) else str(err_code)
-                            logger.info(f"[cTrader Live] ⏳ Mercado aún cerrado para pos {pos_id} ({err_str}). Reintentando en 30s...")
-                            all_closed = False
-                            break
-                        else:
-                            all_closed = False
-                    except asyncio.TimeoutError:
-                        logger.warning(f"[cTrader Live] Timeout esperando confirmación de cierre para {pos_id}.")
-                        all_closed = False
-                    finally:
-                        self._pending_responses.pop(client_msg_id, None)
+                # 2. Esperar a que el matching engine de cTrader procese y verificar con Reconcile real
+                await asyncio.sleep(3.0)
+                verify_req = build_reconcile_req(self.account_id)
+                await self._send_raw(verify_req)
+                _, v_payload = await self._wait_for_type(ProtoPayloadType.PROTO_OA_RECONCILE_RES, timeout=10.0)
+                remaining_pos = parse_reconcile_res(v_payload)
+                remaining_open = [p for p in remaining_pos if p.get("position_id") and p.get("volume", 0) > 0]
 
-                if all_closed:
+                if not remaining_open:
+                    self._positions.clear()
                     await self._sync_trader_info()
-                    logger.info(f"[cTrader Live] 🛡️ Todas las posiciones huérfanas liquidadas. Balance final: ${self.balance:.2f} USD.")
+                    logger.info(f"[cTrader Live] 🛡️ Todas las posiciones huérfanas liquidadas y confirmadas con cTrader. Balance final: ${self.balance:.2f} USD.")
+                    try:
+                        from backend.telegram_admin.notifier import dispatch_telegram_alert
+                        await dispatch_telegram_alert("SYSTEM_INFO", {
+                            "text": f"🛡️ *[AUTO-CLEANUP COMPLETADO]* Se han liquidado todas las posiciones huérfanas en cTrader. Margen liberado: 100%. Balance: `${self.balance:.2f} USD`."
+                        })
+                    except Exception:
+                        pass
                     break
-
-                # Si el mercado sigue cerrado, esperar 30 segundos antes del siguiente intento
-                await asyncio.sleep(30.0)
+                else:
+                    logger.warning(f"[cTrader Live] ⏳ Aún quedan {len(remaining_open)} posiciones abiertas tras intento de liquidación. Reintentando en 15s...")
+                    await asyncio.sleep(15.0)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.warning(f"[cTrader Live] Nota en worker de limpieza de huérfanas: {e}")
-                await asyncio.sleep(30.0)
+                await asyncio.sleep(15.0)

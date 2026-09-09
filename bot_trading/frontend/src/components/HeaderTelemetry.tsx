@@ -4,6 +4,7 @@ import { MarketTicker } from './MarketTicker';
 interface HeaderTelemetryProps {
   xauusdPrice: number;
   balance?: number | null;
+  currency?: string;
   hasLiveBalance?: boolean;
   botActive: boolean;
   authUser?: { email: string; name?: string; picture?: string } | null;
@@ -17,6 +18,7 @@ interface HeaderTelemetryProps {
 export const HeaderTelemetry: React.FC<HeaderTelemetryProps> = ({
   xauusdPrice,
   balance,
+  currency = 'EUR',
   hasLiveBalance,
   botActive,
   authUser,
@@ -80,7 +82,9 @@ export const HeaderTelemetry: React.FC<HeaderTelemetryProps> = ({
         <span className="text-label-sm text-slate-400 font-semibold tracking-wider leading-none">BALANCE</span>
         {balance !== null && balance !== undefined && hasLiveBalance ? (
           <span className="text-data-md font-mono font-bold text-slate-100 whitespace-nowrap leading-none">
-            ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {currency === 'USD' ? '$' : ''}
+            {balance.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {currency !== 'USD' ? ' €' : ''}
           </span>
         ) : (
           <span className="text-data-sm font-mono text-slate-400/80 italic tracking-tight whitespace-nowrap leading-none">

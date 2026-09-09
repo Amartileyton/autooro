@@ -172,3 +172,63 @@ async def test_live_adapter_trader_update_event():
 
     assert adapter.balance == Decimal("1050.00")
     assert adapter.leverage == Decimal("30.00")
+
+
+def test_protobuf_new_market_order_tags_17_and_18():
+    """Verifica que build_new_market_order_req empaqueta clientOrderId tanto en tag 17 como en tag 18."""
+    order_msg = build_new_market_order_req(
+        account_id=48390676,
+        symbol_id=1,
+        trade_side=ProtoOATradeSide.BUY,
+        volume=300,
+        comment="AUTOORO TEST",
+        label="AUTOORO",
+        client_order_id="ORD-TEST999"
+    )
+    _, payload, _ = decode_proto_message(order_msg[4:])
+    fields = parse_protobuf_fields(payload)
+    assert 17 in fields, "Tag 17 (clientOrderId oficial) debe estar presente"
+    assert 18 in fields, "Tag 18 (clientOrderId compatibilidad) debe estar presente"
+    assert fields[17][0][1].decode("utf-8") == "ORD-TEST999"
+    assert fields[18][0][1].decode("utf-8") == "ORD-TEST999"
+
+
+@pytest.mark.asyncio
+async def test_close_order_synthetic_ticket_resolution():
+    """Verifica que si se invoca close_order con un ticket sintético (p.ej. CTR-1788931807550),
+    el adaptador mapea automáticamente a la posición real viva de cTrader."""
+    adapter = LiveBrokerAdapter()
+    adapter.balance = Decimal("1000.00")
+    adapter.contract_size = Decimal("100.0")
+
+    # Posición viva real en cTrader
+    adapter._positions["286937833"] = BrokerPosition(
+        ticket_id="286937833",
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        lot_size=Decimal("0.03"),
+        entry_price=Decimal("4385.33"),
+        current_price=Decimal("4404.55"),
+        sl=Decimal("4376.00"),
+        tp=Decimal("4396.00"),
+        unrealized_pnl=Decimal("57.66"),
+        open_time=1.0
+    )
+
+    # Simular _send_raw para responder inmediatamente la confirmación de cTrader
+    sent_requests = []
+    async def fake_send_raw(req_bytes):
+        sent_requests.append(req_bytes)
+        if 286937833 in adapter._pending_close_responses:
+            fut = adapter._pending_close_responses[286937833]
+            if not fut.done():
+                fut.set_result((ProtoPayloadType.PROTO_OA_EXECUTION_EVENT, b""))
+    adapter._send_raw = fake_send_raw
+
+    close_px, realized_pnl = await adapter.close_order("CTR-1788931807550", close_price=Decimal("4404.55"))
+    assert close_px == Decimal("4404.55")
+    # PnL = (4404.55 - 4385.33) * 0.03 * 100 = 57.66 USD
+    assert realized_pnl == Decimal("57.66")
+    assert adapter.balance == Decimal("1057.66")
+    assert "286937833" not in adapter._positions
+

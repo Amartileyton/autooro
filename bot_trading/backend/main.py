@@ -157,7 +157,7 @@ async def signal_consumer_worker(
                             "market_price": float(market_price),
                             "message_id": event.message_id,
                             "entry_price": float(event.entry_price),
-                            "timeout_minutes": getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 15)
+                            "timeout_minutes": getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 60)
                         })
                         queue.task_done()
                         continue
@@ -330,7 +330,11 @@ async def lifespan(app: FastAPI):
                 logger.error(f"[NEWS WORKER] Error en actualización de noticias: {e}")
                 await asyncio.sleep(60)
 
-    news_task = asyncio.create_task(news_hourly_refresh_worker())
+    # 11. Iniciar Guardián Autónomo de Posiciones (Watchdog de Discrepancias cada 12s)
+    from backend.risk.position_watchdog import PositionWatchdog
+    position_watchdog = PositionWatchdog(broker=broker, state_machine=state_machine, check_interval=12.0)
+    app_state["position_watchdog"] = position_watchdog
+    await position_watchdog.start()
 
     logger.info("Sistema completamente operativo y listo para recibir señales.")
 
@@ -338,6 +342,7 @@ async def lifespan(app: FastAPI):
 
     # Apagado limpio y seguro
     logger.info("Deteniendo servicios...")
+    await position_watchdog.stop()
     consumer_task.cancel()
     news_task.cancel()
 

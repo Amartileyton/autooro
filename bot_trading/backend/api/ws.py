@@ -93,7 +93,8 @@ async def websocket_live_stream(websocket: WebSocket, token: Optional[str] = Non
                 "balance": float(acc.balance) if has_live_balance else None,
                 "equity": float(acc.equity) if has_live_balance else None,
                 "margin_used": float(acc.margin_used) if has_live_balance else None,
-                "free_margin": float(acc.free_margin) if has_live_balance else None
+                "free_margin": float(acc.free_margin) if has_live_balance else None,
+                "currency": getattr(acc, "currency", "EUR")
             },
             "slots": [
                 {
@@ -181,7 +182,8 @@ async def broadcast_tick_update(tick: BrokerTick, account_info, active_slots):
             "balance": float(account_info.balance),
             "equity": float(account_info.equity),
             "free_margin": float(account_info.free_margin),
-            "margin_used": float(account_info.margin_used)
+            "margin_used": float(account_info.margin_used),
+            "currency": getattr(account_info, "currency", "EUR")
         },
         "slots": slots_summary
     }

@@ -236,7 +236,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
     from datetime import timedelta
     from backend.config import settings
     now_utc = datetime.now(timezone.utc)
-    timeout_mins = getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 15)
+    timeout_mins = getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 60)
 
     for card in trades:
         if id(card) not in matched_card_ids:

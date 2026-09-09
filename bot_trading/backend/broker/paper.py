@@ -121,7 +121,7 @@ class LocalPaperBroker(BaseBrokerAdapter):
             margin_used=margin_used.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             free_margin=free_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             margin_level_pct=margin_level.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-            currency="USD"
+            currency=getattr(settings, "ACCOUNT_CURRENCY", "EUR")
         )
 
     async def get_current_tick(self, symbol: str = "XAUUSD") -> BrokerTick:

@@ -46,7 +46,7 @@ class PullbackWatcher:
         self.state_machine = state_machine
         self.broker = broker
         self.pending_signals: Dict[int, PendingSignal] = {}
-        self.timeout_minutes = getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 15)
+        self.timeout_minutes = getattr(settings, 'PULLBACK_TIMEOUT_MINUTES', 60)
         self._lock = asyncio.Lock()
 
     async def add_signal(

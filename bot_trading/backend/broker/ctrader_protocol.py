@@ -366,6 +366,7 @@ def build_new_market_order_req(
     if label:
         buf.extend(encode_string(16, label))
     if client_order_id:
+        buf.extend(encode_string(17, client_order_id))
         buf.extend(encode_string(18, client_order_id))
         
     return encode_proto_message(ProtoPayloadType.PROTO_OA_NEW_ORDER_REQ, bytes(buf), client_msg_id=client_order_id)
@@ -696,6 +697,26 @@ def parse_execution_event(payload: bytes) -> Dict[str, Any]:
                 except Exception:
                     pass
 
+    # Deal: tag 6 oficial
+    deal_data = None
+    if 6 in fields:
+        raw_deal = fields[6][0][1]
+        if isinstance(raw_deal, bytes) and raw_deal:
+            try:
+                df = parse_protobuf_fields(raw_deal)
+                deal_id = df.get(1, [(0, 0)])[0][1]
+                deal_pos_id = df.get(3, [(0, 0)])[0][1]
+                deal_vol = df.get(4, [(0, 0)])[0][1]
+                exec_px = df.get(5, [(0, 0)])[0][1] / 100000.0 if 5 in df else 0.0
+                deal_data = {
+                    "deal_id": deal_id,
+                    "position_id": deal_pos_id,
+                    "volume": deal_vol,
+                    "execution_price": Decimal(str(round(exec_px, 2))) if exec_px else None
+                }
+            except Exception:
+                pass
+
     # Error code: tag 9 oficial, con fallback a tag 6 o tag 2
     error_code = None
     for tag in [9, 6, 2]:
@@ -711,6 +732,7 @@ def parse_execution_event(payload: bytes) -> Dict[str, Any]:
         "execution_type": exec_type,
         "position": pos_data,
         "order": order_data,
+        "deal": deal_data,
         "error_code": error_code
     }
 

@@ -21,10 +21,29 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
     const isWin = status === 'WIN';
     const isLoss = status === 'LOSS';
 
-    const pnlNum = t.pnl_usd !== null && t.pnl_usd !== undefined ? safeNum(t.pnl_usd) : null;
-    const netPnlVal = t.net_pnl_usd !== undefined && t.net_pnl_usd !== null
+    const currency = t.currency || 'EUR';
+    const isEur = currency === 'EUR' || currency === '€';
+
+    const pnlUsd = t.pnl_usd !== null && t.pnl_usd !== undefined ? safeNum(t.pnl_usd) : null;
+    const netPnlUsd = t.net_pnl_usd !== undefined && t.net_pnl_usd !== null
       ? t.net_pnl_usd
-      : (pnlNum !== null ? (pnlNum - safeNum(t.commission_usd, 0.16) - safeNum(t.spread_cost_usd, 0.15)) : null);
+      : (pnlUsd !== null ? (pnlUsd - safeNum(t.commission_usd, 0.16) - safeNum(t.spread_cost_usd, 0.15)) : null);
+
+    const fxRate = t.fx_rate || 0.861;
+    const grossAcc = t.gross_pnl_acc !== undefined && t.gross_pnl_acc !== null
+      ? t.gross_pnl_acc
+      : (pnlUsd !== null ? parseFloat((pnlUsd * fxRate).toFixed(2)) : null);
+    const commAcc = t.commission_acc !== undefined && t.commission_acc !== null
+      ? t.commission_acc
+      : (t.commission_usd ? parseFloat((t.commission_usd * fxRate).toFixed(2)) : 0.56);
+    const netPnlAcc = t.net_pnl_acc !== undefined && t.net_pnl_acc !== null
+      ? t.net_pnl_acc
+      : (grossAcc !== null ? parseFloat((grossAcc - commAcc).toFixed(2)) : null);
+
+    const headlinePnl = isEur ? netPnlAcc : netPnlUsd;
+    const headlineCurrency = isEur ? 'EUR' : 'USD';
+    const pnlNum = pnlUsd;
+    const netPnlVal = headlinePnl;
     const isModified = Boolean((t.modifications && t.modifications.length > 0) || (t.initial_sl && t.sl_price && t.initial_sl !== t.sl_price));
     const fullDateStr = formatFullDateTime(t.created_at, t.formatted_created_at);
 
@@ -131,7 +150,7 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
               </span>
             ) : netPnlVal !== null ? (
               <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${netPnlVal >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-crimson-red/20 text-crimson-red'}`}>
-                {safePnlStr(netPnlVal)}
+                {safePnlStr(netPnlVal, headlineCurrency)}
               </span>
             ) : isOpen ? (
               <span className="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary border border-primary/40 flex items-center gap-1 animate-pulse whitespace-nowrap">
@@ -269,20 +288,28 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
             {isExpanded && (
               <div className="mt-1.5 p-2 rounded bg-black/50 border border-white/10 flex flex-col gap-1 text-[9.5px] font-mono animate-fadeIn">
                 <div className="flex justify-between items-center text-slate-400 border-b border-white/5 pb-1">
-                  <span>Movimiento Bruto:</span>
-                  <span className={pnlNum !== null && pnlNum >= 0 ? 'text-emerald-400' : 'text-crimson-red'}>{safePnlStr(pnlNum)}</span>
+                  <span>Movimiento Oro (USD):</span>
+                  <span className={pnlUsd !== null && pnlUsd >= 0 ? 'text-emerald-400 font-semibold' : 'text-crimson-red font-semibold'}>
+                    {safePnlStr(pnlUsd, 'USD')}
+                  </span>
                 </div>
+                {isEur && (
+                  <div className="flex justify-between items-center text-slate-400">
+                    <span>Conversión Divisa (EUR ~{fxRate.toFixed(3)}):</span>
+                    <span className="text-slate-200 font-semibold">{safePnlStr(grossAcc, 'EUR')}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-slate-400">
-                  <span>Spread cTrader:</span>
-                  <span className="text-amber-300">-${safePrice(t.spread_cost_usd, '0.15')}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span>Comisión IC Markets:</span>
-                  <span className="text-blue-300">-${safePrice(t.commission_usd, '0.16')}</span>
+                  <span>Comisión Broker cTrader:</span>
+                  <span className="text-blue-300">
+                    -{isEur ? `${commAcc.toFixed(2)} €` : `$${safePrice(t.commission_usd, '0.16')}`}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-white/10 font-bold text-[10.5px]">
-                  <span>NETO FINAL:</span>
-                  <span className={netPnlVal !== null && netPnlVal >= 0 ? 'text-emerald-400' : 'text-crimson-red'}>{safePnlStr(netPnlVal)}</span>
+                  <span className="text-slate-200">NETO EN CUENTA:</span>
+                  <span className={headlinePnl !== null && headlinePnl >= 0 ? 'text-emerald-400' : 'text-crimson-red'}>
+                    {safePnlStr(headlinePnl, headlineCurrency)}
+                  </span>
                 </div>
               </div>
             )}

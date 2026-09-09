@@ -105,21 +105,21 @@ class RiskEngine:
                 diff = entry_min - market_price
                 # En BUY, entrar por debajo es precio con descuento (favorable).
                 # En SELL, entrar por debajo es PERSEGUIR hacia TP (desfavorable).
-                chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("0.80"))
+                chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("1.50"))
                 allowed_tol = chase_tol if side == OrderSide.SELL else self.slippage_tolerance
                 return diff <= allowed_tol, market_price, diff
             else:
                 diff = market_price - entry_max
                 # En BUY, entrar por encima es PERSEGUIR hacia TP (desfavorable).
                 # En SELL, entrar por encima es precio con prima (favorable).
-                chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("0.80"))
+                chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("1.50"))
                 allowed_tol = chase_tol if side == OrderSide.BUY else self.slippage_tolerance
                 return diff <= allowed_tol, market_price, diff
 
         diff = abs(market_price - signal_entry)
         # Sin rango explícito, verificar si es persecución hacia la dirección de ganancia
         if (side == OrderSide.SELL and market_price < signal_entry) or (side == OrderSide.BUY and market_price > signal_entry):
-            chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("0.80"))
+            chase_tol = getattr(settings, 'MAX_CHASE_SLIPPAGE_USD', Decimal("1.50"))
             is_valid = diff <= chase_tol
         else:
             is_valid = diff <= self.slippage_tolerance

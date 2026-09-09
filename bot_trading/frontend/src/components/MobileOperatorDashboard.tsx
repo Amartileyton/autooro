@@ -7,6 +7,7 @@ import { SystemHealthModal } from './SystemHealthModal';
 
 interface MobileOperatorDashboardProps {
   balance?: number | null;
+  currency?: string;
   hasLiveBalance?: boolean;
   currentPrice: number;
   slots: SlotTradeData[];
@@ -79,6 +80,7 @@ const KillSwitchToggle: React.FC<{
 
 export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = ({
   balance,
+  currency = 'EUR',
   hasLiveBalance = false,
   currentPrice,
   slots = [],
@@ -174,7 +176,9 @@ export const MobileOperatorDashboard: React.FC<MobileOperatorDashboardProps> = (
             <span className="text-[9px] text-text-secondary font-semibold tracking-tight">BAL:</span>
             {hasLiveBalance && balance !== null && balance !== undefined ? (
               <span className="font-bold text-text-primary text-[11px] font-mono whitespace-nowrap">
-                ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {currency === 'USD' ? '$' : ''}
+                {balance.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {currency !== 'USD' ? ' €' : ''}
               </span>
             ) : (
               <span className="text-[10px] text-text-secondary/75 italic font-mono whitespace-nowrap">
