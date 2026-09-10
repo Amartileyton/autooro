@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     SLOT_MARGIN_PERCENT: Decimal = Field(default=Decimal("0.50"), description="Porcentaje de margen libre por slot (50% = ~500$ para lote 0.02-0.03L)")
     LEVERAGE: Decimal = Field(default=Decimal("30.0"), description="Apalancamiento de la cuenta (ej. 1:30 regulación europea / IC Markets)")
     CONTRACT_SIZE: Decimal = Field(default=Decimal("100.0"), description="Tamaño de contrato XAUUSD (100 oz troy)")
+    BASE_LOT_SIZE: Decimal = Field(default=Decimal("0.04"), description="Tamaño de lote base por orden (0.04L permite división limpia: 50% TP1=0.02L, 25% TP2=0.01L, 25% Runner=0.01L)")
     MIN_LOT_SIZE: Decimal = Field(default=Decimal("0.01"), description="Lote mínimo permitido por el broker")
     LOT_STEP: Decimal = Field(default=Decimal("0.01"), description="Incremento de lote permitido")
     SLIPPAGE_TOLERANCE_USD: Decimal = Field(default=Decimal("2.50"), description="Tolerancia máxima de deslizamiento favorable en USD (25 pips)")
@@ -147,7 +148,7 @@ class Settings(BaseSettings):
         except (ValueError, TypeError):
             return 0
 
-    @field_validator("SLOT_MARGIN_PERCENT", "LEVERAGE", "CONTRACT_SIZE", "MIN_LOT_SIZE", "LOT_STEP", "SLIPPAGE_TOLERANCE_USD", "DEFAULT_DYNAMIC_SL_DELTA_USD", "INITIAL_PAPER_BALANCE", "PAPER_SPREAD_MIN_CENTS", "PAPER_SPREAD_MAX_CENTS", "INITIAL_XAUUSD_PRICE", "ACCOUNT_FX_RATE", mode="before")
+    @field_validator("SLOT_MARGIN_PERCENT", "LEVERAGE", "CONTRACT_SIZE", "BASE_LOT_SIZE", "MIN_LOT_SIZE", "LOT_STEP", "SLIPPAGE_TOLERANCE_USD", "DEFAULT_DYNAMIC_SL_DELTA_USD", "INITIAL_PAPER_BALANCE", "PAPER_SPREAD_MIN_CENTS", "PAPER_SPREAD_MAX_CENTS", "INITIAL_XAUUSD_PRICE", "ACCOUNT_FX_RATE", mode="before")
     @classmethod
     def parse_optional_decimal(cls, v: Any) -> Decimal:
         if v is None or v == "":

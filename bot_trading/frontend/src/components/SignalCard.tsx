@@ -134,7 +134,14 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
               <span className="material-symbols-outlined text-[11px]">cell_tower</span>
               {cleanChannelName}
             </span>
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold whitespace-nowrap">AUDIT</span>
+            {String(t.execution_mode || 'PRODUCTION').toUpperCase() === 'AUDIT' ? (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold whitespace-nowrap">AUDIT</span>
+            ) : (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-bold whitespace-nowrap flex items-center gap-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                PROD
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -175,7 +182,7 @@ export const SignalCard: React.FC<SignalCardProps> = React.memo(
               {isBuy ? 'BUY XAUUSD' : 'SELL XAUUSD'}
             </span>
             <span className="text-[11px] text-slate-300 font-semibold">
-              Margen: ${safeNum(t.margin_usd, 250).toFixed(0)} <span className="text-outline font-normal">({safePrice(t.lot_size, '0.09')}L)</span>
+              Margen: ${safeNum(t.margin_usd, 176).toFixed(0)} <span className="text-outline font-normal">({safePrice(t.lot_size, '0.04')}L)</span>
             </span>
           </div>
           <div className="flex justify-between items-center text-[11px] font-mono pt-1 border-t border-white/5">

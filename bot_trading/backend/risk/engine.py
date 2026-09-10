@@ -25,6 +25,7 @@ class RiskEngine:
         self.slot_margin_pct = settings.SLOT_MARGIN_PERCENT
         self.leverage = settings.LEVERAGE
         self.contract_size = settings.CONTRACT_SIZE
+        self.base_lot_size = getattr(settings, 'BASE_LOT_SIZE', Decimal("0.04"))
         self.min_lot = settings.MIN_LOT_SIZE
         self.lot_step = settings.LOT_STEP
         self.slippage_tolerance = settings.SLIPPAGE_TOLERANCE_USD
@@ -127,27 +128,37 @@ class RiskEngine:
 
     async def calculate_lot_size(self, entry_price: Decimal, account_info: AccountInfo) -> Decimal:
         """
-        Calcula el tamaño de lote exacto para 1 slot (25% del margen libre disponible):
-        Margen por Slot = Margen Libre * 0.25
-        Lote = (Margen Slot * Apalancamiento) / (Precio Entrada * Tamaño Contrato)
+        Calcula el tamaño de lote institucional para la orden:
+        - Si se especifica BASE_LOT_SIZE (0.04L para división limpia 50% TP1=0.02, 25% TP2=0.01, 25% Runner=0.01):
+          Verifica que el margen libre sea suficiente para soportar la orden con apalancamiento 1:30.
+        - De lo contrario, calcula el lote dinámico proporcional al margen por slot.
         """
         free_margin = account_info.free_margin
-        slot_margin = free_margin * self.slot_margin_pct
+        target_lot = self.base_lot_size
 
-        if slot_margin <= Decimal("0.00") or entry_price <= Decimal("0.00"):
+        if entry_price <= Decimal("0.00") or free_margin <= Decimal("0.00"):
             return self.min_lot
 
-        # Nominal = Margen * Apalancamiento
-        purchasing_power = slot_margin * self.leverage
         contract_value_per_lot = entry_price * self.contract_size
 
+        if target_lot is not None and target_lot > Decimal("0"):
+            # Margen requerido para target_lot (ej. 0.04L * 100 oz * precio / apalancamiento)
+            required_margin_target = (target_lot * contract_value_per_lot) / self.leverage
+
+            # Ajuste de conversión si la cuenta es EUR (típicamente ~0.86 EUR por USD)
+            fx_rate = getattr(settings, 'ACCOUNT_FX_RATE', Decimal("0.861"))
+            required_margin_acc = required_margin_target * fx_rate
+
+            # Si el margen libre cubre la orden base con colchón de seguridad
+            if free_margin >= required_margin_acc * Decimal("1.20"):
+                return target_lot.quantize(Decimal("0.01"))
+
+        # Fallback proporcional si el margen libre es más reducido
+        slot_margin = free_margin * self.slot_margin_pct
+        purchasing_power = slot_margin * self.leverage
         raw_lot = purchasing_power / contract_value_per_lot
-        
-        # Redondear hacia abajo según el step (0.01)
         steps = (raw_lot / self.lot_step).quantize(Decimal("1"), rounding=ROUND_FLOOR)
         calculated_lot = steps * self.lot_step
-
-        # Garantizar límites mínimos
         final_lot = max(self.min_lot, calculated_lot)
         return final_lot.quantize(Decimal("0.01"))
 

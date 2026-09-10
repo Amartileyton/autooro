@@ -17,8 +17,9 @@ def test_card_initializes_defaults():
     assert card.entry_price == 2650.0
     assert card.status == "OPEN"
     assert card.outcome_text == "EN CURSO"
-    assert card.lot_size == 0.09
-    assert card.margin_usd == 250.0
+    assert card.lot_size == 0.04
+    assert card.margin_usd == 176.0
+    assert card.execution_mode == "PRODUCTION"
 
 
 def test_card_mark_tp_hit_computes_pnl_buy():
@@ -31,7 +32,7 @@ def test_card_mark_tp_hit_computes_pnl_buy():
     assert card.status == "WIN"
     assert card.outcome_text == "GANADA"
     assert card.exit_price == 2655.0
-    assert card.pnl_usd == pytest.approx(45.0)  # (2655-2650)*100*0.09
+    assert card.pnl_usd == pytest.approx(20.0)  # (2655-2650)*100*0.04
 
 
 def test_card_close_trade_computes_pnl_sell():
@@ -42,13 +43,14 @@ def test_card_close_trade_computes_pnl_sell():
     card.close_trade("LOSS", 2655.0, "PERDIDA", "2025-01-01T11:00:00+00:00")
     assert card.status == "LOSS"
     assert card.outcome_text == "PERDIDA"
-    assert card.pnl_usd == pytest.approx(-45.0)  # (2650-2655)*100*0.09
+    assert card.pnl_usd == pytest.approx(-20.0)  # (2650-2655)*100*0.04
 
 
 def test_card_calculate_trade_costs_updates_fields():
     card = TradeLifecycleCard(
         "t4", "Chartoro FX", "BUY", 2650.0,
         "2025-01-01T10:00:00+00:00",
+        lot_size=0.09,
     )
     card.pnl_usd = 45.0
     card.exit_price = 2655.0
@@ -64,12 +66,14 @@ def test_card_to_dict_shape():
     card = TradeLifecycleCard(
         "t5", "Chartoro FX", "BUY", 2650.0,
         "2025-01-01T10:00:00+00:00", sl_price=2640.0, tp1=2655.0,
+        execution_mode="PRODUCTION"
     )
     d = card.to_dict()
     assert d["trade_id"] == "t5"
     assert d["side"] == "BUY"
     assert d["sl_price"] == 2640.0
     assert d["tp1"] == 2655.0
+    assert d["execution_mode"] == "PRODUCTION"
     assert "spread_cost_usd" in d
     assert "commission_usd" in d
     assert "net_pnl_usd" in d

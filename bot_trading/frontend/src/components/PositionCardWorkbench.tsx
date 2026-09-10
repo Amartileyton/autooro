@@ -77,7 +77,7 @@ export const PositionCard: React.FC<{
             {slot.side} XAUUSD
           </span>
           <span className="text-[11px] font-mono text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 font-bold">
-            {safePrice(slot.lot_size, '0.09')}L
+            {safePrice(slot.lot_size, '0.04')}L
           </span>
         </div>
 

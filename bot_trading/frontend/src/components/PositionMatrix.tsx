@@ -83,7 +83,7 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots = [], curr
           }
 
           const isBuy = slot.side === 'BUY';
-          const lot = safeNum(slot.lot_size, 0.09);
+          const lot = safeNum(slot.lot_size, 0.04);
           const entryPrice = safeNum(slot.entry_price, safeCurrentPrice);
           const livePrice = safeCurrentPrice > 0 ? safeCurrentPrice : safeNum(slot.current_price, entryPrice);
 
@@ -195,7 +195,7 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots = [], curr
                   </span>
                 ) : (
                   <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[9px] font-mono font-semibold">
-                    100% Volumen ({safePrice(lot, '0.09')}L)
+                    100% Volumen ({safePrice(lot, '0.04')}L)
                   </span>
                 )}
 
@@ -218,7 +218,7 @@ export const PositionMatrix: React.FC<PositionMatrixProps> = ({ slots = [], curr
                 </div>
                 <div>
                   <span className="text-slate-400 text-[9px] block font-medium">RESTANTE</span>
-                  <strong className="text-slate-200 font-semibold">{safePrice(lot, '0.09')}L <span className="text-[9px] text-slate-400 font-normal">(${safeNum(slot.margin_usd, 250).toFixed(0)})</span></strong>
+                  <strong className="text-slate-200 font-semibold">{safePrice(lot, '0.04')}L <span className="text-[9px] text-slate-400 font-normal">(${safeNum(slot.margin_usd, 176).toFixed(0)})</span></strong>
                 </div>
               </div>
 

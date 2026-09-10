@@ -69,20 +69,22 @@ class TradeLifecycleCard:
         tp1: Optional[float] = None,
         tp2: Optional[float] = None,
         tp3: Optional[float] = None,
-        margin_usd: float = 250.00,
-        lot_size: float = 0.09,
+        margin_usd: float = 176.00,
+        lot_size: float = 0.04,
         message_id: Optional[int] = None,
         ticket_id: Optional[str] = None,
+        execution_mode: str = "PRODUCTION",
     ):
         self.trade_id = str(trade_id)
         self.message_id = message_id
         self.ticket_id = ticket_id
+        self.execution_mode = str(execution_mode or "PRODUCTION")
         self.channel_name = str(channel_name or "Chartoro FX")
         self.side = str(side).upper() if side else "BUY"
         self.entry_price = safe_num(entry_price, 2650.0) or 2650.0
         self.exit_price: Optional[float] = None
-        self.margin_usd = safe_num(margin_usd, 250.0) or 250.0
-        self.lot_size = safe_num(lot_size, 0.09) or 0.09
+        self.margin_usd = safe_num(margin_usd, 176.0) or 176.0
+        self.lot_size = safe_num(lot_size, 0.04) or 0.04
         self.currency: str = getattr(settings, "ACCOUNT_CURRENCY", "EUR")
         self.fx_rate: float = float(getattr(settings, "ACCOUNT_FX_RATE", 0.861))
         self.pnl_usd: Optional[float] = None
@@ -259,6 +261,9 @@ class TradeLifecycleCard:
     def apply_db_trade(self, db_t: Any):
         """Sincroniza la tarjeta directamente con los datos reales y oficiales del motor de trading (tabla 'trades')."""
         self.ticket_id = getattr(db_t, 'ticket_id', self.ticket_id) or self.ticket_id
+        if getattr(db_t, 'execution_mode', None):
+            mode_val = db_t.execution_mode
+            self.execution_mode = mode_val.value if hasattr(mode_val, 'value') else str(mode_val)
         if getattr(db_t, 'raw_signal_id', None):
             self.message_id = getattr(db_t, 'raw_signal_id')
         if getattr(db_t, 'channel_name', None):
@@ -396,7 +401,7 @@ class TradeLifecycleCard:
             if pnl_val > 0:
                 self.status = "WIN"
                 self.outcome_text = "GANADA"
-            elif pnl_val < 0:
+            elif pnl_val < 0 or "SL" in st_str or "SL_HIT" in close_reason_str:
                 self.status = "LOSS"
                 self.outcome_text = "PERDIDA"
             else:
@@ -479,6 +484,7 @@ class TradeLifecycleCard:
             "trade_id": self.trade_id,
             "message_id": self.message_id,
             "ticket_id": self.ticket_id,
+            "execution_mode": self.execution_mode,
             "channel_name": self.channel_name,
             "side": self.side,
             "entry_price": float(self.entry_price),

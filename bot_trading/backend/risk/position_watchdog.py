@@ -85,6 +85,12 @@ class PositionWatchdog:
                             f"{trade.ticket_id} -> {candidate.ticket_id}"
                         )
                         trade.ticket_id = candidate.ticket_id
+                        try:
+                            from backend.repository.trades import update_trade_ticket
+                            if getattr(trade, 'db_trade_id', None):
+                                await update_trade_ticket(trade.db_trade_id, candidate.ticket_id)
+                        except Exception as sync_err:
+                            logger.error(f"🛡️ [WATCHDOG] Error al persistir ticket corregido en DB: {sync_err}")
 
             if matched_pos:
                 # La posición existe en el broker. ¡VERIFICAR QUE TENGA STOP LOSS EN EL SERVIDOR!

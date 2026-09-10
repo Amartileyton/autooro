@@ -98,16 +98,28 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 tp2 = safe_num(parsed.tp_levels[1]) if len(parsed.tp_levels) > 1 else None
                 tp3 = safe_num(parsed.tp_levels[2]) if len(parsed.tp_levels) > 2 else None
 
-                # Buscar si ya existe un trade abierto en el MISMO canal en la misma dirección y precio similar
+                # Buscar si ya existe un trade abierto en el MISMO canal en la misma dirección y precio similar (dentro de las últimas 4 horas)
                 existing_trade = None
                 for t in reversed(trades):
-                    if t.status == "OPEN" and t.channel_name == channel and t.side == side and abs(t.entry_price - entry) <= 3.0:
+                    t_dt = get_card_timestamp(t)
+                    time_diff_secs = abs((msg_dt - t_dt).total_seconds()) if (t_dt and t_dt != datetime.min.replace(tzinfo=timezone.utc)) else 999999
+                    if t.status == "OPEN" and t.channel_name == channel and t.side == side and abs(t.entry_price - entry) <= 3.0 and time_diff_secs <= 14400:
                         existing_trade = t
                         break
 
                 if existing_trade:
                     existing_trade.update_levels(sl_price=sl, tp1=tp1, tp2=tp2, tp3=tp3)
                 else:
+                    from backend.config import settings
+                    configured_channels = getattr(settings, 'CHANNELS_CONFIG', []) or []
+                    ch_mode = "PRODUCTION"
+                    for cfg in configured_channels:
+                        cfg_name = cfg.get("name", "")
+                        cfg_id = cfg.get("id", 0)
+                        if (channel and cfg_name and cfg_name.lower() in channel.lower()) or (channel_id and cfg_id == channel_id):
+                            ch_mode = cfg.get("mode", "PRODUCTION")
+                            break
+
                     new_card = TradeLifecycleCard(
                         trade_id=f"trade-{msg_id}-{int(entry)}",
                         channel_name=channel,
@@ -118,9 +130,10 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                         tp2=tp2,
                         tp3=tp3,
                         created_at=time_str,
-                        margin_usd=250.00,
-                        lot_size=0.09,
-                        message_id=msg_id
+                        margin_usd=176.00,
+                        lot_size=0.04,
+                        message_id=msg_id,
+                        execution_mode=ch_mode
                     )
                     new_card.signal_price = float(entry)
                     new_card.error_reason = getattr(m, 'error_reason', None)
@@ -173,7 +186,7 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                     matched_db_ids.add(getattr(db_t, 'id', id(db_t)))
                     break
 
-        # Pase 2: Coincidencia por canal, dirección y precio cercano (dentro de 3.0 USD)
+        # Pase 2: Coincidencia por canal, dirección y precio cercano (dentro de 3.0 USD y máx 4 horas)
         for db_t in executed_trades:
             db_id = getattr(db_t, 'id', id(db_t))
             if db_id in matched_db_ids:
@@ -182,6 +195,17 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             db_side = (db_t.side.value if hasattr(db_t.side, 'value') else str(db_t.side or "")).upper()
             db_entry = float(getattr(db_t, 'entry_price', 0.0) or 0.0)
             db_channel = str(getattr(db_t, 'channel_name', '') or '').lower()
+            open_time_raw = getattr(db_t, 'open_time', None)
+            open_dt = None
+            if isinstance(open_time_raw, datetime):
+                open_dt = open_time_raw if open_time_raw.tzinfo else open_time_raw.replace(tzinfo=timezone.utc)
+            elif isinstance(open_time_raw, str):
+                try:
+                    open_dt = datetime.fromisoformat(open_time_raw.replace("Z", "+00:00"))
+                    if open_dt.tzinfo is None:
+                        open_dt = open_dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    open_dt = None
 
             best_card = None
             best_diff = 999.0
@@ -192,7 +216,11 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                     card_channel = str(card.channel_name or '').lower()
                     channel_match = (db_channel in card_channel or card_channel in db_channel) if (db_channel and card_channel) else True
                     diff = abs(card.entry_price - db_entry)
-                    if channel_match and diff <= 3.0 and diff < best_diff:
+
+                    card_dt = get_card_timestamp(card)
+                    time_diff_secs = abs((open_dt - card_dt).total_seconds()) if (open_dt and card_dt and card_dt != datetime.min.replace(tzinfo=timezone.utc)) else 0
+
+                    if channel_match and diff <= 3.0 and diff < best_diff and time_diff_secs <= 14400:
                         best_diff = diff
                         best_card = card
 
@@ -211,6 +239,9 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
             db_entry = float(getattr(db_t, 'entry_price', 0.0) or 0.0)
             open_time_val = getattr(db_t, 'open_time', None)
             open_time_str = open_time_val.isoformat() if hasattr(open_time_val, 'isoformat') else str(open_time_val or "")
+            trade_lot = float(getattr(db_t, 'lot_size', 0.04) or 0.04)
+            mode_val = getattr(db_t, 'execution_mode', 'PRODUCTION')
+            mode_str = mode_val.value if hasattr(mode_val, 'value') else str(mode_val or 'PRODUCTION')
 
             new_card = TradeLifecycleCard(
                 trade_id=f"trade-db-{getattr(db_t, 'id', '0')}-{getattr(db_t, 'ticket_id', 'TKT')}",
@@ -222,10 +253,11 @@ def consolidate_telegram_trade_lifecycle(messages: list, executed_trades: Option
                 tp2=safe_num(getattr(db_t, 'tp2', None)),
                 tp3=safe_num(getattr(db_t, 'tp3', None)),
                 created_at=open_time_str,
-                margin_usd=round(float(getattr(db_t, 'lot_size', 0.03)) * db_entry * 100.0 / 100.0, 2),
-                lot_size=float(getattr(db_t, 'lot_size', 0.03)),
+                margin_usd=round(trade_lot * db_entry * 100.0 / 100.0, 2),
+                lot_size=trade_lot,
                 message_id=getattr(db_t, 'raw_signal_id', None),
-                ticket_id=getattr(db_t, 'ticket_id', None)
+                ticket_id=getattr(db_t, 'ticket_id', None),
+                execution_mode=mode_str
             )
             new_card.apply_db_trade(db_t)
             matched_card_ids.add(id(new_card))

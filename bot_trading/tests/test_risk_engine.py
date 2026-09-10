@@ -40,6 +40,7 @@ async def test_slot_allocation_max_4():
 async def test_exact_lot_sizing_calculation():
     broker = LocalPaperBroker()
     engine = RiskEngine(broker=broker)
+    engine.base_lot_size = None
     engine.leverage = Decimal("100.0")
     engine.slot_margin_pct = Decimal("0.25")
 
@@ -63,6 +64,27 @@ async def test_exact_lot_sizing_calculation():
     engine.slot_margin_pct = Decimal("0.50")
     lot_50 = await engine.calculate_lot_size(entry_price=Decimal("2500.00"), account_info=account_info)
     assert lot_50 == Decimal("2.00")
+
+
+@pytest.mark.asyncio
+async def test_base_lot_sizing_004():
+    """Verifica que el tamaño base institucional de 0.04 lotes se aplique cuando el margen es suficiente."""
+    broker = LocalPaperBroker()
+    engine = RiskEngine(broker=broker)
+    engine.base_lot_size = Decimal("0.04")
+
+    # Cuenta real de ~1,015 EUR con oro en $4400
+    account_info = AccountInfo(
+        balance=Decimal("1015.83"),
+        equity=Decimal("1015.83"),
+        margin_used=Decimal("0.00"),
+        free_margin=Decimal("1015.83"),
+        margin_level_pct=Decimal("9999.99")
+    )
+
+    lot = await engine.calculate_lot_size(entry_price=Decimal("4400.00"), account_info=account_info)
+    assert lot == Decimal("0.04")
+
 
 
 @pytest.mark.asyncio

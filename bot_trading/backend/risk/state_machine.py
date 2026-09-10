@@ -582,6 +582,15 @@ class TradeStateMachine:
                 remaining_pnl = (trade.entry_price - close_price) * trade.lot_size * Decimal("100.0")
             remaining_pnl = remaining_pnl.quantize(Decimal("0.01"))
 
+        # Si el broker ya había cerrado la posición (ej. SL o TP en servidor del broker),
+        # calcular el PnL del remanente en base a la diferencia entre exec_price y entry_price
+        if remaining_pnl == Decimal("0.00") and trade.lot_size > Decimal("0") and exec_price and exec_price != trade.entry_price:
+            if trade.side == OrderSide.BUY:
+                remaining_pnl = (exec_price - trade.entry_price) * trade.lot_size * Decimal("100.0")
+            else:
+                remaining_pnl = (trade.entry_price - exec_price) * trade.lot_size * Decimal("100.0")
+            remaining_pnl = remaining_pnl.quantize(Decimal("0.01"))
+
         # Una vez confirmado el cierre por el broker, liberar el slot
         self.active_slots.pop(slot_id, None)
 
@@ -590,7 +599,8 @@ class TradeStateMachine:
         # 2. Actualizar en DB
         try:
             await update_trade(
-                trade.ticket_id,
+                ticket_id=trade.ticket_id,
+                trade_id=trade.db_trade_id,
                 status=status,
                 close_price=exec_price,
                 pnl=total_pnl,
@@ -633,7 +643,8 @@ class TradeStateMachine:
         """Actualiza el estado, volumen, SL, peak_price y realized_cash_pnl de la orden en SQLite."""
         try:
             await update_trade(
-                trade.ticket_id,
+                ticket_id=trade.ticket_id,
+                trade_id=trade.db_trade_id,
                 status=trade.status,
                 current_sl=trade.current_sl,
                 lot_size=trade.lot_size,
