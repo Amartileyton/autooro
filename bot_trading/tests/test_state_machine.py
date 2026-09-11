@@ -35,21 +35,21 @@ async def test_full_trade_lifecycle_trailing_milestones():
     assert sm.active_slots[1].status == TradeStatus.OPEN
     assert sm.active_slots[1].current_sl == Decimal("2330.00")
 
-    # 2. Tick alcanza TP1 (2350.50) -> Cierra 50% parcial y mueve SL a Break-Even + Spread (2340.30)
+    # 2. Tick alcanza TP1 (2350.50) -> Cierra 25% parcial (0.12L) y mueve SL a Entrada exacta (2340.00 + be_buffer)
     tick_tp1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2350.50"), ask=Decimal("2350.70"), timestamp=1.0)
     await sm.on_market_tick(tick_tp1)
 
     assert sm.active_slots[1].status == TradeStatus.TP1_HIT
     assert sm.active_slots[1].current_sl == (Decimal("2340.00") + be_buffer)
-    assert sm.active_slots[1].lot_size == Decimal("0.25")
+    assert sm.active_slots[1].lot_size == Decimal("0.38")
 
-    # 3. Tick alcanza TP2 (2361.00) -> Cierra 25% del total (0.13L) y SL debe moverse a TP1 (2350.00)
+    # 3. Tick alcanza TP2 (2361.00) -> Cierra otro 25% del total (0.12L) y SL debe moverse a TP1 (2350.00)
     tick_tp2 = BrokerTick(symbol="XAUUSD", bid=Decimal("2361.00"), ask=Decimal("2361.20"), timestamp=2.0)
     await sm.on_market_tick(tick_tp2)
 
     assert sm.active_slots[1].status == TradeStatus.TP2_HIT
     assert sm.active_slots[1].current_sl == Decimal("2350.00")
-    assert sm.active_slots[1].lot_size == Decimal("0.13")
+    assert sm.active_slots[1].lot_size == Decimal("0.26")
 
     # 4. Tick alcanza TP3 (2370.50) -> Activa Infinite Runner con SL inicial en TP3 (2370.00)
     tick_tp3 = BrokerTick(symbol="XAUUSD", bid=Decimal("2370.50"), ask=Decimal("2370.70"), timestamp=3.0)
@@ -104,15 +104,15 @@ async def test_pip_by_pip_tp1_partial_close_and_breakeven_buy():
     assert sm.active_slots[2].status == TradeStatus.OPEN
     assert sm.active_slots[2].lot_size == Decimal("0.04")
 
-    # Tick 2: Precio TOCA TP1 (2653.00) -> COBRO 50% (0.02L) Y BLINDAJE SL (2650.30)
+    # Tick 2: Precio TOCA TP1 (2653.00) -> COBRO 25% (0.01L) Y BLINDAJE SL (2650.00)
     tick_tp1 = BrokerTick(symbol="XAUUSD", bid=Decimal("2653.00"), ask=Decimal("2653.20"), timestamp=11.0)
     await sm.on_market_tick(tick_tp1)
 
     active = sm.active_slots[2]
     assert active.status == TradeStatus.TP1_HIT
-    assert active.lot_size == Decimal("0.02")  # 50% de 0.04
-    # Ganancia asegurada en caja: (2653 - 2650) * 0.02 * 100 = 6.00 USD
-    assert active.realized_cash_pnl == Decimal("6.00")
+    assert active.lot_size == Decimal("0.03")  # 75% restante de 0.04 (cobrado 25% = 0.01L)
+    # Ganancia asegurada en caja: (2653 - 2650) * 0.01 * 100 = 3.00 USD
+    assert active.realized_cash_pnl == Decimal("3.00")
     # SL blindado a Break-Even + Spread (2650.00 + be_buffer)
     assert active.current_sl == (Decimal("2650.00") + be_buffer)
 

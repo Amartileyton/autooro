@@ -174,8 +174,8 @@ async def test_live_adapter_trader_update_event():
     assert adapter.leverage == Decimal("30.00")
 
 
-def test_protobuf_new_market_order_tags_17_and_18():
-    """Verifica que build_new_market_order_req empaqueta clientOrderId tanto en tag 17 como en tag 18."""
+def test_protobuf_new_market_order_tags():
+    """Verifica que build_new_market_order_req empaqueta clientOrderId en tag 18 y positionId opcional en tag 17."""
     order_msg = build_new_market_order_req(
         account_id=48390676,
         symbol_id=1,
@@ -187,10 +187,123 @@ def test_protobuf_new_market_order_tags_17_and_18():
     )
     _, payload, _ = decode_proto_message(order_msg[4:])
     fields = parse_protobuf_fields(payload)
-    assert 17 in fields, "Tag 17 (clientOrderId oficial) debe estar presente"
-    assert 18 in fields, "Tag 18 (clientOrderId compatibilidad) debe estar presente"
-    assert fields[17][0][1].decode("utf-8") == "ORD-TEST999"
+    assert 18 in fields, "Tag 18 (clientOrderId oficial) debe estar presente"
     assert fields[18][0][1].decode("utf-8") == "ORD-TEST999"
+    assert 17 not in fields, "Tag 17 no debe estar presente si no se especifica position_id"
+
+    # Con position_id explícito
+    order_with_pos = build_new_market_order_req(
+        account_id=48390676,
+        symbol_id=1,
+        trade_side=ProtoOATradeSide.BUY,
+        volume=300,
+        client_order_id="ORD-TEST999",
+        position_id=987654
+    )
+    _, payload_pos, _ = decode_proto_message(order_with_pos[4:])
+    fields_pos = parse_protobuf_fields(payload_pos)
+    assert 17 in fields_pos
+    assert fields_pos[17][0][1] == 987654
+
+
+def test_proto_execution_type_enum_official_values():
+    """Verifica que los valores de ProtoOAExecutionType coinciden 100% con la especificación cTrader Open API 2.0."""
+    assert ProtoOAExecutionType.ORDER_ACCEPTED == 2
+    assert ProtoOAExecutionType.ORDER_FILLED == 3
+    assert ProtoOAExecutionType.ORDER_REPLACED == 4
+    assert ProtoOAExecutionType.ORDER_CANCELLED == 5
+    assert ProtoOAExecutionType.ORDER_EXPIRED == 6
+    assert ProtoOAExecutionType.ORDER_REJECTED == 7
+    assert ProtoOAExecutionType.ORDER_CANCEL_REJECTED == 8
+    assert ProtoOAExecutionType.SWAP == 9
+    assert ProtoOAExecutionType.DEPOSIT_WITHDRAW == 10
+    assert ProtoOAExecutionType.ORDER_PARTIALLY_FILLED == 11
+    assert ProtoOAExecutionType.BONUS_DEPOSIT_WITHDRAW == 12
+
+
+def test_parse_deal_execution_price_official_tag_10():
+    """Verifica que parse_execution_event extrae el precio de ejecución de Tag 10 (double) y el volumen de Tag 5."""
+    # Construir sub-mensaje ProtoOADeal (tag 1: dealId=555, tag 3: posId=777, tag 4: vol=100, tag 5: filledVol=100, tag 10: price=2650.75)
+    deal_buf = bytearray()
+    deal_buf.extend(encode_int64(1, 555))
+    deal_buf.extend(encode_int64(3, 777))
+    deal_buf.extend(encode_int64(4, 100))
+    deal_buf.extend(encode_int64(5, 100))  # filledVolume
+    deal_buf.extend(encode_double(10, 2650.75))  # executionPrice oficial (Tag 10)
+
+    # Envolver en ProtoOAExecutionEvent (tag 3: executionType=3 (FILLED), tag 6: deal)
+    event_buf = bytearray()
+    event_buf.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_EXECUTION_EVENT))
+    event_buf.extend(encode_int64(2, 48390676))
+    event_buf.extend(encode_int32(3, ProtoOAExecutionType.ORDER_FILLED))
+    event_buf.extend(encode_bytes(6, bytes(deal_buf)))
+
+    ev = parse_execution_event(bytes(event_buf))
+    assert ev["execution_type"] == ProtoOAExecutionType.ORDER_FILLED
+    assert ev["deal"] is not None
+    assert ev["deal"]["deal_id"] == 555
+    assert ev["deal"]["position_id"] == 777
+    assert ev["deal"]["volume"] == 100
+    assert ev["deal"]["filled_volume"] == 100
+    assert ev["deal"]["execution_price"] == Decimal("2650.75")
+
+
+def test_bidirectional_lot_volume_conversion():
+    """Verifica simetría matemática perfecta entre _convert_lot_to_ctrader_volume y _convert_ctrader_volume_to_lot."""
+    adapter = LiveBrokerAdapter()
+    adapter.symbol_min_volume = 100
+
+    test_lots = [Decimal("0.01"), Decimal("0.02"), Decimal("0.05"), Decimal("0.10"), Decimal("0.50"), Decimal("1.00"), Decimal("2.50")]
+    for lot in test_lots:
+        vol = adapter._convert_lot_to_ctrader_volume(lot)
+        recovered_lot = adapter._convert_ctrader_volume_to_lot(vol)
+        assert recovered_lot == lot, f"Fallo en conversión bidireccional para {lot} lotes (vol: {vol})"
+
+
+def test_spot_event_delta_price_preservation():
+    """Verifica que cotizaciones parciales no destruyen el valor previo de Bid o Ask."""
+    adapter = LiveBrokerAdapter()
+    adapter.symbol_digits = 2
+
+    # Primer spot completo: Bid 2650.00, Ask 2650.20
+    buf1 = bytearray()
+    buf1.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_SPOT_EVENT))
+    buf1.extend(encode_int64(2, 48390676))
+    buf1.extend(encode_int64(3, 1))  # symbol_id = 1
+    buf1.extend(encode_int64(4, 265000000))  # bid = 2650.00
+    buf1.extend(encode_int64(5, 265020000))  # ask = 2650.20
+    buf1.extend(encode_int64(8, 1724920000000))
+
+    asyncio.run(adapter._handle_incoming_message(ProtoPayloadType.PROTO_OA_SPOT_EVENT, bytes(buf1), None))
+    assert adapter._last_tick.bid == Decimal("2650.00")
+    assert adapter._last_tick.ask == Decimal("2650.20")
+    assert adapter.get_current_spread() == Decimal("0.20")
+
+    # Segundo spot: Solo cambia Ask a 2650.35 (Bid debe preservarse en 2650.00)
+    buf2 = bytearray()
+    buf2.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_SPOT_EVENT))
+    buf2.extend(encode_int64(2, 48390676))
+    buf2.extend(encode_int64(3, 1))
+    buf2.extend(encode_int64(5, 265035000))  # ask = 2650.35
+
+    asyncio.run(adapter._handle_incoming_message(ProtoPayloadType.PROTO_OA_SPOT_EVENT, bytes(buf2), None))
+    assert adapter._last_tick.bid == Decimal("2650.00")
+    assert adapter._last_tick.ask == Decimal("2650.35")
+
+
+def test_protobuf_truncated_buffer_guard():
+    """Verifica que buffers incompletos en parse_protobuf_fields elevan EOFError de forma segura."""
+    # Tag para WIRE_64BIT (wire type 1) en campo 1: tag = (1 << 3) | 1 = 9
+    corrupted_data = bytes([9, 1, 2, 3])  # Solo 3 bytes en vez de 8
+    with pytest.raises(EOFError):
+        parse_protobuf_fields(corrupted_data)
+
+
+def test_varint_overflow_guard():
+    """Verifica que secuencias varint interminables elevan ValueError por desbordamiento."""
+    infinite_varint = io.BytesIO(b"\x80" * 15)
+    with pytest.raises(ValueError, match="desbordamiento"):
+        decode_varint(infinite_varint)
 
 
 @pytest.mark.asyncio

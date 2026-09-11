@@ -51,10 +51,10 @@ class ActiveSlotTrade(BaseModel):
 class TradeStateMachine:
     """
     Máquina de Estados de Trailing SL por Hitos y Gestor de Slots:
-    - STATE 0 (OPEN): SL original y TP3 como take-profit inicial.
-    - STATE 1 (TP1 superado): Cierre parcial del 50% en caja + SL a Break-Even + Spread (+3 pips).
-    - STATE 2 (TP2 superado): Cierre parcial del 25% en caja (50% del restante) + SL del 25% Runner a TP1.
-    - STATE 3 (TP3 superado / Infinite Runner): SL inicial del Runner en TP3 + Trailing continuo dinámico persiguiendo máximos a 30 pips.
+    - STATE 0 (OPEN): SL acotado a máx 50 pips ($5.00 USD Circuit Breaker) y TP3 como take-profit inicial.
+    - STATE 1 (TP1 superado): Cierre parcial del 25% en caja (0.01L en base 0.04L) + SL a Entrada exacta (Break-Even $0.00).
+    - STATE 2 (TP2 superado): Cierre parcial del 25% en caja (0.01L) + SL del 50% Runner (0.02L) subido a TP1 (+25 pips asegurados).
+    - STATE 3 (TP3 superado / Infinite Runner): SL inicial del Runner en TP3 + Trailing continuo dinámico persiguiendo máximos a 30 pips sobre el 50% restante (0.02L).
     - Procesa ticks con latencia sub-10ms.
     """
 
@@ -289,12 +289,22 @@ class TradeStateMachine:
             modified = False
 
             # Actualizar SL si viene explícito en la plantilla oficial
-            if sl is not None and sl != trade.current_sl:
-                trade.current_sl = sl
-                trade.initial_sl = sl
-                await self.broker.modify_order(trade.ticket_id, new_sl=sl)
-                modified = True
-                logger.info(f"Slot {slot_id} ENRIQUECIDO: SL oficial actualizado a {sl}")
+            if sl is not None:
+                if trade.status == TradeStatus.OPEN:
+                    max_sl_delta = getattr(settings, 'MAX_ALLOWED_SL_DELTA_USD', Decimal("5.00"))
+                    if trade.side == OrderSide.BUY:
+                        capped_sl = max(sl, trade.entry_price - max_sl_delta).quantize(Decimal("0.01"))
+                    else:
+                        capped_sl = min(sl, trade.entry_price + max_sl_delta).quantize(Decimal("0.01"))
+
+                    if capped_sl != trade.current_sl:
+                        trade.current_sl = capped_sl
+                        trade.initial_sl = capped_sl
+                        await self.broker.modify_order(trade.ticket_id, new_sl=capped_sl)
+                        modified = True
+                        logger.info(f"Slot {slot_id} ENRIQUECIDO: SL oficial ajustado a {capped_sl} (recibido: {sl}, circuit breaker: {max_sl_delta})")
+                else:
+                    logger.info(f"Slot {slot_id}: Omitiendo actualización de SL porque el trade ya está protegido en estado {trade.status.value}")
 
             # Actualizar TP2 y TP3 si vienen en la plantilla oficial
             if len(tp_levels) > 1:
@@ -359,24 +369,27 @@ class TradeStateMachine:
                 await self._close_slot(slot_id, close_price=price, status=close_status, reason=sl_reason)
                 continue
 
-            # 2. HITO 1: TP1 ALCANZADO (OPEN -> TP1_HIT) - Cierre Parcial 50% + SL a Break-Even (+3 pips Spread Buffer)
+            # 2. HITO 1: TP1 ALCANZADO (OPEN -> TP1_HIT) - Cierre Parcial 25% + SL a Entrada exacta (Break-Even 0.00 USD)
             if trade.status == TradeStatus.OPEN:
                 is_tp1_hit = (price >= trade.tp1) if trade.side == OrderSide.BUY else (price <= trade.tp1)
                 if is_tp1_hit:
                     trade.status = TradeStatus.TP1_HIT
 
-                    # Cierre parcial del 50% del volumen inicial
-                    half_lot = (trade.initial_lot_size * Decimal("0.50")).quantize(Decimal("0.01"))
-                    if half_lot >= Decimal("0.01") and trade.lot_size > half_lot:
-                        _, partial_pnl = await self.broker.close_partial_order(trade.ticket_id, lot_size=half_lot, close_price=price)
-                        trade.lot_size = (trade.lot_size - half_lot).quantize(Decimal("0.01"))
-                        trade.realized_cash_pnl += partial_pnl
-                        logger.info(f"Slot {slot_id} [HITO 1 - COBRO 50%]: Cerrados {half_lot}L @ {price}. Caja asegurada: +${partial_pnl:.2f} USD")
-                    else:
-                        logger.info(f"Slot {slot_id} [HITO 1]: Lote {trade.lot_size}L indivisible para 50%. Se mantiene volumen completo con protección defensiva.")
+                    # Cierre parcial del 25% del volumen inicial (0.01L en base 0.04L)
+                    quarter_lot = (trade.initial_lot_size * Decimal("0.25")).quantize(Decimal("0.01"))
+                    if quarter_lot < Decimal("0.01") and trade.lot_size >= Decimal("0.02"):
+                        quarter_lot = Decimal("0.01")
 
-                    # Mover Stop Loss a Break-Even con buffer de protección (por defecto $0.80 USD = 8 pips)
-                    spread_buffer = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.80"))
+                    if quarter_lot >= Decimal("0.01") and trade.lot_size > quarter_lot:
+                        _, partial_pnl = await self.broker.close_partial_order(trade.ticket_id, lot_size=quarter_lot, close_price=price)
+                        trade.lot_size = (trade.lot_size - quarter_lot).quantize(Decimal("0.01"))
+                        trade.realized_cash_pnl += partial_pnl
+                        logger.info(f"Slot {slot_id} [HITO 1 - COBRO 25%]: Cerrados {quarter_lot}L @ {price}. Caja asegurada: +${partial_pnl:.2f} USD")
+                    else:
+                        logger.info(f"Slot {slot_id} [HITO 1]: Lote {trade.lot_size}L indivisible para 25%. Se mantiene volumen completo con protección defensiva.")
+
+                    # Mover Stop Loss a Entrada exacta (Break-Even sin buffer de riesgo)
+                    spread_buffer = getattr(settings, 'DEFAULT_BE_BUFFER_USD', Decimal("0.00"))
                     if trade.side == OrderSide.BUY:
                         calc_sl = trade.entry_price + spread_buffer
                         # En BUY el SL defensivo NUNCA debe estar por debajo del precio real de entrada
@@ -389,13 +402,13 @@ class TradeStateMachine:
                     await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)
 
-                    logger.info(f"Slot {slot_id} [BLINDAJE BE+]: SL movido a Break-Even con Spread Buffer (${trade.current_sl}). Riesgo 0% garantizado.")
+                    logger.info(f"Slot {slot_id} [BLINDAJE BE]: SL movido a Entrada exacta (${trade.current_sl}). Riesgo $0.00 garantizado.")
                     await self.emit_alert("TP1_PARTIAL_CLOSE", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,
                         "new_sl": float(trade.current_sl),
                         "market_price": float(price),
-                        "closed_lots": float(half_lot) if (half_lot >= Decimal("0.01") and trade.lot_size > half_lot) else 0.0,
+                        "closed_lots": float(quarter_lot) if (quarter_lot >= Decimal("0.01") and trade.lot_size > quarter_lot) else 0.0,
                         "remaining_lots": float(trade.lot_size),
                         "realized_cash": float(trade.realized_cash_pnl)
                     })
@@ -406,21 +419,24 @@ class TradeStateMachine:
                 if is_tp2_hit:
                     trade.status = TradeStatus.TP2_HIT
 
-                    # Cierre del 25% del volumen inicial (50% del volumen restante)
+                    # Cierre de otro 25% del volumen inicial (dejando 50% = 0.02L para el Infinite Runner)
                     quarter_lot = (trade.initial_lot_size * Decimal("0.25")).quantize(Decimal("0.01"))
+                    if quarter_lot < Decimal("0.01") and trade.lot_size >= Decimal("0.02"):
+                        quarter_lot = Decimal("0.01")
+
                     if quarter_lot >= Decimal("0.01") and trade.lot_size > quarter_lot:
                         _, partial_pnl = await self.broker.close_partial_order(trade.ticket_id, lot_size=quarter_lot, close_price=price)
                         trade.lot_size = (trade.lot_size - quarter_lot).quantize(Decimal("0.01"))
                         trade.realized_cash_pnl += partial_pnl
                         logger.info(f"Slot {slot_id} [HITO 2 - COBRO 25%]: Cerrados {quarter_lot}L @ {price}. Caja total: +${trade.realized_cash_pnl:.2f} USD")
 
-                    # Subir SL del 25% final (Runner) al precio de TP1
+                    # Subir SL del 50% final (Runner) al precio de TP1 (+25 pips asegurados)
                     trade.current_sl = trade.tp1.quantize(Decimal("0.01"))
 
                     await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)
 
-                    logger.info(f"Slot {slot_id} [TRAILING A TP1]: SL del 25% Runner subido a TP1 (${trade.current_sl}).")
+                    logger.info(f"Slot {slot_id} [TRAILING A TP1]: SL del 50% Runner subido a TP1 (${trade.current_sl}). +25 pips asegurados.")
                     await self.emit_alert("TP2_PARTIAL_CLOSE", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,
@@ -431,7 +447,7 @@ class TradeStateMachine:
                         "realized_cash": float(trade.realized_cash_pnl)
                     })
 
-            # 4. HITO 3: TP3 ALCANZADO & ACTIVACIÓN DE MODO INFINITE RUNNER
+            # 4. HITO 3: TP3 ALCANZADO & ACTIVACIÓN DE MODO INFINITE RUNNER (50% Volumen Restante)
             if trade.tp3 and trade.status in (TradeStatus.TP1_HIT, TradeStatus.TP2_HIT) and not trade.is_infinite_trailing:
                 is_tp3_hit = (price >= trade.tp3) if trade.side == OrderSide.BUY else (price <= trade.tp3)
                 if is_tp3_hit:
@@ -443,7 +459,7 @@ class TradeStateMachine:
                     await self.broker.modify_order(trade.ticket_id, new_sl=trade.current_sl)
                     await self._update_trade_in_db(trade)
 
-                    logger.info(f"Slot {slot_id} [🚀 MODO INFINITE RUNNER ACTIVADO]: SL inicial asegurado en TP3 (${trade.current_sl}). Trailing persiguiendo pico.")
+                    logger.info(f"Slot {slot_id} [🚀 MODO INFINITE RUNNER ACTIVADO (50% Lote)]: SL inicial asegurado en TP3 (${trade.current_sl}). Trailing persiguiendo pico.")
                     await self.emit_alert("TP3_RUNNER_ACTIVATED", {
                         "slot_id": slot_id,
                         "ticket_id": trade.ticket_id,

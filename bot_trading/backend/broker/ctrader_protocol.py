@@ -43,12 +43,17 @@ class ProtoPayloadType(IntEnum):
     PROTO_OA_SUBSCRIBE_SPOTS_REQ = 2127
     PROTO_OA_SUBSCRIBE_SPOTS_RES = 2128
     PROTO_OA_UNSUBSCRIBE_SPOTS_REQ = 2129
-    PROTO_OA_UNSUBSCRIBE_SPOTS_RES = 2130
     PROTO_OA_SPOT_EVENT = 2131
     PROTO_OA_ORDER_ERROR_EVENT = 2132
+    PROTO_OA_DEAL_LIST_REQ = 2133
+    PROTO_OA_DEAL_LIST_RES = 2134
     PROTO_OA_ERROR_RES = 2142
     PROTO_OA_GET_ACCOUNTS_BY_ACCESS_TOKEN_REQ = 2149
     PROTO_OA_GET_ACCOUNTS_BY_ACCESS_TOKEN_RES = 2150
+    PROTO_OA_ORDER_LIST_REQ = 2175
+    PROTO_OA_ORDER_LIST_RES = 2176
+    PROTO_OA_DEAL_LIST_BY_POSITION_ID_REQ = 2179
+    PROTO_OA_DEAL_LIST_BY_POSITION_ID_RES = 2180
 
 
 class ProtoOATradeSide(IntEnum):
@@ -66,15 +71,25 @@ class ProtoOAOrderType(IntEnum):
 
 
 class ProtoOAExecutionType(IntEnum):
-    ORDER_ACCEPTED = 1
-    ORDER_FILLED = 2
-    ORDER_REJECTED = 3
-    ORDER_CANCELLED = 4
-    ORDER_EXPIRED = 5
-    AMENDED = 6
-    ORDER_PARTIALLY_FILLED = 7
-    BONUS_DEPOSIT = 8
-    BONUS_WITHDRAW = 9
+    ORDER_ACCEPTED = 2
+    ORDER_FILLED = 3
+    ORDER_REPLACED = 4
+    ORDER_CANCELLED = 5
+    ORDER_EXPIRED = 6
+    ORDER_REJECTED = 7
+    ORDER_CANCEL_REJECTED = 8
+    SWAP = 9
+    DEPOSIT_WITHDRAW = 10
+    ORDER_PARTIALLY_FILLED = 11
+    BONUS_DEPOSIT_WITHDRAW = 12
+
+
+class ProtoOAOrderStatus(IntEnum):
+    ORDER_STATUS_ACCEPTED = 1
+    ORDER_STATUS_FILLED = 2
+    ORDER_STATUS_REJECTED = 3
+    ORDER_STATUS_EXPIRED = 4
+    ORDER_STATUS_CANCELLED = 5
 
 
 # --------------------------------------------------------------------------
@@ -116,6 +131,8 @@ def decode_varint(stream: io.BytesIO) -> int:
         if not (val & 0x80):
             break
         shift += 7
+        if shift > 64:
+            raise ValueError("Varint demasiado largo (desbordamiento de 64 bits)")
     if res >= (1 << 63):
         res -= (1 << 64)
     return res
@@ -183,12 +200,20 @@ def parse_protobuf_fields(data: bytes) -> Dict[int, List[Tuple[int, Any]]]:
             val = decode_varint(stream)
         elif wire_type == WIRE_64BIT:
             raw = stream.read(8)
+            if len(raw) < 8:
+                raise EOFError("Buffer Protobuf truncado esperando 8 bytes (WIRE_64BIT)")
             val = struct.unpack("<d", raw)[0]
         elif wire_type == WIRE_LENGTH_DELIMITED:
             length = decode_varint(stream)
+            if length < 0:
+                raise ValueError(f"Longitud negativa en wire type 2: {length}")
             val = stream.read(length)
+            if len(val) < length:
+                raise EOFError(f"Buffer Protobuf truncado: se esperaban {length} bytes y se leyeron {len(val)}")
         elif wire_type == WIRE_32BIT:
             raw = stream.read(4)
+            if len(raw) < 4:
+                raise EOFError("Buffer Protobuf truncado esperando 4 bytes (WIRE_32BIT)")
             val = struct.unpack("<f", raw)[0]
         else:
             raise ValueError(f"Wire type desconocido {wire_type} en campo {field_num}")
@@ -345,7 +370,8 @@ def build_new_market_order_req(
     slippage_in_points: Optional[int] = None,
     comment: str = "",
     label: str = "AUTOORO",
-    client_order_id: Optional[str] = None
+    client_order_id: Optional[str] = None,
+    position_id: Optional[int] = None
 ) -> bytes:
     """
     Construye ProtoOANewOrderReq (2106) para orden a mercado.
@@ -353,6 +379,9 @@ def build_new_market_order_req(
       - Para MARKET orders: slippageInPoints NO es admitido (error: 'illegal value of slippageInPoints for MARKET order').
       - stopLoss y takeProfit absolutos en MARKET orders directas no están soportados en apertura;
         se aplican inmediatamente después vía ProtoOAAmendPositionSLTPReq (2110).
+      - Tag 16: label (string)
+      - Tag 17: positionId (int64)
+      - Tag 18: clientOrderId (string)
     """
     buf = bytearray()
     buf.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_NEW_ORDER_REQ))
@@ -365,8 +394,9 @@ def build_new_market_order_req(
         buf.extend(encode_string(13, comment))
     if label:
         buf.extend(encode_string(16, label))
+    if position_id is not None:
+        buf.extend(encode_int64(17, position_id))
     if client_order_id:
-        buf.extend(encode_string(17, client_order_id))
         buf.extend(encode_string(18, client_order_id))
         
     return encode_proto_message(ProtoPayloadType.PROTO_OA_NEW_ORDER_REQ, bytes(buf), client_msg_id=client_order_id)
@@ -707,12 +737,24 @@ def parse_execution_event(payload: bytes) -> Dict[str, Any]:
                 deal_id = df.get(1, [(0, 0)])[0][1]
                 deal_pos_id = df.get(3, [(0, 0)])[0][1]
                 deal_vol = df.get(4, [(0, 0)])[0][1]
-                exec_px = df.get(5, [(0, 0)])[0][1] / 100000.0 if 5 in df else 0.0
+                filled_vol = df.get(5, [(0, 0)])[0][1]
+                
+                # Tag 10 oficial en ProtoOADeal es executionPrice (double)
+                exec_px = None
+                if 10 in df and df[10]:
+                    exec_px = float(df[10][0][1])
+                elif 5 in df and df[5] and df[5][0][0] == WIRE_64BIT:
+                    exec_px = float(df[5][0][1])
+                elif 5 in df and df[5] and isinstance(df[5][0][1], (int, float)) and df[5][0][1] > 1000000:
+                    # Fallback defensivo si una simulación antigua escaló el precio en tag 5
+                    exec_px = df[5][0][1] / 100000.0
+
                 deal_data = {
                     "deal_id": deal_id,
                     "position_id": deal_pos_id,
                     "volume": deal_vol,
-                    "execution_price": Decimal(str(round(exec_px, 2))) if exec_px else None
+                    "filled_volume": filled_vol,
+                    "execution_price": Decimal(str(round(exec_px, 2))) if exec_px is not None else None
                 }
             except Exception:
                 pass
@@ -756,3 +798,68 @@ def parse_error_res(payload: bytes) -> Dict[str, Any]:
         "error_code": err_code,
         "description": desc
     }
+
+
+def build_deal_list_req(
+    account_id: int,
+    from_timestamp: int,
+    to_timestamp: int,
+    max_rows: int = 50,
+    client_msg_id: Optional[str] = None
+) -> bytes:
+    """Construye ProtoOADealListReq (2133)."""
+    buf = bytearray()
+    buf.extend(encode_uint32(1, ProtoPayloadType.PROTO_OA_DEAL_LIST_REQ))
+    buf.extend(encode_int64(2, account_id))
+    buf.extend(encode_int64(3, from_timestamp))
+    buf.extend(encode_int64(4, to_timestamp))
+    buf.extend(encode_int32(5, max_rows))
+    return encode_proto_message(ProtoPayloadType.PROTO_OA_DEAL_LIST_REQ, bytes(buf), client_msg_id=client_msg_id)
+
+
+def parse_deal_list_res(payload: bytes) -> List[Dict[str, Any]]:
+    """Parsea ProtoOADealListRes (2134) y retorna la lista de deals con detalle de cierre."""
+    fields = parse_protobuf_fields(payload)
+    raw_deals = fields.get(3, [])
+    deals = []
+    for wire_type, raw_deal in raw_deals:
+        df = parse_protobuf_fields(raw_deal)
+        deal_id = df.get(1, [(0, 0)])[0][1]
+        order_id = df.get(2, [(0, 0)])[0][1]
+        pos_id = df.get(3, [(0, 0)])[0][1]
+        vol = df.get(4, [(0, 0)])[0][1]
+        filled_vol = df.get(5, [(0, 0)])[0][1]
+        ts = df.get(8, [(0, 0)])[0][1]
+        exec_px = float(df[10][0][1]) if 10 in df else 0.0
+        side = "BUY" if df.get(11, [(0, 1)])[0][1] == 1 else "SELL"
+        comm_cents = df.get(14, [(0, 0)])[0][1]
+        comm = comm_cents / 100.0 if comm_cents else 0.0
+
+        close_info = None
+        if 16 in df:
+            cdf = parse_protobuf_fields(df[16][0][1])
+            entry_px = float(cdf[1][0][1]) if 1 in cdf else 0.0
+            gross_profit_cents = cdf.get(2, [(0, 0)])[0][1]
+            bal_cents = cdf.get(5, [(0, 0)])[0][1]
+            closed_vol = cdf.get(7, [(0, 0)])[0][1]
+            close_info = {
+                "entry_price": entry_px,
+                "gross_profit": gross_profit_cents / 100.0,
+                "balance_after": bal_cents / 100.0,
+                "closed_vol": closed_vol
+            }
+
+        deals.append({
+            "deal_id": deal_id,
+            "order_id": order_id,
+            "position_id": pos_id,
+            "volume": vol,
+            "filled_volume": filled_vol,
+            "timestamp": ts,
+            "execution_price": exec_px,
+            "trade_side": side,
+            "commission": comm,
+            "close_position_detail": close_info
+        })
+    return deals
+

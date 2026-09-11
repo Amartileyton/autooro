@@ -206,20 +206,20 @@ def test_risk_engine_sl_circuit_breaker():
     entry_buy = Decimal("4616.50")
     exorbitant_sl_buy = Decimal("4508.00")
     sanitized_buy = risk.sanitize_sl(OrderSide.BUY, entry_buy, exorbitant_sl_buy)
-    # Debe topar a máx $15 USD: 4616.50 - 15.00 = 4601.50
-    assert sanitized_buy == Decimal("4601.50")
+    # Debe topar a máx $5.00 USD (50 pips Circuit Breaker): 4616.50 - 5.00 = 4611.50
+    assert sanitized_buy == Decimal("4611.50")
 
-    # 2. SL normal de $8.50 en BUY (Entry 4616.50, SL 4608.00)
-    normal_sl_buy = Decimal("4608.00")
+    # 2. SL normal de $3.00 en BUY (Entry 4616.50, SL 4613.50)
+    normal_sl_buy = Decimal("4613.50")
     sanitized_normal = risk.sanitize_sl(OrderSide.BUY, entry_buy, normal_sl_buy)
-    assert sanitized_normal == Decimal("4608.00")
+    assert sanitized_normal == Decimal("4613.50")
 
     # 3. SL desorbitado en SELL (Entry 4600.00, SL 4750.00)
     entry_sell = Decimal("4600.00")
     exorbitant_sl_sell = Decimal("4750.00")
     sanitized_sell = risk.sanitize_sl(OrderSide.SELL, entry_sell, exorbitant_sl_sell)
-    # Debe topar a máx $15 USD: 4600.00 + 15.00 = 4615.00
-    assert sanitized_sell == Decimal("4615.00")
+    # Debe topar a máx $5.00 USD (50 pips): 4600.00 + 5.00 = 4605.00
+    assert sanitized_sell == Decimal("4605.00")
 
 
 def test_green_pips_sell_with_incoherent_sl_typo():

@@ -41,10 +41,10 @@ async def test_tiered_buy_full_lifecycle():
     await sm.on_market_tick(tick_tp1)
 
     assert trade.status == TradeStatus.TP1_HIT
-    # Debe haber cerrado 50% (0.10L) y quedar 0.10L
-    assert trade.lot_size == Decimal("0.10")
-    # PnL cobrado en caja: (2005.50 - 2000.00) * 0.10 * 100 = $55.00
-    assert trade.realized_cash_pnl == Decimal("55.00")
+    # Debe haber cerrado 25% (0.05L) y quedar 0.15L
+    assert trade.lot_size == Decimal("0.15")
+    # PnL cobrado en caja: (2005.50 - 2000.00) * 0.05 * 100 = $27.50
+    assert trade.realized_cash_pnl == Decimal("27.50")
     # SL debe subir a Entrada + Spread Buffer ($2000.00 + be_buf)
     assert trade.current_sl == (Decimal("2000.00") + be_buf)
 
@@ -53,10 +53,10 @@ async def test_tiered_buy_full_lifecycle():
     await sm.on_market_tick(tick_tp2)
 
     assert trade.status == TradeStatus.TP2_HIT
-    # Debe haber cerrado 25% del total (0.05L) y quedar 0.05L de Runner
-    assert trade.lot_size == Decimal("0.05")
-    # PnL cobrado adicional: (2015.50 - 2000.00) * 0.05 * 100 = $77.50 ➔ Total = 55.00 + 77.50 = 132.50
-    assert trade.realized_cash_pnl == Decimal("132.50")
+    # Debe haber cerrado otro 25% del total (0.05L) y quedar 0.10L de Runner (50%)
+    assert trade.lot_size == Decimal("0.10")
+    # PnL cobrado adicional: (2015.50 - 2000.00) * 0.05 * 100 = $77.50 ➔ Total = 27.50 + 77.50 = 105.00
+    assert trade.realized_cash_pnl == Decimal("105.00")
     # SL del Runner debe subir al precio de TP1 ($2005.00)
     assert trade.current_sl == Decimal("2005.00")
 
@@ -116,7 +116,7 @@ async def test_tiered_sell_full_lifecycle():
     await sm.on_market_tick(tick_tp1)
 
     assert trade.status == TradeStatus.TP1_HIT
-    assert trade.lot_size == Decimal("0.10")
+    assert trade.lot_size == Decimal("0.15")
     # SL SELL sube a Entrada - Spread Buffer ($2000.00 - be_buf)
     assert trade.current_sl == (Decimal("2000.00") - be_buf)
     assert trade.realized_cash_pnl > Decimal("0.00")
@@ -126,7 +126,7 @@ async def test_tiered_sell_full_lifecycle():
     await sm.on_market_tick(tick_tp2)
 
     assert trade.status == TradeStatus.TP2_HIT
-    assert trade.lot_size == Decimal("0.05")
+    assert trade.lot_size == Decimal("0.10")
     # SL SELL del Runner se bloquea en TP1 ($1995.00)
     assert trade.current_sl == Decimal("1995.00")
 

@@ -424,9 +424,9 @@ class TradeLifecycleCard:
             if self.account_tp3_hit:
                 mods.append("🏆 TP1, TP2 y TP3 alcanzados (Runner completado)")
             elif self.account_tp2_hit:
-                mods.append("🏆 TP1 y TP2 alcanzados (+75% asegurado)")
+                mods.append("🏆 TP1 y TP2 alcanzados (+50% asegurado en caja + 50% Runner)")
             elif self.account_tp1_hit:
-                mods.append("🏆 TP1 alcanzado (+50% asegurado)")
+                mods.append("🏆 TP1 alcanzado (+25% asegurado en caja + SL a Entrada)")
 
             if self.security_exit_before_tp and self.highest_channel_tp > self.highest_account_tp:
                 mods.append(f"🛡️ Salida defensiva en ${float(self.exit_price or 0.0):.2f} antes de TP{self.highest_channel_tp}")
@@ -438,9 +438,9 @@ class TradeLifecycleCard:
             if "SL_HIT" in close_reason_str or "TRAILING_SL" in close_reason_str:
                 entry_px = float(self.entry_price or 0.0)
                 if self.side == "BUY" and curr_sl >= entry_px:
-                    mods.append(f"Cierre de remanente en Break-Even + Spread (${curr_sl:.2f})")
+                    mods.append(f"Cierre de remanente en Break-Even / Entrada (${curr_sl:.2f})")
                 elif self.side == "SELL" and curr_sl <= entry_px:
-                    mods.append(f"Cierre de remanente en Break-Even + Spread (${curr_sl:.2f})")
+                    mods.append(f"Cierre de remanente en Break-Even / Entrada (${curr_sl:.2f})")
                 else:
                     mods.append(f"Cierre por Stop Loss (${curr_sl:.2f})")
             elif "TP" in close_reason_str:
@@ -457,22 +457,22 @@ class TradeLifecycleCard:
             self.closed_at = None
             self.formatted_closed_at = None
 
-            if "TP1" in st_str or realized_cash > 0:
-                self.outcome_text = "EN CURSO (TP1 Cobrado 50% + BE)"
-                self.modifications = [
-                    "TP1 cobrado (50% asegurado en caja)",
-                    f"SL blindado a Break-Even (${float(self.sl_price or self.entry_price):.2f})"
-                ]
-            elif "TP2" in st_str or self.tp2_hit:
-                self.outcome_text = "EN CURSO (TP2 Cobrado 75% + Runner)"
-                self.modifications = [
-                    "TP1 y TP2 cobrados",
-                    f"Trailing SL ajustado a ${float(self.sl_price or self.entry_price):.2f}"
-                ]
-            elif "TP3" in st_str or "TRAILING" in st_str or self.tp3_hit:
-                self.outcome_text = "EN CURSO (Infinite Runner)"
+            if "TP3" in st_str or "TRAILING" in st_str or self.tp3_hit:
+                self.outcome_text = "EN CURSO (Infinite Runner 50%)"
                 self.modifications = [
                     f"Trailing SL dinámico persiguiendo pico (${float(self.sl_price or self.entry_price):.2f})"
+                ]
+            elif "TP2" in st_str or self.tp2_hit:
+                self.outcome_text = "EN CURSO (TP2 Cobrado 50% + SL a TP1)"
+                self.modifications = [
+                    "TP1 y TP2 cobrados (50% asegurado en caja)",
+                    f"SL del 50% Runner subido a TP1 (${float(self.sl_price or self.entry_price):.2f})"
+                ]
+            elif "TP1" in st_str or realized_cash > 0:
+                self.outcome_text = "EN CURSO (TP1 Cobrado 25% + BE)"
+                self.modifications = [
+                    "TP1 cobrado (25% asegurado en caja)",
+                    f"SL blindado a Entrada (${float(self.sl_price or self.entry_price):.2f})"
                 ]
             else:
                 self.outcome_text = "EN CURSO"

@@ -89,16 +89,16 @@ class Settings(BaseSettings):
         description="Delta en USD para SL dinámico si la señal no especifica SL"
     )
     DEFAULT_BE_BUFFER_USD: Decimal = Field(
-        default=Decimal("0.80"),
-        description="Buffer en USD para Break-Even (8 pips en oro, cubriendo spread y comisiones sin asfixiar la orden)"
+        default=Decimal("0.00"),
+        description="Buffer en USD para Break-Even (0.00 = entrada exacta de riesgo cero al alcanzar TP1)"
     )
     ANTI_REENTRY_COOLDOWN_SECONDS: int = Field(
         default=600,
         description="Ventana de tiempo en segundos (10 min) para no reabrir un setup si ya se ejecutó o cerró recientemente"
     )
     MAX_ALLOWED_SL_DELTA_USD: Decimal = Field(
-        default=Decimal("15.00"),
-        description="Distancia máxima de riesgo permitida para Stop Loss en USD (Circuit Breaker)"
+        default=Decimal("5.00"),
+        description="Distancia máxima de riesgo permitida para Stop Loss en USD (Circuit Breaker: 50 pips / $5.00 en oro)"
     )
     PULLBACK_WATCHER_ENABLED: bool = Field(
         default=True,

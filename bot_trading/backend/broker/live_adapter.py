@@ -336,9 +336,20 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             if order_info and order_info.get("client_order_id"):
                 c_ord_id = order_info["client_order_id"]
                 if c_ord_id in self._pending_responses:
-                    fut = self._pending_responses.pop(c_ord_id)
-                    if not fut.done():
-                        fut.set_result((payload_type, payload))
+                    is_filled_or_rejected = (
+                        exec_event.get("execution_type") in [
+                            ProtoOAExecutionType.ORDER_FILLED,
+                            ProtoOAExecutionType.ORDER_REJECTED
+                        ]
+                        or (pos_data is not None and pos_data.get("position_id") and pos_data.get("position_status") == 1)
+                        or exec_event.get("error_code") is not None
+                    )
+                    if is_filled_or_rejected:
+                        fut = self._pending_responses.pop(c_ord_id)
+                        if not fut.done():
+                            fut.set_result((payload_type, payload))
+                    else:
+                        logger.debug(f"[cTrader Live] Orden {c_ord_id} aceptada (Type={exec_event['execution_type']}). Esperando llenado...")
             elif self._pending_responses and exec_event.get("position"):
                 # Si hay una orden pendiente de confirmación, resolver el futuro más antiguo
                 first_k = next(iter(self._pending_responses.keys()))
@@ -354,7 +365,7 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
                     if self._connected and self._writer:
                         asyncio.create_task(self._sync_trader_info())
                 else:
-                    lot_size = (Decimal(pos["volume"]) / Decimal(self.symbol_min_volume * 100)).quantize(Decimal("0.01"))
+                    lot_size = self._convert_ctrader_volume_to_lot(pos["volume"])
                     self._positions[pos_id] = BrokerPosition(
                         ticket_id=pos_id,
                         symbol="XAUUSD",
@@ -496,7 +507,7 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
             for pos in positions:
                 if pos["symbol_id"] == self.symbol_id:
                     pos_id = str(pos["position_id"])
-                    lot_size = (Decimal(pos["volume"]) / Decimal(self.symbol_min_volume * 100)).quantize(Decimal("0.01"))
+                    lot_size = self._convert_ctrader_volume_to_lot(pos["volume"])
                     self._positions[pos_id] = BrokerPosition(
                         ticket_id=pos_id,
                         symbol="XAUUSD",
@@ -527,6 +538,17 @@ class LiveBrokerAdapter(BaseBrokerAdapter):
         multiplier = Decimal(self.symbol_min_volume) / settings.MIN_LOT_SIZE
         calculated_vol = int((lot_size * multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         return max(self.symbol_min_volume, calculated_vol)
+
+    def _convert_ctrader_volume_to_lot(self, volume: int) -> Decimal:
+        """
+        Convierte el volumen en unidades/centavos de cTrader a lotes estándar.
+        Garantiza simetría perfecta con _convert_lot_to_ctrader_volume.
+        """
+        multiplier = Decimal(self.symbol_min_volume) / settings.MIN_LOT_SIZE
+        if multiplier <= Decimal("0"):
+            multiplier = Decimal("10000.0")
+        lots = (Decimal(volume) / multiplier).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return max(settings.MIN_LOT_SIZE, lots)
 
     async def get_account_info(self) -> AccountInfo:
         """Calcula el estado actual de balance, equidad, margen libre y margen usado."""

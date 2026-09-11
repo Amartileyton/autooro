@@ -104,3 +104,21 @@ async def test_slippage_check():
     # Señal con entrada 2340.00 -> diff 5.40 > 0.50 -> Rechazado
     is_valid, market_p, diff = await engine.check_slippage(Decimal("2340.00"), OrderSide.BUY)
     assert is_valid is False
+
+
+def test_sanitize_sl_circuit_breaker_capping():
+    """Verifica que un SL de 90-100 pips del canal sea recortado a máx 50 pips ($5.00 USD) por el Circuit Breaker."""
+    broker = LocalPaperBroker()
+    engine = RiskEngine(broker=broker)
+
+    # BUY: Entrada 2650.00, SL canal 2640.00 (100 pips de riesgo) -> Capped a 2645.00 (50 pips)
+    sl_buy = engine.sanitize_sl(OrderSide.BUY, Decimal("2650.00"), Decimal("2640.00"))
+    assert sl_buy == Decimal("2645.00")
+
+    # SELL: Entrada 2650.00, SL canal 2660.00 (100 pips de riesgo) -> Capped a 2655.00 (50 pips)
+    sl_sell = engine.sanitize_sl(OrderSide.SELL, Decimal("2650.00"), Decimal("2660.00"))
+    assert sl_sell == Decimal("2655.00")
+
+    # BUY con SL conservador de 30 pips (2647.00) -> Se respeta intacto
+    sl_safe = engine.sanitize_sl(OrderSide.BUY, Decimal("2650.00"), Decimal("2647.00"))
+    assert sl_safe == Decimal("2647.00")

@@ -30,7 +30,7 @@ class RiskEngine:
         self.lot_step = settings.LOT_STEP
         self.slippage_tolerance = settings.SLIPPAGE_TOLERANCE_USD
         self.dynamic_sl_delta = settings.DEFAULT_DYNAMIC_SL_DELTA_USD
-        self.max_allowed_sl_delta = getattr(settings, 'MAX_ALLOWED_SL_DELTA_USD', Decimal("15.00"))
+        self.max_allowed_sl_delta = getattr(settings, 'MAX_ALLOWED_SL_DELTA_USD', Decimal("5.00"))
 
     def calculate_dynamic_sl(self, side: OrderSide, entry_price: Decimal) -> Decimal:
         """Calcula el SL dinámico si la señal no especificó uno explícito."""
@@ -43,7 +43,7 @@ class RiskEngine:
         """
         Valida y acota el Stop Loss de una señal:
         - Si no tiene SL o es None: usa calculate_dynamic_sl (ej. 8.50 USD).
-        - Si el SL explícito supera MAX_ALLOWED_SL_DELTA_USD (ej. 15.00 USD), lo recorta automáticamente al límite de seguridad máximo.
+        - Si el SL explícito supera MAX_ALLOWED_SL_DELTA_USD (5.00 USD = 50 pips), lo recorta automáticamente al límite de seguridad máximo (Circuit Breaker).
         - Garantiza coherencia matemática (para BUY, SL < Entry; para SELL, SL > Entry).
         """
         if sl_price is None:
